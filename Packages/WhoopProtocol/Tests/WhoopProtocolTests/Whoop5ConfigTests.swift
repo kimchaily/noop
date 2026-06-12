@@ -50,4 +50,17 @@ final class Whoop5ConfigTests: XCTestCase {
         let v4 = Whoop5Config.enableR22Sequence.first { $0.name == "enable_r22_v4_packets" }
         XCTAssertEqual(v4?.value, 0x31)
     }
+
+    /// Broadcast-HR device-config body (#181): key name ASCII NUL-padded to 32 bytes, then the value
+    /// byte (ASCII digit) at offset 32 — 33 bytes total, no trailing padding. Mirrors the Android
+    /// `BroadcastHrConfigTest`. Validated on real hardware (paired on a Garmin Edge 840).
+    func testDeviceConfigBodyIsNameNullPaddedThenAsciiValue() {
+        let body = Whoop5Config.deviceConfigBody(name: "whoop_live_hr_in_adv_ind_pkt", value: 0x31)
+        XCTAssertEqual(body.count, 33)
+        let name = Array("whoop_live_hr_in_adv_ind_pkt".utf8)   // 28 bytes
+        XCTAssertEqual(Array(body[0..<name.count]), name)
+        for i in name.count..<32 { XCTAssertEqual(body[i], 0, "expected NUL pad at \(i)") }
+        XCTAssertEqual(body[32], 0x31, "value byte should be ASCII '1'")
+        XCTAssertEqual(Whoop5Config.deviceConfigBody(name: "whoop_live_hr_in_adv_ind_pkt", value: 0x30)[32], 0x30)
+    }
 }

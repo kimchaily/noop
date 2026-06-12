@@ -17,6 +17,15 @@ approximate; downloads are on the [Releases](https://github.com/NoopApp/noop/rel
 
 ---
 
+## 2.6.5 — Broadcast your heart rate to Garmin, Zwift and gym kit
+
+- **New (iPhone & Android, experimental):** **Broadcast heart rate** — your WHOOP 5.0/MG can now
+  advertise its heart rate as a standard Bluetooth HR sensor (`0x180D`), so a Garmin (Edge/watch),
+  Zwift, Peloton or a gym machine can read it directly during a workout. Turn it on under
+  **Settings → Experimental**; it's opt-in and reversible (it writes the strap's
+  `whoop_live_hr_in_adv_ind_pkt` flag), and re-applied on each connection. WHOOP 5.0/MG only — a Mac
+  can't write to a 5/MG. Thanks @mornepousse. (#181)
+
 ## 2.6.4 — Tidier workout names, correct Rest duration
 
 - **Fixed:** workout names from your strap now read as proper words — **Traditional Strength Training**

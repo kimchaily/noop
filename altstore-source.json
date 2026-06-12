@@ -18,6 +18,15 @@
       "screenshotURLs": [],
       "versions": [
         {
+          "version": "2.6.5",
+          "buildVersion": "36",
+          "date": "2026-06-12",
+          "localizedDescription": "Broadcast heart rate to Garmin/Zwift/gym (WHOOP 5.0/MG, opt-in).",
+          "downloadURL": "https://github.com/NoopApp/noop/releases/download/v2.6.5/NOOP-v2.6.5-ios.ipa",
+          "size": 5562685,
+          "minOSVersion": "17.0"
+        },
+        {
           "version": "2.6.4",
           "buildVersion": "35",
           "date": "2026-06-12",
@@ -46,12 +55,12 @@
           "NSHealthUpdateUsageDescription": "NOOP writes the metrics it computes from your strap back into Apple Health, on-device and only when you allow it."
         }
       },
-      "version": "2.6.4",
-      "buildVersion": "35",
+      "version": "2.6.5",
+      "buildVersion": "36",
       "versionDate": "2026-06-12",
-      "versionDescription": "Workout names now read as proper words; Intelligence Rest duration fixed.",
-      "downloadURL": "https://github.com/NoopApp/noop/releases/download/v2.6.4/NOOP-v2.6.4-ios.ipa",
-      "size": 5560368,
+      "versionDescription": "Broadcast heart rate to Garmin/Zwift/gym (WHOOP 5.0/MG, opt-in).",
+      "downloadURL": "https://github.com/NoopApp/noop/releases/download/v2.6.5/NOOP-v2.6.5-ios.ipa",
+      "size": 5562685,
       "minOSVersion": "17.0"
     }
   ],

@@ -36,6 +36,11 @@ public enum WhoopCommand: UInt8, CaseIterable {
     /// toggles which data the strap emits, and is gated behind an opt-in. iOS/Android only on real
     /// hardware (macOS cannot complete the authenticated bond required to write commands).
     case setConfig             = 120
+    /// SET_DEVICE_CONFIG (0x77) — writes ONE persistent device-config value (distinct from the
+    /// feature-flag SET_CONFIG/0x78). Used for the "Broadcast HR" flag (`whoop_live_hr_in_adv_ind_pkt`),
+    /// which makes the strap advertise its HR as a standard 0x180D BLE sensor. Reversible; gated behind
+    /// the broadcast-HR opt-in. iOS/Android only (macOS can't bond a 5/MG). (#181)
+    case setDeviceConfig       = 119
     /// Fire a preset haptic pattern. Payload = `[patternId, numLoops, 0, 0, 0]` (5 bytes, from
     /// the device's preset table). patternId indexes the device's preset patterns (GET_ALL_HAPTICS_PATTERN
     /// reports 7 on harvard); the official app fires id=2. Safe/reversible — just buzzes the motor.
@@ -86,6 +91,7 @@ public enum WhoopCommand: UInt8, CaseIterable {
         case .toggleIMUMode:         return "Toggle IMU Mode"
         case .enableOpticalData:     return "Enable Optical Data"
         case .setConfig:             return "Set Config (R22 feature flag)"
+        case .setDeviceConfig:       return "Set Device Config (broadcast HR)"
         case .runHapticsPattern:     return "Run Haptics Pattern"
         case .stopHaptics:           return "Stop Haptics"
         case .sendR10R11Realtime:    return "R10/R11 Realtime (raw stream)"

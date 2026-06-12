@@ -29,6 +29,10 @@ struct SettingsView: View {
     /// persistent feature flag to the strap. See [PuffinExperiment.deepDataKey]. (#174)
     @AppStorage(PuffinExperiment.deepDataKey) private var deepDataEnabled = false
 
+    /// Opt-in "Broadcast heart rate" (off by default) — makes the strap advertise its HR as a standard
+    /// BLE sensor for Garmin/Zwift/gym kit. See [PuffinExperiment.broadcastHrKey]. (#181)
+    @AppStorage(PuffinExperiment.broadcastHrKey) private var broadcastHrEnabled = false
+
     // Imperial/Metric display preference (D#103). Stored data is always SI; this only changes how
     // distances/weights/heights/temperatures are SHOWN — and lets the profile fields below take
     // imperial entry. Temperature has a separate override so °C/°F can be picked independently.
@@ -407,6 +411,20 @@ struct SettingsView: View {
                 }
 
                 Divider().overlay(StrandPalette.hairline)
+
+                // MARK: Broadcast HR — make the strap a standard BLE HR sensor (Garmin/Zwift/gym).
+                Toggle(isOn: $broadcastHrEnabled) {
+                    Text("Broadcast heart rate (Garmin/ANT)")
+                        .font(StrandFont.subhead)
+                        .foregroundStyle(StrandPalette.textPrimary)
+                }
+                .toggleStyle(.switch)
+                .tint(StrandPalette.accent)
+                .onChange(of: broadcastHrEnabled) { on in model.ble.setBroadcastHr(on) }
+                Text("Makes your WHOOP 5.0/MG advertise its heart rate as a standard Bluetooth HR sensor, so a Garmin (Edge/watch), Zwift or gym equipment can use it during a workout. Applied on the next connection (and immediately if connected); writes the strap's whoop_live_hr_in_adv_ind_pkt flag. Reversible. iPhone-side only — a Mac can't write to a 5/MG.")
+                    .font(StrandFont.caption)
+                    .foregroundStyle(StrandPalette.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Toggle(isOn: $puffinCapture) {
                     Text("Record puffin frames to a file")

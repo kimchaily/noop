@@ -491,7 +491,11 @@ public final class BLEManager: NSObject, ObservableObject {
                 // must never fire on a default install. It's still reversible (just changes which
                 // data the strap emits) and is what the official app sends. Driven only by
                 // enableWhoop5DeepData(). (#174)
-                || (command == .setConfig && PuffinExperiment.deepDataEnabled) else {
+                || (command == .setConfig && PuffinExperiment.deepDataEnabled)
+                // SET_DEVICE_CONFIG (the Broadcast-HR flag) is allowed ONLY while that opt-in is on —
+                // it writes one persistent device-config value so the strap advertises standard HR.
+                // Reversible; driven only by setBroadcastHr(_:). (#181)
+                || (command == .setDeviceConfig && PuffinExperiment.broadcastHrEnabled) else {
                 log("send(\(command.label)) skipped — no WHOOP 5/MG framing for this command yet")
                 return
             }
@@ -881,6 +885,26 @@ public final class BLEManager: NSObject, ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(80 * frames.count + 200)) { [weak self] in
             self?.log("Deep-data: sequence sent. Keep the strap on, let it sync, then share your strap log — we're looking for new deep records (type-0x2F) to start arriving. (#174)")
         }
+    }
+
+    /// EXPERIMENTAL (#181): make a bonded WHOOP 5/MG advertise its heart rate as a standard BLE HR
+    /// sensor (0x180D + the live HR in its manufacturer data) by writing the device-config flag
+    /// `whoop_live_hr_in_adv_ind_pkt` = "1" (on) / "0" (off) via SET_DEVICE_CONFIG (0x77). With it on, a
+    /// Garmin (Edge/watch), Zwift or gym HR client can pair to the WHOOP directly during a workout.
+    /// Validated on real hardware (paired on a Garmin Edge 840). Opt-in, reversible; unlike R22 it is NOT
+    /// on-wrist gated. Re-applied on each 5/MG connection. iOS/Android only (macOS can't bond a 5/MG).
+    public func setBroadcastHr(_ on: Bool) {
+        guard selectedModel.deviceFamily == .whoop5 else {
+            log("Broadcast HR: needs a WHOOP 5.0/MG strap selected — ignored."); return
+        }
+        guard state.connected, state.bonded else {
+            log("Broadcast HR: connect and bond a 5/MG strap first — ignored."); return
+        }
+        let value: UInt8 = on ? 0x31 : 0x30   // ASCII '1' / '0'
+        send(.setDeviceConfig,
+             payload: [0x01] + Whoop5Config.deviceConfigBody(name: "whoop_live_hr_in_adv_ind_pkt", value: value),
+             writeType: .withResponse)
+        log("Broadcast HR: wrote whoop_live_hr_in_adv_ind_pkt=\(on ? "1" : "0")")
     }
 
     private func startKeepAlive() {
@@ -1434,6 +1458,8 @@ extension BLEManager: CBPeripheralDelegate {
                 whoop5SessionStarted = true
                 connectHandshakeDone = true     // unblocks beginBackfill()'s guard
                 log("WHOOP 5/MG: connect handshake done — backfill unblocked")
+                // Re-apply the Broadcast-HR device-config flag if the user opted in (#181).
+                if PuffinExperiment.broadcastHrEnabled { setBroadcastHr(true) }
                 // Clock the strap BEFORE history: an un-clocked WHOOP 5 discards sensor data ("RTC
                 // timestamp … is invalid; not saving data to flash") and history offloads "succeed"
                 // with metadata only. Same 8-byte payload as the WHOOP4 handshake, puffin-framed;

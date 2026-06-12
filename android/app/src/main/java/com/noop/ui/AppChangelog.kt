@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "2.6.4"
+    const val CURRENT_VERSION = "2.6.5"
 
     data class Release(
         val version: String,
@@ -36,6 +36,14 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "2.6.5",
+            title = "Broadcast your heart rate to Garmin, Zwift and gym kit",
+            date = "June 2026",
+            items = listOf(
+                "New (iPhone and Android, experimental): Broadcast heart rate — your WHOOP 5.0/MG can now advertise its heart rate as a standard Bluetooth HR sensor, so a Garmin (Edge or watch), Zwift, Peloton or a gym machine can read it directly during a workout. Turn it on under Settings → Experimental; it's opt-in and reversible, applied each time the strap connects. WHOOP 5.0/MG only (a Mac can't write to a 5/MG). Thanks @mornepousse (#181).",
+            ),
+        ),
         Release(
             version = "2.6.4",
             title = "Tidier workout names, correct Rest duration",

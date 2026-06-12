@@ -21,4 +21,12 @@ enum PuffinExperiment {
     static let deepDataKey = "noopWhoop5DeepData"
 
     static var deepDataEnabled: Bool { UserDefaults.standard.bool(forKey: deepDataKey) }
+
+    /// Opt-in "Broadcast heart rate": writes the device-config flag `whoop_live_hr_in_adv_ind_pkt="1"`
+    /// so the strap advertises the standard Heart Rate Service (0x180D) + its live HR, pairable by a
+    /// Garmin/Zwift/gym HR client. Reversible, default off; applied on each 5/MG connection and driven by
+    /// `BLEManager.setBroadcastHr(_:)`. Mirrors the Android `PuffinExperiment.KEY_BROADCAST_HR`. (#181)
+    static let broadcastHrKey = "noopBroadcastHr"
+
+    static var broadcastHrEnabled: Bool { UserDefaults.standard.bool(forKey: broadcastHrKey) }
 }

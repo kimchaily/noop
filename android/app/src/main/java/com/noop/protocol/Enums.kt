@@ -96,6 +96,11 @@ enum class CommandNumber(val rawValue: Int) {
     // packets" sequence (Whoop5Config) sends 15 of these to switch on the deep biometric streams.
     // Reversible; gated behind the deep-data opt-in; iOS/Android only. (#174)
     SET_CONFIG(120),
+    // SET_DEVICE_CONFIG (0x77) — write one persistent DEVICE-config value (distinct from the
+    // feature-flag SET_CONFIG/0x78). Used for the "Broadcast HR" flag whoop_live_hr_in_adv_ind_pkt,
+    // which makes the strap advertise its HR as a standard 0x180D BLE sensor. Validated on real
+    // hardware (paired on a Garmin Edge 840). Reversible; gated behind the broadcast-HR opt-in. (#181)
+    SET_DEVICE_CONFIG(119),
     START_RAW_DATA(81),
     STOP_RAW_DATA(82),
     STOP_HAPTICS(122),

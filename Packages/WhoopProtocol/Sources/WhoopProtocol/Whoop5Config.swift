@@ -24,6 +24,12 @@ public enum Whoop5Config {
     /// SET_CONFIG / SET_FF_VALUE command opcode.
     public static let setConfigCmd: UInt8 = 0x78
 
+    /// SET_DEVICE_CONFIG opcode (0x77) — writes ONE persistent device-config value, distinct from the
+    /// feature-flag SET_CONFIG (0x78) sequence above. Used for the "Broadcast HR" flag
+    /// (`whoop_live_hr_in_adv_ind_pkt`), which makes the strap advertise its heart rate as a standard
+    /// 0x180D BLE sensor. Validated on real hardware (paired on a Garmin Edge 840). (#181)
+    public static let setDeviceConfigCmd: UInt8 = 0x77
+
     /// One persistent feature flag and the value the official app writes for it.
     public struct Flag: Equatable, Sendable {
         public let name: String
@@ -56,6 +62,18 @@ public enum Whoop5Config {
     /// at offset 32, then 7 zero bytes. (Mirrors judes.club `setConfigPayload(name, value)`.)
     public static func payloadBody(name: String, value: UInt8) -> [UInt8] {
         var p = [UInt8](repeating: 0, count: 40)
+        let bytes = Array(name.utf8)
+        for i in 0..<min(32, bytes.count) { p[i] = bytes[i] }
+        p[32] = value
+        return p
+    }
+
+    /// The 33-byte SET_DEVICE_CONFIG body: key name as ASCII NUL-padded to 32 bytes, then the value byte
+    /// (an ASCII digit, '1' = 0x31 / '0' = 0x30) at offset 32 — NO trailing padding (unlike the 40-byte
+    /// feature-flag body). The caller prepends the inner b3 byte (0x01) before sending, like CLIENT_HELLO.
+    /// Mirrors the Android `Whoop5Config.deviceConfigBody`; validated on real hardware. (#181)
+    public static func deviceConfigBody(name: String, value: UInt8) -> [UInt8] {
+        var p = [UInt8](repeating: 0, count: 33)
         let bytes = Array(name.utf8)
         for i in 0..<min(32, bytes.count) { p[i] = bytes[i] }
         p[32] = value
