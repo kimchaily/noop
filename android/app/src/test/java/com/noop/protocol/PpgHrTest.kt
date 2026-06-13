@@ -57,9 +57,29 @@ class PpgHrTest {
 
     @Test
     fun tooFewSamplesYieldsEmpty() {
-        // Fewer than one 8 s window (192 samples) cannot be estimated.
-        val short = sine(bpm = 70.0, seconds = 4) // 96 samples
+        // A run shorter than 3 consecutive seconds cannot be estimated (mirrors Swift derivePpgHr,
+        // which needs run.count >= 3 and a centred window of >= 3 s / 72 samples). 2 s → nothing.
+        val short = sine(bpm = 70.0, seconds = 2) // 48 samples, run of 2
         assertEquals(emptyList<PpgHr.Estimate>(), PpgHr.estimate(short))
+    }
+
+    @Test
+    fun recoversFromShortThreeSecondRun() {
+        // Swift parity: a 3 s run DOES produce HR (each second's centred window holds >= 3 s). The
+        // old Kotlin needed a full 8 s window and wrongly returned nothing here.
+        val est = PpgHr.estimate(sine(bpm = 70.0, seconds = 3))
+        assertTrue("expected estimates from a 3 s run", est.isNotEmpty())
+        for (e in est) assertTrue("bpm ${e.bpm} not within 70±3", e.bpm in 67..73)
+    }
+
+    @Test
+    fun prefersFundamentalNotHalfRate() {
+        // A clean 50 bpm sine autocorrelates strongly at the true period AND at 2× the period
+        // (25 bpm). The global-argmax estimator could lock onto the stronger low-lag-energy harmonic
+        // and report ~25 bpm; fundamental-period preference must report ~50 (Swift parity, #219).
+        val est = PpgHr.estimate(sine(bpm = 50.0, seconds = 16))
+        assertTrue("expected estimates from a clean 50 bpm sine", est.isNotEmpty())
+        for (e in est) assertTrue("bpm ${e.bpm} not near 50 (harmonic leak?)", e.bpm in 47..53)
     }
 
     @Test

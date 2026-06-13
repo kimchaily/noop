@@ -87,9 +87,19 @@ interface WhoopDao {
 
     // MARK: - Range reads (ORDER BY ts ASC, inclusive [from, to], limited)
 
+    /** COALESCE union (#172/#219 parity with Swift's hrSamples): the measured `hrSample` is
+     *  authoritative; the v26 PPG-derived `ppgHrSample` fills ONLY seconds the strap never reported a
+     *  bpm for (anti-join), so a PPG-only WHOOP 5 night still clears the scoring gate and is scorable —
+     *  exactly as `hrBuckets` already coalesces for charts. PPG rows carry synced = 0. */
     @Query(
-        "SELECT * FROM hrSample WHERE deviceId = :deviceId AND ts >= :from AND ts <= :to " +
-            "ORDER BY ts ASC LIMIT :limit"
+        "SELECT deviceId, ts, bpm, synced FROM (" +
+            "SELECT deviceId, ts, bpm, synced FROM hrSample " +
+            "WHERE deviceId = :deviceId AND ts >= :from AND ts <= :to " +
+            "UNION ALL " +
+            "SELECT p.deviceId AS deviceId, p.ts AS ts, p.bpm AS bpm, 0 AS synced FROM ppgHrSample p " +
+            "WHERE p.deviceId = :deviceId AND p.ts >= :from AND p.ts <= :to " +
+            "AND NOT EXISTS (SELECT 1 FROM hrSample h WHERE h.deviceId = p.deviceId AND h.ts = p.ts)" +
+            ") ORDER BY ts ASC LIMIT :limit"
     )
     suspend fun hrSamples(deviceId: String, from: Long, to: Long, limit: Int): List<HrSample>
 
@@ -296,8 +306,16 @@ interface WhoopDao {
 
     // MARK: - Frontier / stats (Reads.swift)
 
-    /** Max HR sample ts for a device, or null if none — the biometric data frontier. */
-    @Query("SELECT MAX(ts) FROM hrSample WHERE deviceId = :deviceId")
+    /** Max HR sample ts for a device, or null if none — the biometric data frontier.
+     *  COALESCEs measured `hrSample` with the v26 PPG-derived `ppgHrSample` (#156) so a PPG-only
+     *  offload (a v26 WHOOP 5 night with no measured HR) still advances the frontier, matching the
+     *  Swift reader (Reads.swift latestHrSampleTs). Both persist on the same per-second ts grid. */
+    @Query(
+        "SELECT MAX(ts) FROM (" +
+            "SELECT ts FROM hrSample WHERE deviceId = :deviceId " +
+            "UNION ALL " +
+            "SELECT ts FROM ppgHrSample WHERE deviceId = :deviceId)",
+    )
     suspend fun latestHrSampleTs(deviceId: String): Long?
 
     @Query("SELECT COUNT(*) FROM hrSample") suspend fun countHr(): Int

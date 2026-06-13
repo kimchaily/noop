@@ -263,8 +263,12 @@ private fun decodeWhoop5Historical(frame: ByteArray): Map<String, Any?>? {
     frame.histF32(41)?.let { if (it.isFinite() && it in 0.0..8.0) out["dynamic_acceleration"] = it }
     frame.histU16(57)?.let { out["step_motion_counter"] = it }
     frame.histU8(63)?.let { if (it in 0..2) out["motion_wear_quality"] = it }
-    // skin temp: raw u16 (the store keeps it raw, /100 at display); gate on the °C being physical.
-    frame.histU16(73)?.let { if ((it / 100.0) in 20.0..45.0) out["skin_temp_raw"] = it }
+    // skin temp: raw u16 (the store keeps it raw, /100 at display). Gate on a plausible thermal
+    // range using the SAME scale-agnostic predicate as Swift (Interpreter.swift:350-351): raw/128 in
+    // 5…45 °C. A tighter /100·20…45 band silently dropped valid early-donning samples (the 17.5 °C
+    // on-wrist warming curve) that Mac/iOS keep — the gate is only a garbage filter, the absolute
+    // scale lives in the consumer, so this keeps the three platforms' stored set identical. (Parity.)
+    frame.histU16(73)?.let { if ((it / 128.0) in 5.0..45.0) out["skin_temp_raw"] = it }
     return out
 }
 

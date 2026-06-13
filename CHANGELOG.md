@@ -17,6 +17,24 @@ approximate; downloads are on the [Releases](https://github.com/NoopApp/noop/rel
 
 ---
 
+## 2.8.2 — Cross-platform parity: Android now scores identically to macOS & iOS
+
+A maintenance release from a full three-platform parity audit of the scoring and decode paths.
+No new features — these bring Android's numbers into exact agreement with macOS/iOS.
+
+- **Fixed (Android):** Charge could read slightly low because the skin-temperature term was weighted
+  twice as hard as on macOS/iOS. All three apps now compute Charge identically. (#219)
+- **Fixed (Android, WHOOP 5/MG):** the HR NOOP derives from the optical (PPG) sensor on stretches with
+  no measured HR now uses the same harmonic-rejecting estimator as macOS/iOS (it could previously lock
+  onto half or double the true rate) and recovers HR from short data runs the way the other apps do. (#219)
+- **Fixed (Android):** the respiratory-rate early-illness signal in Readiness now uses the same
+  sensitivity thresholds and plausible-range filter as macOS/iOS.
+- **Fixed:** smaller cross-platform tidy-ups — skin-temperature data kept over the same range on every
+  platform (Android was dropping valid just-put-on readings), CSV exports round-trip byte-for-byte, and
+  a couple of score-rounding edge cases now agree across apps.
+
+---
+
 ## 2.8.1 — Battery + responsiveness: smarter sync, lighter notification
 
 - **Improved (battery):** NOOP backs off history-sync polling when the strap keeps handing over nothing

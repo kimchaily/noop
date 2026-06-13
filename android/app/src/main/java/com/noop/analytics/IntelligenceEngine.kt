@@ -232,8 +232,11 @@ object IntelligenceEngine {
         val respBase2 = Baselines.foldHistory(respSeq, respCfg).takeIf { it.usable }
         // Skin-temp baseline is on-device-only (imported rows carry skinTempDevC, not the raw mean),
         // so fold purely over the pass-1 nightly means in chronological order. (PR #85)
+        // Gated on `usable` for consistency with the resp baseline above AND the Swift reference
+        // (IntelligenceEngine.swift:162 `skinFold.usable ? skinFold : nil`) — the use-site re-checks
+        // `usable` too, so this is belt-and-suspenders, but it keeps the platforms byte-aligned.
         val skinSeq = nightlySkinByDay.entries.sortedBy { it.key }.map { it.value }
-        val skinBase2 = Baselines.foldHistory(skinSeq, skinCfg)
+        val skinBase2 = Baselines.foldHistory(skinSeq, skinCfg).takeIf { it.usable }
         val baselines2 = ProfileBaselines(
             hrv = hrvBase2, restingHR = rhrBase2, resp = respBase2, skinTemp = skinBase2,
         )
@@ -403,7 +406,12 @@ object IntelligenceEngine {
     private fun recomputeSkinTempDev(nightly: Double?, base: BaselineState?): Double? {
         val v = nightly ?: return null
         val b = base?.takeIf { it.usable } ?: return null
-        return Math.round(Baselines.deviation(v, b).delta * 100.0) / 100.0
+        // Round HALF-AWAY-FROM-ZERO to 2 dp to match Swift's Double.rounded()
+        // (IntelligenceEngine.swift:291). Math.round() is half-UP and would diverge on negative
+        // .5 ties (e.g. −2.5 → −2 here vs Swift's −3). (Cross-platform parity.)
+        val scaled = Baselines.deviation(v, b).delta * 100.0
+        val r = if (scaled >= 0) Math.floor(scaled + 0.5) else Math.ceil(scaled - 0.5)
+        return r / 100.0
     }
 
     /**

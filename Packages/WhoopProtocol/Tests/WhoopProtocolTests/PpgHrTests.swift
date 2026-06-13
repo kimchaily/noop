@@ -40,7 +40,7 @@ final class PpgHrTests: XCTestCase {
         XCTAssertFalse(series.isEmpty)
         // Every second's estimate lands at 70±2 with confidence over 0.5.
         for s in series {
-            XCTAssertEqual(s.bpm, 70, accuracy: 2.0)
+            XCTAssertEqual(s.bpm, 70, accuracy: 2)
             XCTAssertGreaterThan(s.conf, 0.5)
         }
         // Ascending, one per estimable second.
@@ -87,7 +87,7 @@ final class PpgHrTests: XCTestCase {
         // Present key → decoded under the snake_case CodingKey.
         let json = #"{"ppg_hr":[{"ts":1780000000,"bpm":70.0,"conf":0.91}]}"#
         let s2 = try dec.decode(Streams.self, from: Data(json.utf8))
-        XCTAssertEqual(s2.ppgHr, [PpgHrSample(ts: 1_780_000_000, bpm: 70.0, conf: 0.91)])
+        XCTAssertEqual(s2.ppgHr, [PpgHrSample(ts: 1_780_000_000, bpm: 70, conf: 0.91)])
         // Round-trip encode → decode is identity.
         let round = try dec.decode(Streams.self, from: JSONEncoder().encode(s2))
         XCTAssertEqual(round.ppgHr, s2.ppgHr)

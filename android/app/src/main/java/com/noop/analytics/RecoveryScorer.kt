@@ -61,10 +61,14 @@ object RecoveryScorer {
 
     /**
      * Skin-temp deviation scale (°C per z-unit). The term is −|skinTempDevC| / scale,
-     * so a 0.5 °C absolute deviation from the personal baseline costs ≈ 1 z-unit of
+     * so a 1.0 °C absolute deviation from the personal baseline costs ≈ 1 z-unit of
      * Charge. skinTempDevC is the raw ±°C delta (DailyMetric.skinTempDevC), not a z.
+     *
+     * Kept at 1.0 to match the Swift reference (RecoveryScorer.skinTempScaleC = 1.0).
+     * A prior 0.5 here applied a 2× penalty Charge never intended — every user's
+     * Charge diverged from macOS/iOS by the skin-temp term. (Cross-platform parity.)
      */
-    const val skinTempDevScale: Double = 0.5
+    const val skinTempDevScale: Double = 1.0
 
     /** Logistic spread: ±2 z-units ≈ full Red–Green band (15%–95%). */
     const val logisticK: Double = 1.6

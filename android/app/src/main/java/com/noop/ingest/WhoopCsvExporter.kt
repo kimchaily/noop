@@ -176,7 +176,9 @@ object WhoopCsvExporter {
                     num(d.recovery), num(d.restingHr), num(d.avgHrv), num(d.skinTempDevC),
                     // Day Strain column is WHOOP's 0–21 scale → down-convert our 0–100 Effort so the CSV
                     // is WHOOP-format and a NOOP→NOOP round-trip is lossless (import scales back ×100/21).
-                    num(d.spo2Pct), num(d.strain?.let { it * 21.0 / 100.0 }),
+                    // Divide by the SAME 100.0/21.0 constant the importer multiplies by (and that Swift's
+                    // whoopDayStrainFromEffort uses) so the byte output matches macOS/iOS exactly.
+                    num(d.spo2Pct), num(d.strain?.let { it / (100.0 / 21.0) }),
                     "", "", "",            // energy / max HR / avg HR — not on the Android daily row
                     "", "",                // sleep/wake onset live in sleeps.csv
                     num(s["sleep_performance"]), num(d.respRateBpm), num(d.totalSleepMin),
@@ -238,7 +240,7 @@ object WhoopCsvExporter {
             sb.append(
                 listOf(
                     utc(w.startTs), utc(w.startTs), utc(w.endTs), "UTC+00:00",
-                    csvField(w.sport), num(w.strain?.let { it * 21.0 / 100.0 }), num(w.energyKcal), num(w.maxHr), num(w.avgHr),
+                    csvField(w.sport), num(w.strain?.let { it / (100.0 / 21.0) }), num(w.energyKcal), num(w.maxHr), num(w.avgHr),
                     num(zones?.get(0)), num(zones?.get(1)), num(zones?.get(2)),
                     num(zones?.get(3)), num(zones?.get(4)),
                     num(w.distanceM), csvField(sourceLabel(w)),

@@ -118,14 +118,19 @@ public enum ReadinessEngine {
         if let s = rhrSignal { signals.append(s) }
 
         // Respiratory-rate drift (illness early signal) ----------------------
-        if let rr = latest.respRateBpm {
+        // respRateBpm may be a clean cloud value OR a higher-variance on-device RSA estimate, so gate
+        // BOTH the latest value and the baseline mean to the plausible sleeping-RR band (8–25 bpm) and
+        // use wider resp-only z thresholds (WATCH 1.5 / BAD 2.0) than HRV/RHR so a single noisy night
+        // can't flip RUNDOWN. Mirrors the Kotlin reference (#78) for cross-platform parity.
+        if let rr = latest.respRateBpm, SleepStager.respPlausibleRangeBpm.contains(rr) {
             let base = history.suffix(baselineWindow).compactMap { $0.respRateBpm }
-            if base.count >= minBaseline, let sd = sampleSD(base), sd > 0 {
-                let z = (rr - mean(base)!) / sd
-                if z >= 1.5 {
+            if base.count >= minBaseline, let m = mean(base),
+               SleepStager.respPlausibleRangeBpm.contains(m), let sd = sampleSD(base), sd > 0 {
+                let z = (rr - m) / sd
+                if z >= 2.0 {
                     signals.append(Signal(key: "respRate", label: "Respiratory rate",
                         detail: "up vs baseline — sometimes an early sign of getting sick", flag: .bad))
-                } else if z >= 1.0 {
+                } else if z >= 1.5 {
                     signals.append(Signal(key: "respRate", label: "Respiratory rate",
                         detail: "slightly raised vs baseline", flag: .watch))
                 }

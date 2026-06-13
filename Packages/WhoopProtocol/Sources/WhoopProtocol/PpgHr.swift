@@ -15,9 +15,11 @@ import Foundation
 
 public struct PpgHrSample: Equatable, Codable, Sendable {
     public let ts: Int          // wall-clock unix seconds (one estimate per second)
-    public let bpm: Double      // PPG-derived heart rate
+    public let bpm: Int         // PPG-derived heart rate, whole bpm — the same Int domain as the
+                                // measured HRSample.bpm and the Android PpgHr.Estimate.bpm, so the
+                                // stored value and type match across platforms (#219).
     public let conf: Double     // normalised autocorrelation peak behind `bpm` (0…1)
-    public init(ts: Int, bpm: Double, conf: Double) {
+    public init(ts: Int, bpm: Int, conf: Double) {
         self.ts = ts; self.bpm = bpm; self.conf = conf
     }
 }
@@ -98,7 +100,9 @@ public enum PpgHr {
             }
         }
         let lag = bestLag ?? (vals.max { $0.value < $1.value }!.key)
-        let bpm = (fsD * 60 / Double(lag) * 10).rounded() / 10
+        // Round to whole bpm (matching Android's Math.round) — the lag is integer so sub-bpm precision
+        // isn't real signal, and whole bpm keeps the value + type in lockstep with Android (#219).
+        let bpm = (fsD * 60 / Double(lag)).rounded()
         let conf = (vals[lag]! * 1000).rounded() / 1000
         return (bpm, conf)
     }
@@ -137,7 +141,7 @@ public enum PpgHr {
                 var sig = [Int]()
                 for u in win { sig.append(contentsOf: secs[u]!) }
                 if let est = estimate(sig, fs: fs) {
-                    out.append(PpgHrSample(ts: t, bpm: est.bpm, conf: est.conf))
+                    out.append(PpgHrSample(ts: t, bpm: Int(est.bpm), conf: est.conf))
                 }
             }
         }

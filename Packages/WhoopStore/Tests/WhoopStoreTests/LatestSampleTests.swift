@@ -23,7 +23,7 @@ final class LatestSampleTests: XCTestCase {
         try await store.upsertDevice(id: "d", mac: nil, name: nil)
         _ = try await store.insert(Streams(hr: [HRSample(ts: 100, bpm: 60)]), deviceId: "d")
         _ = try await store.insert(
-            Streams(ppgHr: [PpgHrSample(ts: 300, bpm: 61.5, conf: 0.8)]), deviceId: "d")
+            Streams(ppgHr: [PpgHrSample(ts: 300, bpm: 62, conf: 0.8)]), deviceId: "d")
 
         let latest = try await store.latestHRSampleTs(deviceId: "d")
         XCTAssertEqual(latest, 300)

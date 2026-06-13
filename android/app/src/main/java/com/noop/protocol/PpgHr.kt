@@ -7,19 +7,23 @@ package com.noop.protocol
  * summary like v18: **24 little-endian i16 samples at frame bytes [27:75]**, one record per second,
  * with the record's own unix u32 LE @15 (the same slot v18 uses). WHOOP does NOT store a per-second
  * HR in v26 — HR is PPG-derived on-device — so to recover HR we re-derive it here from the waveform,
- * exactly the way the Swift PPG->HR lane does. (Provenance: the concatenated waveform's
- * autocorrelation peaks at the heart rate; verified against HR as internal ground truth — lag 14 ≈
- * 102.9 bpm vs a measured 101.7 bpm. See WhoopProtocol/Interpreter.swift `decodeWhoop5HistoricalV26`
- * and tools/linux-capture/analyze_v26_waveform.py.)
+ * **byte-for-byte mirroring the Swift estimator** (WhoopProtocol/PpgHr.swift) so macOS, iOS and
+ * Android produce the SAME per-second HR from the same offload. (Provenance: the concatenated
+ * waveform's autocorrelation peaks at the heart rate; verified against measured HR as internal
+ * ground truth — lag 14 ≈ 102.9 bpm vs a measured 101.7 bpm.)
  *
- * Algorithm (mirror of the Swift estimator — keep the constants in lockstep across platforms):
- *   • Sample rate 24 Hz, window 8 s (192 samples), hop 1 s (24 samples).
- *   • Per window: mean-remove (DC), then normalised autocorrelation; search the lag range that maps
- *     to **30…220 bpm**; pick the strongest non-trivial peak.
- *   • Confidence = the normalised autocorrelation value at that lag (0…1). Emit only when
- *     **conf >= 0.3** — a clean pulse autocorrelates strongly; noise does not, so a noisy/limp window
- *     yields nothing rather than a fabricated bpm.
- *   • bpm = 60 * fs / lag, rounded; the window's timestamp is its CENTRE second.
+ * Algorithm (kept in lockstep with the Swift lane — #219 parity audit):
+ *   • Records are grouped into **consecutive-second runs** (PPG phase is only continuous within a
+ *     run); a window of the seconds present in `t-half … t+half` (half = WINDOW_SECONDS/2) is
+ *     autocorrelated, one estimate per second whose centred window holds ≥ 3 seconds.
+ *   • Per window: **linear least-squares detrend** (removes DC *and* baseline wander), then
+ *     normalised autocorrelation over the lag band that maps to **30…220 bpm**.
+ *   • **Fundamental-period preference**: pick the smallest-lag local maximum that is ≥ 0.85× the
+ *     global peak, so the harmonic peaks at 2×/3× the true period don't report half/third the real
+ *     rate. Falls back to the global argmax when no clean local max is found.
+ *   • Emit only when the global peak clears **0.3** — a clean pulse autocorrelates strongly, noise
+ *     does not, so a noisy/limp window yields nothing rather than a fabricated bpm.
+ *   • bpm = 60·fs/lag, rounded to whole; the estimate's timestamp is the window's CENTRE second.
  *
  * Pure + side-effect-free so it is unit-testable on synthetic signals (see PpgHrTest).
  */
@@ -27,21 +31,15 @@ object PpgHr {
     /** PPG sample rate of the v26 waveform (Hz). */
     const val SAMPLE_RATE_HZ = 24
 
-    /** HR estimation window length in seconds. */
+    /** HR estimation window length in seconds (centred half-window = WINDOW_SECONDS/2 each side). */
     const val WINDOW_SECONDS = 8
-
-    /** Window hop in seconds (one estimate per second of overlap-slid window). */
-    const val HOP_SECONDS = 1
 
     /** Physiological HR search bounds (bpm). */
     const val MIN_BPM = 30.0
     const val MAX_BPM = 220.0
 
-    /** Minimum normalised-autocorrelation confidence to emit an estimate. */
+    /** Minimum normalised-autocorrelation peak to emit an estimate. */
     const val MIN_CONFIDENCE = 0.3
-
-    private const val WINDOW_SAMPLES = SAMPLE_RATE_HZ * WINDOW_SECONDS // 192
-    private const val HOP_SAMPLES = SAMPLE_RATE_HZ * HOP_SECONDS       // 24
 
     /**
      * One concatenated, time-ordered PPG sample: its wall-clock second [ts] and raw ADC [value].
@@ -53,74 +51,155 @@ object PpgHr {
     data class Estimate(val ts: Long, val bpm: Int, val conf: Double)
 
     /**
-     * Slide an 8 s / 24 Hz window across the concatenated [samples] and emit one [Estimate] per
-     * hop whose autocorrelation confidence clears [MIN_CONFIDENCE].
+     * Per-second PPG-HR over the concatenated [samples] (mirror of Swift `derivePpgHr`).
      *
-     * [samples] MUST be in ascending time order and densely sampled at 24 Hz (gaps across record
-     * boundaries are tolerated — the window simply spans whatever 192 consecutive samples it holds;
-     * a window straddling a large time gap will autocorrelate poorly and be dropped by the
-     * confidence gate). Each window's timestamp is the [ts] of its centre sample.
+     * [samples] carry one [ts] per strap-second (all 24 samples of a record share it). They may be
+     * unsorted or contain gaps: records are grouped by second (last write wins on a duplicate ts),
+     * split into consecutive-second runs, and a centred window is autocorrelated for each second.
+     * Returns one [Estimate] per second that yielded a confident estimate, ascending by ts.
      */
     fun estimate(samples: List<Sample>): List<Estimate> {
-        if (samples.size < WINDOW_SAMPLES) return emptyList()
-        val out = ArrayList<Estimate>()
-        var start = 0
-        while (start + WINDOW_SAMPLES <= samples.size) {
-            val window = DoubleArray(WINDOW_SAMPLES) { samples[start + it].value.toDouble() }
-            val centreTs = samples[start + WINDOW_SAMPLES / 2].ts
-            val est = estimateWindow(window, centreTs)
-            if (est != null) out.add(est)
-            start += HOP_SAMPLES
+        if (samples.isEmpty()) return emptyList()
+        // One waveform per second, in first-seen sample order (last record wins on a duplicate ts).
+        val secs = LinkedHashMap<Long, ArrayList<Int>>()
+        for (s in samples) {
+            val list = secs.getOrPut(s.ts) { ArrayList() }
+            list.add(s.value)
         }
+        val order = secs.keys.sorted()
+
+        // Split into consecutive-second runs.
+        val runs = ArrayList<ArrayList<Long>>()
+        var cur = arrayListOf(order[0])
+        for (i in 1 until order.size) {
+            val u = order[i]
+            if (u - cur.last() == 1L) {
+                cur.add(u)
+            } else {
+                runs.add(cur)
+                cur = arrayListOf(u)
+            }
+        }
+        runs.add(cur)
+
+        val half = WINDOW_SECONDS / 2
+        val out = ArrayList<Estimate>()
+        for (run in runs) {
+            if (run.size < 3) continue
+            val runSet = run.toHashSet()
+            for (t in run) {
+                // Window of consecutive seconds present in this run, centred on t.
+                val win = ArrayList<Long>()
+                var u = t - half
+                while (u <= t + half) {
+                    if (u in runSet) win.add(u)
+                    u++
+                }
+                if (win.size < 3) continue
+                var total = 0
+                for (w in win) total += secs[w]!!.size
+                val sig = DoubleArray(total)
+                var idx = 0
+                for (w in win) for (v in secs[w]!!) sig[idx++] = v.toDouble()
+                estimateWindow(sig, t)?.let { out.add(it) }
+            }
+        }
+        out.sortBy { it.ts }
         return out
     }
 
     /**
-     * Estimate HR for a single mean-removed window via normalised autocorrelation. Returns null when
-     * the window is flat (zero variance) or the best peak's confidence is below [MIN_CONFIDENCE].
-     *
-     * Lag range: a faster HR is a SHORTER lag, so [MAX_BPM] -> minLag and [MIN_BPM] -> maxLag.
-     * maxLag is clamped to N-1 so the autocorrelation always has at least one overlapping sample.
+     * Linear-detrend a waveform: subtract the least-squares best-fit line to remove DC + baseline
+     * wander (slow respiration/perfusion drift) before the autocorrelation, so the pulse dominates.
+     * Mirror of Swift `PpgHr.detrend`.
      */
-    private fun estimateWindow(window: DoubleArray, ts: Long): Estimate? {
-        val n = window.size
-        // DC removal: subtract the mean so the autocorrelation reflects the AC (pulsatile) component.
+    private fun detrend(x: DoubleArray): DoubleArray {
+        val n = x.size
+        if (n <= 1) return DoubleArray(n) // 0 for all (matches Swift's x.map { 0 })
+        val nD = n.toDouble()
+        val sumI = nD * (nD - 1) / 2
+        val sumI2 = (nD - 1) * nD * (2 * nD - 1) / 6
+        var sumY = 0.0
+        var sumIY = 0.0
+        for (i in 0 until n) { sumY += x[i]; sumIY += i.toDouble() * x[i] }
+        val denom = nD * sumI2 - sumI * sumI
+        if (denom == 0.0) {
+            val mean = sumY / nD
+            return DoubleArray(n) { x[it] - mean }
+        }
+        val slope = (nD * sumIY - sumI * sumY) / denom
+        val intercept = (sumY - slope * sumI) / nD
+        return DoubleArray(n) { x[it] - (slope * it.toDouble() + intercept) }
+    }
+
+    /** Normalised autocorrelation of [x] at [lag] (0 when the signal is flat). Mirror of Swift `acf`. */
+    private fun acf(x: DoubleArray, lag: Int): Double {
+        val n = x.size - lag
+        if (n <= 0) return 0.0
         var mean = 0.0
-        for (v in window) mean += v
-        mean /= n
-        val x = DoubleArray(n) { window[it] - mean }
+        for (v in x) mean += v
+        mean /= x.size
+        var den = 0.0
+        for (v in x) { val d = v - mean; den += d * d }
+        if (den == 0.0) return 0.0
+        var num = 0.0
+        for (i in 0 until n) num += (x[i] - mean) * (x[i + lag] - mean)
+        return num / den
+    }
 
-        // Zero-lag energy (the autocorrelation normaliser). A flat window has zero energy -> no HR.
-        var energy = 0.0
-        for (v in x) energy += v * v
-        if (energy <= 0.0) return null
+    /**
+     * Estimate HR for one window via linear detrend + normalised autocorrelation with
+     * fundamental-period preference. Returns null when the window is too short (< 3 s), flat, or no
+     * lag clears [MIN_CONFIDENCE]. Mirror of Swift `PpgHr.estimate` wrapped with the centre [ts].
+     *
+     * Lag band: a faster HR is a SHORTER lag, so [MAX_BPM] → loLag and [MIN_BPM] → hiLag. Bounds use
+     * round-to-nearest and clamp to [2, n-2] exactly as Swift does.
+     */
+    private fun estimateWindow(values: DoubleArray, ts: Long): Estimate? {
+        if (values.size < SAMPLE_RATE_HZ * 3) return null // need >= 3 s to resolve a low HR
+        val x = detrend(values)
+        val fsD = SAMPLE_RATE_HZ.toDouble()
+        val loLag = maxOf(2, Math.round(fsD * 60 / MAX_BPM).toInt())
+        val hiLag = minOf(x.size - 2, Math.round(fsD * 60 / MIN_BPM).toInt())
+        if (hiLag <= loLag) return null
 
-        val fs = SAMPLE_RATE_HZ.toDouble()
-        // bpm = 60*fs/lag  =>  lag = 60*fs/bpm.  Higher bpm => smaller lag.
-        val minLag = maxOf(1, Math.floor(60.0 * fs / MAX_BPM).toInt())
-        val maxLag = minOf(n - 1, Math.ceil(60.0 * fs / MIN_BPM).toInt())
-        if (minLag > maxLag) return null
+        val vals = HashMap<Int, Double>(hiLag - loLag + 1)
+        var peak = Double.NEGATIVE_INFINITY
+        for (lag in loLag..hiLag) {
+            val v = acf(x, lag)
+            vals[lag] = v
+            if (v > peak) peak = v
+        }
+        if (peak < MIN_CONFIDENCE) return null
 
+        // Prefer the FUNDAMENTAL period: the smallest-lag local maximum that is nearly as strong as
+        // the global peak. Autocorrelation also peaks at 2×/3× the true period (half/third HR); the
+        // global max there would report half the real rate, so prefer the shortest prominent period.
         var bestLag = -1
-        var bestCorr = 0.0
-        for (lag in minLag..maxLag) {
-            var acc = 0.0
-            var i = 0
-            val limit = n - lag
-            while (i < limit) {
-                acc += x[i] * x[i + lag]
-                i++
-            }
-            val norm = acc / energy // normalised autocorrelation in [-1, 1]
-            if (norm > bestCorr) {
-                bestCorr = norm
-                bestLag = lag
+        if (loLag + 1 <= hiLag - 1) {
+            for (lag in (loLag + 1)..(hiLag - 1)) {
+                val v = vals[lag]!!
+                if (v >= 0.85 * peak && v >= vals[lag - 1]!! && v >= vals[lag + 1]!!) {
+                    bestLag = lag
+                    break
+                }
             }
         }
-        if (bestLag < 0 || bestCorr < MIN_CONFIDENCE) return null
+        if (bestLag < 0) {
+            // Fallback: global argmax, smallest lag wins a tie (deterministic).
+            var argmax = loLag
+            var best = vals[loLag]!!
+            for (lag in (loLag + 1)..hiLag) {
+                val v = vals[lag]!!
+                if (v > best) { best = v; argmax = lag }
+            }
+            bestLag = argmax
+        }
 
-        val bpm = (60.0 * fs / bestLag).let { Math.round(it).toInt() }
-        if (bpm < MIN_BPM.toInt() || bpm > MAX_BPM.toInt()) return null
-        return Estimate(ts = ts, bpm = bpm, conf = bestCorr)
+        // Round to whole bpm (the lag is integer, so sub-bpm precision isn't real signal) and round
+        // conf to 3 dp — both matching the Swift estimator and the measured-HR Int domain (#219).
+        val bpm = Math.round(fsD * 60 / bestLag).toInt()
+        val conf = Math.round(vals[bestLag]!! * 1000) / 1000.0
+        return Estimate(ts = ts, bpm = bpm, conf = conf)
     }
 }

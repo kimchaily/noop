@@ -20,8 +20,8 @@ final class PpgHrSampleTests: XCTestCase {
     func testPpgHrInsertRoundTripAndDedup() async throws {
         let store = try await WhoopStore.inMemory()
         let streams = Streams(ppgHr: [
-            PpgHrSample(ts: 1_780_916_150, bpm: 62.5, conf: 0.81),
-            PpgHrSample(ts: 1_780_916_151, bpm: 63.0, conf: 0.79),
+            PpgHrSample(ts: 1_780_916_150, bpm: 63, conf: 0.81),
+            PpgHrSample(ts: 1_780_916_151, bpm: 63, conf: 0.79),
         ])
         _ = try await store.insert(streams, deviceId: "my-whoop")
         let n1 = try await store.ppgHrCountForTest()
@@ -60,8 +60,8 @@ final class PpgHrSampleTests: XCTestCase {
         let base = 1_780_000_000
         try await store.insert(Streams(hr: [HRSample(ts: base, bpm: 90)]), deviceId: dev)
         try await store.insert(Streams(ppgHr: [
-            PpgHrSample(ts: base, bpm: 60.2, conf: 0.9),     // shadowed by measured 90
-            PpgHrSample(ts: base + 1, bpm: 70.6, conf: 0.9), // fills the gap, ROUND -> 71
+            PpgHrSample(ts: base, bpm: 60, conf: 0.9),     // shadowed by measured 90
+            PpgHrSample(ts: base + 1, bpm: 71, conf: 0.9), // fills the gap, ROUND -> 71
         ]), deviceId: dev)
 
         let samples = try await store.hrSamples(deviceId: dev, from: base, to: base + 10, limit: 10)
@@ -78,7 +78,7 @@ final class PpgHrSampleTests: XCTestCase {
         let store = try await WhoopStore.inMemory()
         let dev = "my-whoop"
         let base = 1_780_000_000
-        let ppg = (0..<300).map { PpgHrSample(ts: base + $0, bpm: 55.0, conf: 0.9) }
+        let ppg = (0..<300).map { PpgHrSample(ts: base + $0, bpm: 55, conf: 0.9) }
         try await store.insert(Streams(ppgHr: ppg), deviceId: dev)
 
         let samples = try await store.hrSamples(deviceId: dev, from: base, to: base + 400, limit: 1000)
