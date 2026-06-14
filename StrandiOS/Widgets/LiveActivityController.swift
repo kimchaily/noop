@@ -23,6 +23,15 @@ final class LiveActivityController {
     /// stay well under the Live Activity update budget.
     func update(bpm: Int?, recovery: Int?, bonded: Bool) {
         guard authInfo.areActivitiesEnabled else { return }
+
+        // Re-adopt an activity that outlived a previous app session. ActivityKit keeps Live Activities
+        // alive across launches/relaunches, but a fresh controller starts with `activity == nil`, so
+        // without recovering the handle here we can neither update nor END an already-showing activity
+        // — which made the #336 opt-out a no-op (#341: toggle off, heart stays) and risked spawning a
+        // duplicate on the start path below. Done on the HR tick rather than in `init` because
+        // `Activity.activities` isn't reliably hydrated at the instant of process launch.
+        if activity == nil { activity = Activity<NOOPActivityAttributes>.activities.first }
+
         // User opt-out (#336): if the in-app toggle is off, never start — and end any activity that's
         // already showing (the user just turned it off; this fires on the next ~1 Hz HR tick).
         guard UnitPrefs.liveActivityEnabled() else {
@@ -63,8 +72,12 @@ final class LiveActivityController {
     }
 
     func end() async {
-        guard let activity else { return }
-        await activity.end(nil, dismissalPolicy: .immediate)
+        // End every NOOP Live Activity, not just our cached handle — covers a straggler from a prior
+        // session we never re-adopted (#341) and any rare duplicate. Iterating the live list is the
+        // only way to reach activities this controller instance never started.
+        for act in Activity<NOOPActivityAttributes>.activities {
+            await act.end(nil, dismissalPolicy: .immediate)
+        }
         self.activity = nil
     }
 }

@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "2.18.3"
+    const val CURRENT_VERSION = "2.18.4"
 
     data class Release(
         val version: String,
@@ -36,6 +36,14 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "2.18.4",
+            title = "Dynamic Island toggle now actually turns it off",
+            date = "June 2026",
+            items = listOf(
+                "Fixed: turning off \"Live heart rate in Dynamic Island\" in Settings now genuinely removes it. Previously, if the heart had started in a past app session, the in-app toggle couldn't reach it to switch it off — only the iOS system switch worked. The app now re-adopts an already-showing Live Activity so the toggle ends it straight away. iPhone only. Thanks @gingerbeardman (#341).",
+            ),
+        ),
         Release(
             version = "2.18.3",
             title = "Workouts header layout fix (phone)",

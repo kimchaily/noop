@@ -17,6 +17,12 @@ approximate; downloads are on the [Releases](https://github.com/NoopApp/noop/rel
 
 ---
 
+## 2.18.4 — Dynamic Island toggle now actually turns it off
+
+- **Fixed (iPhone):** turning off "Live heart rate in Dynamic Island" in Settings now genuinely removes it. If the heart had started in an earlier app session, the in-app toggle couldn't reach it to switch it off — only the iOS system switch worked. The app now re-adopts an already-showing Live Activity, so the toggle ends it immediately. Thanks @gingerbeardman (#341).
+
+---
+
 ## 2.18.3 — Workouts header layout fix (phone)
 
 - **Fixed:** on the Workouts screen, the "Add workout" button was crushed into a tall sliver next to the range selector on phones. The button and the 7D/30D/90D selector now stack cleanly. Thanks @RichrdJ (#339).
