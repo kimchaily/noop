@@ -245,7 +245,7 @@ fun AppRoot(viewModel: AppViewModel = viewModel()) {
                                 icon = { Icon(dest.icon, contentDescription = null) },
                                 label = { Text(dest.title, style = NoopType.body) },
                                 colors = NavigationDrawerItemDefaults.colors(
-                                    selectedContainerColor = Palette.accentMuted,
+                                    selectedContainerColor = Palette.surfaceOverlay, // subtle neutral lift, no gold wash
                                     unselectedContainerColor = Palette.surfaceRaised,
                                     selectedIconColor = Palette.accent,
                                     unselectedIconColor = Palette.textSecondary,
@@ -458,7 +458,7 @@ fun AppRoot(viewModel: AppViewModel = viewModel()) {
                                 icon = { Icon(dest.icon, contentDescription = null) },
                                 label = { Text(dest.title, style = NoopType.body) },
                                 colors = NavigationDrawerItemDefaults.colors(
-                                    selectedContainerColor = Palette.accentMuted,
+                                    selectedContainerColor = Palette.surfaceOverlay, // subtle neutral lift, no gold wash
                                     unselectedContainerColor = Palette.surfaceRaised,
                                     selectedIconColor = Palette.accent,
                                     unselectedIconColor = Palette.textSecondary,
