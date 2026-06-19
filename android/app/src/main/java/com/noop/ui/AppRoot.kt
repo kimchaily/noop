@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.fillMaxSize
@@ -418,45 +419,50 @@ private fun MoreScreen(onNavigate: (String) -> Unit) {
         title = "More",
         subtitle = "Everything else, one tap away",
     ) {
-        drawerGroups.forEachIndexed { index, group ->
-            if (index > 0) {
-                HorizontalDivider(
-                    color = Palette.hairline,
-                    modifier = Modifier.padding(vertical = 8.dp),
-                )
-            }
-            Overline(
-                group.header,
-                modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 6.dp),
-                color = Palette.textTertiary,
-            )
-            group.items.forEach { dest ->
-                NavigationDrawerItem(
-                    // A page row is a plain navigation entry — nothing is "selected" here (the active
-                    // tab is the More bar slot itself), so the rows read uniformly, like the iOS List.
-                    selected = false,
-                    onClick = { onNavigate(dest.route) },
-                    icon = { Icon(dest.icon, contentDescription = null) },
-                    label = { Text(dest.title, style = NoopType.body) },
-                    // Trailing disclosure chevron — the row pushes a screen, mirroring the iOS More
-                    // List's NavigationLink chevrons.
-                    badge = {
-                        Icon(
-                            Icons.Filled.ChevronRight,
-                            contentDescription = null,
-                            tint = Palette.textTertiary,
-                            modifier = Modifier.size(Metrics.iconSmall),
-                        )
-                    },
-                    colors = NavigationDrawerItemDefaults.colors(
-                        unselectedContainerColor = Palette.surfaceBase,
-                        unselectedIconColor = Palette.textSecondary,
-                        unselectedTextColor = Palette.textSecondary,
-                    ),
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding),
-                )
+        // Mirror the iOS More page: each group is an UPPERCASE overline label over a single grouped
+        // white NoopCard whose rows are tight (accent icon + title + chevron) and separated by inset
+        // hairlines — NOT loose NavigationDrawerItems floating on the bare surface.
+        drawerGroups.forEach { group ->
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Overline(group.header, color = Palette.textTertiary)
+                NoopCard(padding = 0.dp) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        group.items.forEachIndexed { i, dest ->
+                            MoreRow(dest = dest, onClick = { onNavigate(dest.route) })
+                            if (i < group.items.lastIndex) {
+                                HorizontalDivider(
+                                    color = Palette.hairline,
+                                    modifier = Modifier.padding(start = 50.dp),
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+/** One tappable destination row in the More page — accent icon + title + trailing chevron in a
+ *  comfortable tap target, mirroring the iOS MoreRow. */
+@Composable
+private fun MoreRow(dest: Destination, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(dest.icon, contentDescription = null, tint = Palette.accent, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(14.dp))
+        Text(dest.title, style = NoopType.body, color = Palette.textPrimary, modifier = Modifier.weight(1f))
+        Icon(
+            Icons.Filled.ChevronRight,
+            contentDescription = null,
+            tint = Palette.textTertiary,
+            modifier = Modifier.size(Metrics.iconSmall),
+        )
     }
 }
 

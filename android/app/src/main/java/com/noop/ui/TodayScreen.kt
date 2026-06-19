@@ -1220,35 +1220,35 @@ private fun RingNoData() {
 /** The three hero vitals as README metric rows — HRV (teal) · Resting HR (rose) · Respiratory (blue). */
 @Composable
 private fun HeroMetricRows(day: DailyMetric?) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(Palette.surfaceInset.copy(alpha = 0.55f)),
-    ) {
-        HeroMetricRow(
-            icon = Icons.Filled.Favorite,
-            label = "HRV",
-            value = day?.avgHrv?.let { it.roundToInt().toString() } ?: NO_DATA,
-            unit = "ms",
-            hue = Palette.metricCyan,
-        )
-        HeroMetricDivider()
-        HeroMetricRow(
-            icon = Icons.Filled.MonitorHeart,
-            label = "Resting HR",
-            value = day?.restingHr?.toString() ?: NO_DATA,
-            unit = "bpm",
-            hue = Palette.metricRose,
-        )
-        HeroMetricDivider()
-        HeroMetricRow(
-            icon = Icons.Filled.Air,
-            label = "Respiratory",
-            value = day?.respRateBpm?.let { String.format(Locale.US, "%.1f", it) } ?: NO_DATA,
-            unit = "rpm",
-            hue = Palette.sleepLight,
-        )
+    // The neutral white card surface (matching iOS's frosted vitals card + every other card) — NOT a
+    // faint surfaceInset wash, which blended into the page. NoopCard(tint = null) fills the white
+    // surfaceRaised + a hairline + a rounded clip so the inter-row dividers trim cleanly.
+    NoopCard(padding = 0.dp) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            HeroMetricRow(
+                icon = Icons.Filled.Favorite,
+                label = "HRV",
+                value = day?.avgHrv?.let { it.roundToInt().toString() } ?: NO_DATA,
+                unit = "ms",
+                hue = Palette.metricCyan,
+            )
+            HeroMetricDivider()
+            HeroMetricRow(
+                icon = Icons.Filled.MonitorHeart,
+                label = "Resting HR",
+                value = day?.restingHr?.toString() ?: NO_DATA,
+                unit = "bpm",
+                hue = Palette.metricRose,
+            )
+            HeroMetricDivider()
+            HeroMetricRow(
+                icon = Icons.Filled.Air,
+                label = "Respiratory",
+                value = day?.respRateBpm?.let { String.format(Locale.US, "%.1f", it) } ?: NO_DATA,
+                unit = "rpm",
+                hue = Palette.sleepLight,
+            )
+        }
     }
 }
 
