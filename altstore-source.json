@@ -18,6 +18,15 @@
       "screenshotURLs": [],
       "versions": [
         {
+          "version": "4.9.1",
+          "buildVersion": "126",
+          "date": "2026-06-19",
+          "localizedDescription": "Realistic calories, Health Connect workout markers, WHOOP-import day fix, honest smart-alarm copy.",
+          "downloadURL": "https://noop.fans/NoopApp/noop/releases/download/v4.9.1/NOOP-v4.9.1-ios.ipa",
+          "size": 8406024,
+          "minOSVersion": "17.0"
+        },
+        {
           "version": "4.9.0",
           "buildVersion": "125",
           "date": "2026-06-19",
@@ -766,12 +775,12 @@
           "NSHealthUpdateUsageDescription": "NOOP writes the metrics it computes from your strap back into Apple Health, on-device and only when you allow it."
         }
       },
-      "version": "4.9.0",
-      "buildVersion": "125",
+      "version": "4.9.1",
+      "buildVersion": "126",
       "versionDate": "2026-06-19",
-      "versionDescription": "Steadier live heart rate, durable sleep-delete, step-calibration fix, and a Homebrew install fix.",
-      "downloadURL": "https://noop.fans/NoopApp/noop/releases/download/v4.9.0/NOOP-v4.9.0-ios.ipa",
-      "size": 8405918,
+      "versionDescription": "Realistic calories, Health Connect workout markers, WHOOP-import day fix, honest smart-alarm copy.",
+      "downloadURL": "https://noop.fans/NoopApp/noop/releases/download/v4.9.1/NOOP-v4.9.1-ios.ipa",
+      "size": 8406024,
       "minOSVersion": "17.0"
     }
   ],
