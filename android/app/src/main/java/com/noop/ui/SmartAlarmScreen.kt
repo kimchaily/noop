@@ -290,7 +290,7 @@ private fun WindowCard(enabled: Boolean, targetMinutes: Int, windowMinutes: Int)
                         Text(hhmm(deadline), style = NoopType.number(28f), color = DomainTheme.Rest.bright)
                     }
                     Text(
-                        "A backup alarm is set for ${hhmm(deadline)} — it fires even if Bluetooth drops, the strap isn't worn, or NOOP is closed.",
+                        "A backup alarm is set for ${hhmm(deadline)}. It fires even if Bluetooth drops, the strap isn't worn, or NOOP is closed.",
                         style = NoopType.footnote, color = Palette.textSecondary,
                     )
                 } else {
@@ -355,13 +355,13 @@ private fun ExplanationCard() {
             Text(
                 "While you're inside the window, NOOP watches your live heart rate from the strap. Deep " +
                     "sleep sits near your nightly low and stays steady; when your heart rate lifts above " +
-                    "that — a sign you're sleeping more lightly or starting to stir — NOOP wakes you a " +
+                    "that (a sign you're sleeping more lightly or starting to stir), NOOP wakes you a " +
                     "little early so you come up from a lighter phase.",
                 style = NoopType.footnote, color = Palette.textSecondary,
             )
             Text(
                 "This is a coarse cue from heart rate, not a clinical sleep-stage reading. If the strap " +
-                    "isn't streaming — Bluetooth off, not worn, app killed — no early wake happens and the " +
+                    "isn't streaming (Bluetooth off, not worn, app killed), no early wake happens and the " +
                     "guaranteed alarm at the window's end still wakes you.",
                 style = NoopType.footnote, color = Palette.textTertiary,
             )

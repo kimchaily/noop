@@ -694,7 +694,7 @@ private fun CoherenceCard(rmssd: Double?) {
                 )
             }
             Text(
-                "Estimate only — a higher RMSSD while paced usually means your parasympathetic \"rest\" branch is engaging. It is not a clinical reading; trends over a session matter more than any single number.",
+                "Estimate only: a higher RMSSD while paced usually means your parasympathetic \"rest\" branch is engaging. It is not a clinical reading; trends over a session matter more than any single number.",
                 style = NoopType.footnote, color = Palette.textTertiary,
             )
         }
@@ -762,7 +762,7 @@ private fun HapticHint() {
     ) {
         Icon(Icons.Filled.GraphicEq, contentDescription = null, tint = Palette.statusWarning)
         Text(
-            "Connect your strap for haptic guidance — you'll feel one pulse on the inhale, two on the exhale, so you can breathe with your eyes closed.",
+            "Connect your strap for haptic guidance. You'll feel one pulse on the inhale, two on the exhale, so you can breathe with your eyes closed.",
             style = NoopType.footnote, color = Palette.textSecondary,
         )
     }
@@ -803,7 +803,7 @@ private fun StressCheckInCard(onBreatheNow: () -> Unit) {
                 StatePill("Passive", tone = StrandTone.Neutral)
             }
             Text(
-                "Your HRV dipped while you were still — want a minute to breathe?",
+                "Your HRV dipped while you were still. Want a minute to breathe?",
                 style = NoopType.subhead, color = Palette.textPrimary,
             )
             honestNudgeLine(n)?.let {
@@ -826,7 +826,7 @@ private fun StressCheckInCard(onBreatheNow: () -> Unit) {
                 }) { Text("Turn off", style = NoopType.body, color = Palette.textSecondary) }
             }
             Text(
-                "Relaxation guidance from your own numbers — not a health alert, and not a diagnosis. Trends matter more than any single number.",
+                "Relaxation guidance from your own numbers: not a health alert, and not a diagnosis. Trends matter more than any single number.",
                 style = NoopType.footnote, color = Palette.textTertiary,
             )
         }
@@ -917,11 +917,11 @@ private fun ResonanceMode(
                         tone = if (live.bonded) StrandTone.Positive else StrandTone.Warning)
                 }
                 Text(
-                    "Everyone has a breathing pace — usually between 4.5 and 7 breaths a minute — where the heart's rhythm swings the most with each breath. We pace you through a few candidate paces, measure how your HRV responds, and lock the one that resonates best for you.",
+                    "Everyone has a breathing pace (usually between 4.5 and 7 breaths a minute) where the heart's rhythm swings the most with each breath. We pace you through a few candidate paces, measure how your HRV responds, and lock the one that resonates best for you.",
                     style = NoopType.subhead, color = Palette.textSecondary,
                 )
                 Text(
-                    "Estimate from PPG-derived R-R — relaxation guidance, not a clinical reading. Your pace drifts, so we date it and you can re-measure anytime.",
+                    "Estimate from PPG-derived R-R: relaxation guidance, not a clinical reading. Your pace drifts, so we date it and you can re-measure anytime.",
                     style = NoopType.footnote, color = Palette.textTertiary,
                 )
             }
@@ -1006,7 +1006,7 @@ private fun ResonanceResultCard(result: ResonanceEngine.SweepResult, context: an
             }
             if (!result.didLock) {
                 Text(
-                    "Not enough clean beat data to lock a pace today — try again rested, sitting still with the strap snug. For now we'll pace you at 5.5 br/min (coherence).",
+                    "Not enough clean beat data to lock a pace today. Try again rested, sitting still with the strap snug. For now we'll pace you at 5.5 br/min (coherence).",
                     style = NoopType.footnote, color = Palette.textTertiary,
                 )
             }
@@ -1138,7 +1138,7 @@ private fun CalmMode(viewModel: AppViewModel, live: com.noop.ble.LiveState, bpm:
                         tone = if (canRun) StrandTone.Neutral else StrandTone.Warning)
                 }
                 Text(
-                    "The strap buzzes a gentle rhythm just below your current heart rate — a felt metronome to relax toward. It trails your heart down rather than yanking it, and stops on its own.",
+                    "The strap buzzes a gentle rhythm just below your current heart rate, a felt metronome to relax toward. It trails your heart down rather than yanking it, and stops on its own.",
                     style = NoopType.subhead, color = Palette.textSecondary,
                 )
                 Text(
@@ -1200,10 +1200,10 @@ private fun CalmMode(viewModel: AppViewModel, live: com.noop.ble.LiveState, bpm:
                     }
                     when {
                         !canBuzz -> Text(
-                            "Connect your strap — Calm me is a felt rhythm on the wrist, so it needs a bonded connection.",
+                            "Connect your strap. Calm me is a felt rhythm on the wrist, so it needs a bonded connection.",
                             style = NoopType.footnote, color = Palette.textTertiary)
                         !canRun -> Text(
-                            "Waiting for a resting heart rate — start a live reading first, or come back when you're still.",
+                            "Waiting for a resting heart rate. Start a live reading first, or come back when you're still.",
                             style = NoopType.footnote, color = Palette.textTertiary)
                     }
                 }
@@ -1227,7 +1227,7 @@ private fun CalmMode(viewModel: AppViewModel, live: com.noop.ble.LiveState, bpm:
                     }
                     if (didNotFall) {
                         Text(
-                            "That's normal — a paced breath often settles things when a metronome alone doesn't.",
+                            "That's normal. A paced breath often settles things when a metronome alone doesn't.",
                             style = NoopType.footnote, color = Palette.textTertiary)
                     }
                 }
@@ -1250,8 +1250,8 @@ private fun calmOutcomeLine(
         else ->
             if (startHr != null && endHr != null && endHr < startHr) "HR eased $startHr → $endHr over $mmss."
             else if (startHr != null && endHr != null)
-                "HR held steady ($startHr → $endHr) — try a paced breath instead."
-            else "Session ended — try a paced breath instead."
+                "HR held steady ($startHr → $endHr). Try a paced breath instead."
+            else "Session ended. Try a paced breath instead."
     }
 }
 

@@ -455,7 +455,7 @@ private fun SleepMarkCard(onMark: (SleepMarkType) -> Unit) {
         NoopCard(tint = Palette.restColor) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "Tap when you're heading to bed or when you wake. Each tap is logged with the time — it doesn't change tonight's detected sleep.",
+                    "Tap when you're heading to bed or when you wake. Each tap is logged with the time. It doesn't change tonight's detected sleep.",
                     style = NoopType.footnote,
                     color = Palette.textTertiary,
                 )
@@ -1732,7 +1732,7 @@ internal fun SleepDebtLedgerCard(ledger: SleepDebtLedger) {
         NoopCard(padding = Metrics.cardPadding, tint = Palette.restColor) {
             if (ledger.nightCount == 0) {
                 Text(
-                    "No nights with sleep data yet — your ledger fills in as you wear the strap to bed.",
+                    "No nights with sleep data yet. Your ledger fills in as you wear the strap to bed.",
                     style = NoopType.subhead,
                     color = Palette.textTertiary,
                 )
@@ -2764,13 +2764,13 @@ private fun debtRead(ledger: SleepDebtLedger): String {
     val nights = ledger.nightCount
     val span = "the last $nights night${if (nights == 1) "" else "s"}"
     if (ledger.magnitudeMin < SleepDebt.ON_TARGET_BAND_MIN) {
-        return "You're roughly on top of your sleep across $span — slept minutes balance out against your need."
+        return "You're roughly on top of your sleep across $span. Slept minutes balance out against your need."
     }
     val mag = durationText(ledger.magnitudeMin)
     return if (ledger.isDebt) {
-        "You've banked about $mag of sleep debt over $span. Surplus nights count back against it — an earlier night or two would clear it."
+        "You've banked about $mag of sleep debt over $span. Surplus nights count back against it. An earlier night or two would clear it."
     } else {
-        "You're carrying about $mag of surplus over $span — you've slept past your need on balance. Nicely ahead."
+        "You're carrying about $mag of surplus over $span. You've slept past your need on balance. Nicely ahead."
     }
 }
 
@@ -3244,7 +3244,7 @@ private fun SleepMetricDetailSheetContent(vm: AppViewModel, key: String) {
                 label = { it.label },
                 onSelect = { range = it },
             )
-            Text("Not enough history in this range — try 3M, 6M, or ALL.", style = NoopType.subhead, color = Palette.textSecondary)
+            Text("Not enough history in this range. Try 3M, 6M, or ALL.", style = NoopType.subhead, color = Palette.textSecondary)
             Spacer(Modifier.height(Metrics.space16))
         } else {
             val values = filteredPoints.map { it.second }

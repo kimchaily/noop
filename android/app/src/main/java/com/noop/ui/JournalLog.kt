@@ -222,7 +222,7 @@ fun JournalLogCard(
                                 "recovery, just as yesterday's are reflected in today's. Tomorrow's " +
                                 "answers line up with tomorrow's morning."
                         else ->
-                            "Answers are about the night and day leading into this morning — the " +
+                            "Answers are about the night and day leading into this morning, the " +
                                 "same attribution a WHOOP export uses, so logged and imported days " +
                                 "line up."
                     },

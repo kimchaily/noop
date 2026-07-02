@@ -81,7 +81,7 @@ object LiftingImporter {
             parts.add("$setCount set${if (setCount == 1) "" else "s"}")
             if (exerciseCount > 0) parts.add("$exerciseCount exercise${if (exerciseCount == 1) "" else "s"}")
             val body = "Strength · " + parts.joinToString(" · ")
-            return if (!title.isNullOrEmpty()) "$title — $body" else body
+            return if (!title.isNullOrEmpty()) "$title: $body" else body
         }
     }
 

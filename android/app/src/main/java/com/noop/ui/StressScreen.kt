@@ -444,8 +444,8 @@ private fun StressDaytimeSection(
 
                 Text(
                     "The line traces your autonomic load across the waking day, scored " +
-                        "against your own calm hours today — the same 0–3 proxy as the score " +
-                        "above, read hour by hour. Hours without enough data are skipped.",
+                        "against your own calm hours today (the same 0–3 proxy as the score " +
+                        "above, read hour by hour). Hours without enough data are skipped.",
                     style = NoopType.footnote,
                     color = Palette.textTertiary,
                 )
@@ -1010,7 +1010,7 @@ private fun StressMethodologyCard(model: StressModel, modifier: Modifier = Modif
             Text(
                 "We compare today's resting heart rate and HRV to your own 30-day " +
                     "baseline. A higher-than-usual resting HR and a lower-than-usual HRV " +
-                    "both push the score up — classic signs the body is activated. The " +
+                    "both push the score up, classic signs the body is activated. The " +
                     "combined shift is mapped onto a 0–3 scale: 0 is calm, 1.5 sits at " +
                     "your baseline, 3 is highly activated.",
                 style = NoopType.subhead,
@@ -1278,19 +1278,19 @@ internal class StressModel private constructor(
             val rhrDn = (rhrDelta ?: 0.0) < -1.0
             return when (band) {
                 StressBand.High -> when {
-                    rhrUp && hrvDn -> "Resting HR is elevated and HRV is below your baseline — both classic signs of high activation. Prioritise rest, hydration and an easy day."
+                    rhrUp && hrvDn -> "Resting HR is elevated and HRV is below your baseline, both classic signs of high activation. Prioritise rest, hydration and an easy day."
                     hrvDn -> "HRV has dropped well below your baseline, pointing to elevated stress or fatigue. Ease off and give your body time to recover."
-                    rhrUp -> "Resting heart rate is running high versus your norm — your body is under load today. Keep effort light."
+                    rhrUp -> "Resting heart rate is running high versus your norm. Your body is under load today. Keep effort light."
                     else -> "Your autonomic markers are skewed toward stress today. Treat it as a recovery-focused day."
                 }
                 StressBand.Medium -> when {
-                    rhrUp || hrvDn -> "Slightly off baseline — ${if (rhrUp) "resting HR is a touch high" else "HRV is a little low"} — so you're moderately activated. Nothing alarming; just don't overreach."
-                    else -> "You're sitting around your typical autonomic baseline — moderate stress, a normal, balanced day."
+                    rhrUp || hrvDn -> "Slightly off baseline (${if (rhrUp) "resting HR is a touch high" else "HRV is a little low"}), so you're moderately activated. Nothing alarming; just don't overreach."
+                    else -> "You're sitting around your typical autonomic baseline: moderate stress, a normal, balanced day."
                 }
                 StressBand.Low -> when {
-                    rhrDn && hrvUp -> "Resting heart rate is low and HRV is up — your nervous system looks well-recovered and calm. A great day to push if you want to."
+                    rhrDn && hrvUp -> "Resting heart rate is low and HRV is up. Your nervous system looks well-recovered and calm. A great day to push if you want to."
                     hrvUp -> "HRV is above baseline, a sign of a relaxed, well-recovered nervous system. Stress is low."
-                    else -> "Resting heart rate and HRV are sitting at or below baseline — low physiological stress. You're in a calm, recovered state."
+                    else -> "Resting heart rate and HRV are sitting at or below baseline: low physiological stress. You're in a calm, recovered state."
                 }
             }
         }

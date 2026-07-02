@@ -294,7 +294,7 @@ fun InsightsScreen(vm: AppViewModel, onOpenInsightsHub: () -> Unit = {}) {
         if (preFilledFromYesterday) {
             item {
             Text(
-                "Pre-filled from last night — tap to confirm or change.",
+                "Pre-filled from last night. Tap to confirm or change.",
                 style = NoopType.footnote,
                 color = Palette.textTertiary,
                 modifier = Modifier.fillMaxWidth(),
@@ -451,7 +451,7 @@ fun InsightsScreen(vm: AppViewModel, onOpenInsightsHub: () -> Unit = {}) {
             // No journal yet — explain, without dead-ending on a paid export.
             DataPendingNote(
                 title = "Insights read your journal and outcomes",
-                body = "Log behaviours above — after a few days of answers, NOOP ranks how each " +
+                body = "Log behaviours above. After a few days of answers, NOOP ranks how each " +
                     "one moves your recovery, HRV and sleep. Importing a WHOOP export (which " +
                     "includes its journal) backfills history instantly.",
             )
@@ -518,7 +518,7 @@ private fun WhatMovesYouLink(onOpen: () -> Unit) {
                 // glyph (mirrors the iOS "WHAT MOVES YOU ›" overline). The descriptive line sits beneath.
                 Overline("What moves you ›", color = Palette.textPrimary)
                 Text(
-                    "Ranked, lag-aware: which of your habits actually move your Charge — plus your " +
+                    "Ranked, lag-aware: which of your habits actually move your Charge, plus your " +
                         "personal alcohol/caffeine dose-response.",
                     style = NoopType.footnote,
                     color = Palette.textTertiary,
@@ -705,7 +705,7 @@ private fun BehaviourSection(
                 Text(
                     "Not enough overlap between your journal answers and " +
                         "${outcome.outcomeName.lowercase(Locale.US)} to measure an effect yet. " +
-                        "Keep logging — effects need days both with and without each behaviour.",
+                        "Keep logging. Effects need days both with and without each behaviour.",
                     style = NoopType.subhead,
                     color = Palette.textTertiary,
                 )
@@ -1690,7 +1690,7 @@ private fun effectSentence(e: BehaviorEffect, outcome: Outcome): String {
     val withStr = outcome.format(e.meanWith)
     val withoutStr = outcome.format(e.meanWithout)
     return "On days you logged ${e.behavior.lowercase(Locale.US)}, your $name averaged " +
-        "$withStr — $dir than the $withoutStr on days you didn't."
+        "$withStr, $dir than the $withoutStr on days you didn't."
 }
 
 private fun effectMagnitudeWord(d: Double): String {

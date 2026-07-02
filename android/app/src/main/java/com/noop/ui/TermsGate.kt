@@ -36,16 +36,16 @@ object Terms {
 
     /** Plain-English summary of TERMS.md §1–§6 — kept identical to the macOS `Terms.points`. */
     val points: List<Pair<String, String>> = listOf(
-        "Independent — not affiliated with WHOOP" to
-            "NOOP is an unofficial project — not affiliated with, endorsed by, or sponsored by WHOOP, Inc. \"WHOOP\" is their trademark, used only to name the hardware NOOP works with.",
+        "Independent: not affiliated with WHOOP" to
+            "NOOP is an unofficial project: not affiliated with, endorsed by, or sponsored by WHOOP, Inc. \"WHOOP\" is their trademark, used only to name the hardware NOOP works with.",
         "Using NOOP may breach WHOOP's Terms of Service" to
-            "Use it only with a device you own, to read your own data. Whether to use it — and any effect on your WHOOP account, subscription, device, or warranty — is your decision, and your risk alone.",
-        "Experimental — at your own risk" to
+            "Use it only with a device you own, to read your own data. Whether to use it (and any effect on your WHOOP account, subscription, device, or warranty) is your decision, and your risk alone.",
+        "Experimental: at your own risk" to
             "NOOP talks to your strap's firmware over an unofficial, independently-mapped protocol. There is a residual risk to the device, its data, and its connection to official services. You assume that risk.",
         "Not a medical device, not medical advice" to
             "Every metric is an unvalidated approximation. Don't use NOOP to diagnose, treat, or make any health decision. Always consult a qualified professional.",
         "No warranty; liability limited" to
-            "NOOP is free and provided \"as is\", with no warranty. Liability is limited to the maximum extent the law that applies to you allows — and nothing here removes protections your local law won't let us remove.",
+            "NOOP is free and provided \"as is\", with no warranty. Liability is limited to the maximum extent the law that applies to you allows, and nothing here removes protections your local law won't let us remove.",
     )
 }
 

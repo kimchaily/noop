@@ -182,7 +182,7 @@ fun DevicesScreen(
         ConfirmDialog(
             title = "Make this your active strap?",
             message = "Make ${displayName(device)} your active strap? From now on it provides your live data. " +
-                "$currentActiveName's history stays exactly as it is — only new days come from ${displayName(device)}.",
+                "$currentActiveName's history stays exactly as it is. Only new days come from ${displayName(device)}.",
             confirmLabel = "Make active",
             onConfirm = {
                 scope.launch { viewModel.setActiveDevice(device.id); reload() }
@@ -466,7 +466,7 @@ private fun WhoopFirstFooter() {
         )
         Text(
             "WHOOP is NOOP's primary, fully-supported band. Other heart-rate straps are an early, " +
-                "in-development addition — they stream live heart rate and HRV, but not WHOOP's deeper " +
+                "in-development addition: they stream live heart rate and HRV, but not WHOOP's deeper " +
                 "sleep and recovery data.",
             style = NoopType.footnote,
             color = Palette.textTertiary,
@@ -684,7 +684,7 @@ private fun deviceProfile(device: PairedDeviceRow): DeviceCapabilityProfile {
         return DeviceCapabilityProfile(
             displayModel = "Gym equipment (FTMS)",
             captures = "Speed · Cadence · Power · Distance · Energy · Heart rate (if the machine sends it)",
-            powers = "Records a live machine workout — Effort-scored from HR when the machine reports it",
+            powers = "Records a live machine workout, Effort-scored from HR when the machine reports it",
             footnote = "Live machine data over Bluetooth FTMS. No sleep, recovery, skin temp or SpO₂. " +
                 "Effort needs the machine's heart rate; without it the session logs the machine metrics only.",
         )
@@ -694,9 +694,9 @@ private fun deviceProfile(device: PairedDeviceRow): DeviceCapabilityProfile {
         return DeviceCapabilityProfile(
             displayModel = "${device.brand} (experimental)",
             captures = "Heart rate (live, best-effort)",
-            powers = "Powers the live console + Effort — no Charge, Rest or Sleep",
+            powers = "Powers the live console + Effort. No Charge, Rest or Sleep",
             footnote = "Experimental: live heart rate where the band exposes it. Some bands need a pairing " +
-                "we can't do yet — NOOP will say so honestly and never show a made-up number. No sleep, " +
+                "we can't do yet. NOOP will say so honestly and never show a made-up number. No sleep, " +
                 "recovery, skin temp, SpO₂ or steps.",
         )
     }
@@ -732,7 +732,7 @@ private fun deviceProfile(device: PairedDeviceRow): DeviceCapabilityProfile {
         return DeviceCapabilityProfile(
             displayModel = "Heart-rate strap",
             captures = "Heart rate · HRV (live)* · Strain",
-            powers = "Powers the live console + Effort — no Charge, Rest or Sleep",
+            powers = "Powers the live console + Effort. No Charge, Rest or Sleep",
             footnote = "Live HR + R-R only · no sleep, recovery, skin temp, SpO₂, steps or battery " +
                 "(those are WHOOP-only).",
         )
@@ -745,7 +745,7 @@ private fun deviceProfile(device: PairedDeviceRow): DeviceCapabilityProfile {
             displayModel = "WHOOP 5.0 / MG",
             captures = "Heart rate · HRV · Skin temp* · Resp rate* · Steps* · Sleep · Strain · Battery",
             powers = whoopPowers,
-            footnote = "* on-device estimate — skin temp is a nightly ±°C deviation, steps are a raw " +
+            footnote = "* on-device estimate: skin temp is a nightly ±°C deviation, steps are a raw " +
                 "motion count (#78). No SpO₂ % off the strap; import a WHOOP CSV for a real %.",
         )
     }
@@ -755,7 +755,7 @@ private fun deviceProfile(device: PairedDeviceRow): DeviceCapabilityProfile {
             displayModel = "WHOOP 4.0",
             captures = "Heart rate · HRV · Skin temp* · Resp rate* · Sleep · Strain · Battery",
             powers = whoopPowers,
-            footnote = "* on-device estimate — skin temp is a nightly ±°C deviation (firmware-dependent); " +
+            footnote = "* on-device estimate: skin temp is a nightly ±°C deviation (firmware-dependent); " +
                 "no steps over BLE on a 4.0. No SpO₂ % off the strap; import a WHOOP CSV for a real %.",
         )
     }
@@ -764,7 +764,7 @@ private fun deviceProfile(device: PairedDeviceRow): DeviceCapabilityProfile {
         displayModel = "WHOOP",
         captures = "Heart rate · HRV · Skin temp* · Resp rate* · Sleep · Strain · Battery",
         powers = whoopPowers,
-        footnote = "Exact model unknown — shows what every WHOOP can do. * on-device estimate · " +
+        footnote = "Exact model unknown. Shows what every WHOOP can do. * on-device estimate · " +
             "no SpO₂ % off the strap (import a WHOOP CSV for that).",
     )
 }

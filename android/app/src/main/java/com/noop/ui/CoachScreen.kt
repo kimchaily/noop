@@ -74,7 +74,7 @@ fun CoachScreen(vm: CoachViewModel = viewModel()) {
 
     ScreenScaffold(
         title = "Coach",
-        subtitle = "Ask about your recovery, strain, sleep and HRV — grounded in your own numbers.",
+        subtitle = "Ask about your recovery, strain, sleep and HRV, grounded in your own numbers.",
     ) {
         if (!configured) {
             CoachSetup(vm = vm)
@@ -105,7 +105,7 @@ private fun CoachSetup(vm: CoachViewModel) {
             }
             Text(
                 if (isCustom)
-                    "Point the coach at any OpenAI-compatible server — a local model (Ollama, LM " +
+                    "Point the coach at any OpenAI-compatible server: a local model (Ollama, LM " +
                         "Studio, llama.cpp) keeps everything on your device; an API key is optional."
                 else
                     "Bring your own API key. It is stored encrypted on this device and only used to " +
@@ -237,8 +237,8 @@ private fun CoachChat(vm: CoachViewModel) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Let the coach use my data", style = NoopType.subhead, color = Palette.textPrimary)
                     Text(
-                        if (consent) "On — your recovery, sleep, HRV and workouts are shared with the provider for tailored coaching."
-                        else "Off — the coach answers generally and sends none of your metrics.",
+                        if (consent) "On: your recovery, sleep, HRV and workouts are shared with the provider for tailored coaching."
+                        else "Off: the coach answers generally and sends none of your metrics.",
                         style = NoopType.footnote, color = Palette.textTertiary,
                     )
                 }
@@ -731,10 +731,10 @@ private fun PrivacyNote(local: Boolean = false) {
         Icon(Icons.Filled.Lock, contentDescription = null, tint = Palette.textTertiary, modifier = Modifier.size(13.dp))
         Text(
             if (local)
-                "The coach talks only to the server URL you set — point it at a local model to " +
+                "The coach talks only to the server URL you set. Point it at a local model to " +
                     "keep everything on your device. Nothing is sent until you ask."
             else
-                "Private by default — only your question and a short metrics summary are sent, " +
+                "Private by default: only your question and a short metrics summary are sent, " +
                     "and only after you set a key.",
             style = NoopType.footnote,
             color = Palette.textTertiary,

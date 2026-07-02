@@ -290,7 +290,7 @@ private fun syncHelperText(live: LiveState): String = when {
         "now continues automatically across passes instead of waiting between syncs."
     !live.connected -> "Connect your strap to sync its stored history. Until then, only imported data " +
         "shows here."
-    !live.bonded -> "Finishing the pairing handshake — Sync now becomes available once the strap is paired."
+    !live.bonded -> "Finishing the pairing handshake. Sync now becomes available once the strap is paired."
     else -> "Syncs your strap's stored history right away, instead of waiting for the next automatic sync."
 }
 
@@ -313,7 +313,7 @@ private fun RecordsAndSourcesSection(
             icon = Icons.Filled.MenuBook,
             tint = Palette.metricCyan,
             title = "Lab Book",
-            subtitle = "Your bloods, BP and body numbers — kept private here.",
+            subtitle = "Your bloods, BP and body numbers. Kept private here.",
             onClick = onOpenLabBook,
         )
         RecordRow(
@@ -422,7 +422,7 @@ private fun SkinTempSuiteSection(
 
         Text(
             "Cycle phase, body-clock and illness heads-up are approximations computed on your device from " +
-                "your own nightly temperature, heart rate and HRV — observations about your own numbers, " +
+                "your own nightly temperature, heart rate and HRV: observations about your own numbers, " +
                 "never a diagnosis. They never leave this phone.",
             style = NoopType.footnote,
             color = Palette.textTertiary,
@@ -495,7 +495,7 @@ private fun HealthContributorsSection(day: DailyMetric?) {
                 )
                 Text(
                     "Baselines learned on-device over 14 days. Bars read each signal against a " +
-                        "typical adult range — approximate, not medical advice.",
+                        "typical adult range (approximate, not medical advice).",
                     style = NoopType.footnote,
                     color = Palette.textTertiary,
                 )
@@ -701,7 +701,7 @@ private fun VitalityHero(
                 Text("Holding you back: ${worst.label}", style = NoopType.footnote, color = Palette.statusWarning)
             }
             Text(
-                "A wellness estimate from your habits — not a clinical biological age.",
+                "A wellness estimate from your habits, not a clinical biological age.",
                 style = NoopType.footnote, color = Palette.textTertiary,
             )
         }
@@ -823,7 +823,7 @@ private fun FitnessReadinessCard(readiness: FitnessAgeReadiness, headed: Boolean
             ReadinessGroup(title = "Unlocks your VO₂max", items = unlocksVo2)
 
             Text(
-                "Weight, height and waist add a VO₂max estimate — they don't change the Fitness Age itself.",
+                "Weight, height and waist add a VO₂max estimate. They don't change the Fitness Age itself.",
                 style = NoopType.footnote,
                 color = Palette.textTertiary,
             )
@@ -1327,7 +1327,7 @@ private fun VitalsSection(
                 text = "SpO₂, respiratory rate and skin temperature are sleep-window " +
                     "aggregates from your most recent imported day; resting HR and HRV update daily. " +
                     "Once NOOP has 14 nights of history, in-range compares each vital to your own " +
-                    "baseline (approximate — not medical advice); until then typical adult ranges apply.",
+                    "baseline (approximate, not medical advice); until then typical adult ranges apply.",
                 style = NoopType.footnote,
                 color = Palette.textTertiary,
             )

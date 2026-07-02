@@ -232,7 +232,7 @@ private fun EmptyWorkouts(loaded: Boolean, onAdd: () -> Unit) {
         DataPendingNote(
             title = "No workouts yet",
             body = "No workouts yet. They come from your WHOOP and Apple Health history. " +
-                "Import in Data Sources to bring them in — or add one you tracked elsewhere.",
+                "Import in Data Sources to bring them in, or add one you tracked elsewhere.",
         )
         if (loaded) AddWorkoutButton(onAdd)
     }
@@ -308,7 +308,7 @@ private fun RangeBar(
         )
         val unit = if (rowCount == 1) "session" else "sessions"
         val caption = if (fellBack) {
-            "$rowCount $unit · sparse — widened to ${effectiveRange.caption}"
+            "$rowCount $unit · sparse, widened to ${effectiveRange.caption}"
         } else {
             "$rowCount $unit · ${effectiveRange.caption}"
         }
@@ -377,7 +377,7 @@ private fun EffortHero(
                         HeroStat("Active", oneDecimal(totalTimeH) + "h", Palette.textPrimary, Modifier.weight(1f))
                     }
                     Text(
-                        if (modal != null) "Mostly ${WorkoutEditing.displaySport(modal.sport)} — ${effectiveRange.caption}."
+                        if (modal != null) "Mostly ${WorkoutEditing.displaySport(modal.sport)} (${effectiveRange.caption})."
                         else "Logged sessions across ${effectiveRange.caption}.",
                         style = NoopType.footnote,
                         color = Palette.textTertiary,
@@ -576,7 +576,7 @@ private fun ZonesSection(rows: List<WorkoutRow>) {
                     }
                 }
                 Text(
-                    "Share of imported zone time, duration-weighted across sessions — approximate.",
+                    "Share of imported zone time, duration-weighted across sessions (approximate).",
                     style = NoopType.footnote,
                     color = Palette.textTertiary,
                 )
@@ -912,7 +912,7 @@ private fun WorkoutDetailSheet(vm: AppViewModel, row: WorkoutRow, onDismiss: () 
                     }
                     Text(
                         if (zonesFromImport) "WHOOP's imported per-zone split for this session."
-                        else "Time in each %HRmax zone, derived from the strap's heart rate over this window — approximate.",
+                        else "Time in each %HRmax zone, derived from the strap's heart rate over this window (approximate).",
                         style = NoopType.footnote,
                         color = Palette.textTertiary,
                     )

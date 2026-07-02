@@ -267,7 +267,7 @@ fun NotificationsSettingsScreen(vm: AppViewModel) {
         AlertSection(
             icon = Icons.Filled.NotificationsActive,
             title = "Wrist alerts",
-            blurb = "When on, NOOP taps your wrist for the apps you pick below — so you can leave " +
+            blurb = "When on, NOOP taps your wrist for the apps you pick below, so you can leave " +
                 "your phone and still feel what matters.",
         ) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -392,7 +392,7 @@ fun NotificationsSettingsScreen(vm: AppViewModel) {
                 label = "All other apps",
                 help = "Also buzz for apps that aren't in the lists above (e.g. BeReal). Android " +
                     "doesn't let NOOP see every installed app, so this is how you cover the rest. " +
-                    "Can be chatty — quiet hours and \"only when worn\" still apply.",
+                    "Can be chatty; quiet hours and \"only when worn\" still apply.",
                 checked = allOtherApps,
                 onChange = {
                     allOtherApps = it
@@ -444,7 +444,7 @@ fun NotificationsSettingsScreen(vm: AppViewModel) {
             icon = Icons.Filled.NotificationsActive,
             title = "Daily reports",
             blurb = "Optional phone notifications, off by default. These arrive after your strap syncs " +
-                "and NOOP scores the data — so they land soon after, not the exact second you wake or " +
+                "and NOOP scores the data, so they land soon after, not the exact second you wake or " +
                 "finish a workout. Everything is worked out on this phone.",
         ) {
             FormToggleRow(

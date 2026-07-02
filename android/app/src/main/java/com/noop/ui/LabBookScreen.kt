@@ -120,7 +120,7 @@ fun LabBookScreen(vm: AppViewModel) {
     // byte-identical; the sheets below the scaffold are untouched.
     LazyScreenScaffold(
         title = "Lab Book",
-        subtitle = "Your bloods, BP and body numbers — kept private, on this phone.",
+        subtitle = "Your bloods, BP and body numbers. Kept private, on this phone.",
     ) {
         // Header card: count + scope + add action.
         item {
@@ -149,14 +149,14 @@ fun LabBookScreen(vm: AppViewModel) {
                             .size(28.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { showDisclaimer = true }
-                            .semantics { contentDescription = "What Lab Book is — and isn't" },
+                            .semantics { contentDescription = "What Lab Book is (and isn't)" },
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.Filled.Info, contentDescription = null, tint = Palette.textTertiary, modifier = Modifier.size(18.dp))
                     }
                 }
                 Text(
-                    "It's a notebook, not a lab. NOOP lines up the numbers you enter — it doesn't test, " +
+                    "It's a notebook, not a lab. NOOP lines up the numbers you enter. It doesn't test, " +
                         "read, or judge them. Not medical advice.",
                     style = NoopType.subhead,
                     color = Palette.textSecondary,
@@ -187,7 +187,7 @@ fun LabBookScreen(vm: AppViewModel) {
                 }
                 Text(
                     "A bulk markers CSV import (date, marker, value, unit) lands with the file importers in " +
-                        "Data Sources — same as nutrition and lifting. For now, add readings one at a time " +
+                        "Data Sources, same as nutrition and lifting. For now, add readings one at a time " +
                         "above. Everything you import stays on this phone.",
                     style = NoopType.subhead,
                     color = Palette.textSecondary,
@@ -235,7 +235,7 @@ fun LabBookScreen(vm: AppViewModel) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
                 "Lab Book is a private notebook, not a medical service. NOOP stores and lines up the numbers " +
-                    "you enter — it doesn't test, read, diagnose, or advise. Your records never leave this phone; " +
+                    "you enter. It doesn't test, read, diagnose, or advise. Your records never leave this phone; " +
                     "there's no account or cloud, so it isn't \"HIPAA-covered.\" Always rely on your doctor or " +
                     "pharmacist to interpret results.",
                 style = NoopType.footnote,
@@ -450,7 +450,7 @@ private fun CorrelationResult(
                 "No overlap yet between this marker and ${signal.title.lowercase()}. Log a few more readings " +
                     "(and keep wearing your strap)."
             } else {
-                "$n reading${if (n == 1) "" else "s"} line up so far — not enough to read a trend yet " +
+                "$n reading${if (n == 1) "" else "s"} line up so far, not enough to read a trend yet " +
                     "(NOOP waits for $LAB_FLOOR)."
             },
             style = NoopType.subhead,
@@ -469,7 +469,7 @@ private fun CorrelationResult(
                 Text(insightSentence(markerName, signal.title, r), style = NoopType.subhead, color = Palette.textSecondary)
                 Text(
                     "$n readings used · ${strengthWord(r)} ${directionWord(r)} association. This is your own data " +
-                        "sitting side by side — it's not a medical finding, and it shows association, not cause.",
+                        "sitting side by side. It's not a medical finding, and it shows association, not cause.",
                     style = NoopType.footnote,
                     color = Palette.textTertiary,
                 )
@@ -553,10 +553,10 @@ private fun LabBookDisclaimerSheet(onDismiss: () -> Unit) {
             Text("About Lab Book", style = NoopType.title2, color = Palette.textPrimary)
             Text("A private notebook, not a medical service.", style = NoopType.subhead, color = Palette.textSecondary)
             DisclaimerBullet("NOOP stores and lines up the numbers you enter yourself. It does not test you, read your results, give medical advice, or diagnose anything.")
-            DisclaimerBullet("Anything you see here — including any side-by-side trend — is your own information shown back to you. It's an association, never a cause, and never a medical finding.")
+            DisclaimerBullet("Anything you see here (including any side-by-side trend) is your own information shown back to you. It's an association, never a cause, and never a medical finding.")
             DisclaimerBullet("NOOP never decides whether a value is \"normal,\" \"high,\" or \"low.\" Any reference range shown is exactly what you typed from your own report.")
-            DisclaimerBullet("Your records never leave this phone. There's no account, no cloud, no NOOP server. Because NOOP is an independent app you run yourself — not a healthcare provider — it isn't \"HIPAA-covered,\" and that protection doesn't apply here; the safety comes from the data being local-only and yours.")
-            DisclaimerBullet("Always rely on your doctor, pharmacist, or a qualified professional to interpret results and make decisions. If a number worries you, talk to them — not to an app.")
+            DisclaimerBullet("Your records never leave this phone. There's no account, no cloud, no NOOP server. Because NOOP is an independent app you run yourself (not a healthcare provider), it isn't \"HIPAA-covered,\" and that protection doesn't apply here; the safety comes from the data being local-only and yours.")
+            DisclaimerBullet("Always rely on your doctor, pharmacist, or a qualified professional to interpret results and make decisions. If a number worries you, talk to them, not to an app.")
             PrimaryActionButton("Got it", Icons.Filled.Check, onClick = onDismiss)
         }
     }
@@ -679,7 +679,7 @@ private fun directionWord(r: Double): String = if (abs(r) < 0.1) "" else if (r >
 
 private fun insightSentence(markerName: String, signalName: String, r: Double): String {
     if (abs(r) < 0.3) {
-        return "Over your readings, $markerName and ${signalName.lowercase()} move largely independently — no clear relationship."
+        return "Over your readings, $markerName and ${signalName.lowercase()} move largely independently. No clear relationship."
     }
     val verb = if (r < 0) "tends to be lower" else "tends to be higher"
     return "When $markerName is higher, ${signalName.lowercase()} $verb."

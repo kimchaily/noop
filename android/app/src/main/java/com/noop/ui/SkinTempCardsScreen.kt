@@ -159,7 +159,7 @@ fun CycleAwarenessCard(
                     Icon(Icons.Filled.CalendarMonth, contentDescription = null, tint = hue, modifier = Modifier.size(16.dp))
                     Text(
                         "A period is likely between ${prettyDay(w.earliestDay)} and " +
-                            "${prettyDay(w.latestDay)} — a window, not a fixed date.",
+                            "${prettyDay(w.latestDay)} (a window, not a fixed date).",
                         style = NoopType.subhead,
                         color = Palette.textSecondary,
                     )
@@ -207,7 +207,7 @@ fun CycleAwarenessOptInCard(onEnable: () -> Unit) {
                 Text("Cycle awareness", style = NoopType.headline, color = Palette.textPrimary)
             }
             Text(
-                "NOOP can read a coarse menstrual-cycle phase from your nightly skin temperature — " +
+                "NOOP can read a coarse menstrual-cycle phase from your nightly skin temperature, " +
                     "entirely on your device. It is awareness only: not contraception, not a fertility " +
                     "predictor, not a medical service.",
                 style = NoopType.subhead,
@@ -261,7 +261,7 @@ fun BodyClockCard(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Overline("Plan · ${plan.estimatedDays}-day shift")
                     Text(
-                        "Day 1 — bright light ${clockString(firstDay.brightLightStartHour)}–" +
+                        "Day 1: bright light ${clockString(firstDay.brightLightStartHour)}–" +
                             "${clockString(firstDay.brightLightEndHour)}, lights-out around " +
                             "${clockString(firstDay.targetSleepHour)}.",
                         style = NoopType.subhead,
