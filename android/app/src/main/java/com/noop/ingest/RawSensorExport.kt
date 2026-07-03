@@ -166,7 +166,7 @@ object RawSensorExport {
 
             val total = counts.values.sum()
             val summary = if (total == 0) {
-                "No samples in the last 24h — wear the strap and let it sync, then export again."
+                "No samples in the last 24h - wear the strap and let it sync, then export again."
             } else {
                 // Compact "hr 3204 · rr 812 · …" line, only non-empty streams.
                 counts.filterValues { it > 0 }.entries.joinToString(" · ") { "${it.key} ${it.value}" }

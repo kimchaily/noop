@@ -419,7 +419,7 @@ fun CompareScreen(vm: AppViewModel) {
         // ── Metric picker section (chips + range control)
         item {
         Column(verticalArrangement = Arrangement.spacedBy(Metrics.gap)) {
-            SectionHeader("Metrics", overline = "Overlay 2–4 signals")
+            SectionHeader("Metrics", overline = "Overlay 2-4 signals")
             NoopCard {
                 Column(verticalArrangement = Arrangement.spacedBy(Metrics.gap)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -721,9 +721,9 @@ private fun OverlaySection(
                 Overline("Normalized overlay")
                 Text(
                     if (anyWidened) {
-                        "Each line min–max normalized · sparse series widened past ${range.phrase}"
+                        "Each line min-max normalized · sparse series widened past ${range.phrase}"
                     } else {
-                        "Each line min–max normalized within ${range.phrase}"
+                        "Each line min-max normalized within ${range.phrase}"
                     },
                     style = NoopType.footnote,
                     color = Palette.textTertiary,
@@ -898,7 +898,7 @@ private fun Legend(series: List<CompareSeries>) {
                     modifier = Modifier.weight(1f),
                 )
                 Text(
-                    "${s.metric.format(s.realMin, unitSystem, tempUnit)} – " +
+                    "${s.metric.format(s.realMin, unitSystem, tempUnit)}-" +
                         s.metric.format(s.realMax, unitSystem, tempUnit),
                     style = NoopType.captionNumber,
                     color = Palette.textSecondary,
@@ -1033,12 +1033,12 @@ private fun insightSentence(p: PairResult): String {
         "(${strengthWord(p.r)} ${directionWord(p.r)}) over ${p.n} shared days.")
         .replace("  ", " ").replace(" )", ")")
     if (abs(p.r) < 0.3) {
-        return "$head No clear relationship — they move largely independently."
+        return "$head No clear relationship - they move largely independently."
     }
     val aT = p.a.metric.title.lowercase()
     val bT = p.b.metric.title.lowercase()
     val verb = if (p.r < 0) "tends to fall" else "tends to rise"
-    return "$head When $aT rises, $bT $verb — a ${strengthWord(p.r)} ${directionWord(p.r)} link."
+    return "$head When $aT rises, $bT $verb - a ${strengthWord(p.r)} ${directionWord(p.r)} link."
 }
 
 private fun signedR(r: Double): String {

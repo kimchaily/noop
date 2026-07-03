@@ -115,7 +115,7 @@ object LiftingImporter {
         if (result.sessions.isEmpty()) {
             return ImportSummary.failure(
                 SOURCE_LABEL,
-                "No workouts found — point at a Hevy CSV export or a Liftosaur JSON export.",
+                "No workouts found - point at a Hevy CSV export or a Liftosaur JSON export.",
             )
         }
 

@@ -239,7 +239,7 @@ fun FullDayChartScreen(vm: AppViewModel, onBack: () -> Unit) {
         // ZOOM HINT + reset.
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (window == null) "Pinch to zoom · drag to pan" else "Zoomed in — drag to pan",
+                if (window == null) "Pinch to zoom · drag to pan" else "Zoomed in - drag to pan",
                 style = NoopType.footnote, color = Palette.textTertiary,
             )
             Spacer(Modifier.weight(1f))

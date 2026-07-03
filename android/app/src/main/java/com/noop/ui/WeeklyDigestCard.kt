@@ -283,7 +283,7 @@ private fun DeltaChip(s: WeeklyMetricSummary) {
 // MARK: - Formatting
 
 private fun weekRangeLabel(digest: WeeklyDigest): String =
-    "${shortDate(digest.weekStart)} – ${shortDate(digest.weekEnd)}"
+    "${shortDate(digest.weekStart)}-${shortDate(digest.weekEnd)}"
 
 /** "Jun 8" from "2026-06-08", via the engine's own pure parse (no Calendar). */
 private fun shortDate(ymd: String): String {

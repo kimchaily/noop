@@ -447,7 +447,7 @@ class AiCoach(private val repo: WhoopRepository) {
             "Unsupported URL scheme \"$scheme\". Use http:// for a local server or https:// for a remote one."
         }
         require(isPrivateLanOrLoopback(host)) {
-            "Plain http:// is only allowed to a local-network server (localhost, 10.x, 172.16–31.x, " +
+            "Plain http:// is only allowed to a local-network server (localhost, 10.x, 172.16-31.x, " +
                 "192.168.x, 169.254.x, or a .local name). Use https:// to reach \"$host\"."
         }
     }
@@ -644,9 +644,9 @@ class AiCoach(private val repo: WhoopRepository) {
          */
         const val TRUNCATION_NOTE =
             "\n\n---\n*Reply cut off: the model hit its context-window limit. " +
-                "On a local server like Ollama (default 2048 tokens), raise it — create a Modelfile " +
+                "On a local server like Ollama (default 2048 tokens), raise it - create a Modelfile " +
                 "with `PARAMETER num_ctx 8192` and select that model, or set " +
-                "`OLLAMA_CONTEXT_LENGTH=8192` and relaunch Ollama — then ask again.*"
+                "`OLLAMA_CONTEXT_LENGTH=8192` and relaunch Ollama - then ask again.*"
 
         /**
          * Pure: sliding-window the chat. Returns everything when short; otherwise the first user turn
@@ -682,7 +682,7 @@ class AiCoach(private val repo: WhoopRepository) {
                 "biggest recovery lever. Always cite the user's ACTUAL numbers, give a concrete plan " +
                 "(today and the week), and be specific, punchy and motivating. If no data is " +
                 "provided, coach generally and invite them to enable data access. You are NOT a " +
-                "doctor — never diagnose; suggest a professional for genuine health concerns. " +
+                "doctor - never diagnose; suggest a professional for genuine health concerns. " +
                 "Format replies in simple Markdown, chat-sized: short paragraphs, **bold** for key " +
                 "numbers, bullet or numbered lists for plans, and ### headings only when structure " +
                 "genuinely helps. No tables or code blocks."

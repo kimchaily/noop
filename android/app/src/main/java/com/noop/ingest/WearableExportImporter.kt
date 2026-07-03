@@ -679,7 +679,7 @@ object WearableExportImporter {
 
         val first = parsed.days.firstOrNull()?.day
         val last = parsed.days.lastOrNull()?.day
-        val span = if (first != null && last != null && first != last) " · $first – $last" else ""
+        val span = if (first != null && last != null && first != last) " · $first-$last" else ""
         return ImportSummary(
             source = brand.label,
             counts = mapOf("dailyMetric" to dailyMetrics.size, "sleepSession" to sleepRows.size, "metricSeries" to series.size),

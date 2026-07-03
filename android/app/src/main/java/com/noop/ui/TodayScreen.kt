@@ -5412,7 +5412,7 @@ private fun workoutCaption(row: WorkoutRow): String {
     val date = workoutDateFmt.format(Instant.ofEpochSecond(row.startTs))
     val start = workoutTimeFmt.format(Instant.ofEpochSecond(row.startTs))
     return if (row.endTs > row.startTs) {
-        "$date · $start–${workoutTimeFmt.format(Instant.ofEpochSecond(row.endTs))}"
+        "$date · $start - ${workoutTimeFmt.format(Instant.ofEpochSecond(row.endTs))}"
     } else {
         "$date · $start"
     }

@@ -261,7 +261,7 @@ fun BodyClockCard(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Overline("Plan · ${plan.estimatedDays}-day shift")
                     Text(
-                        "Day 1: bright light ${clockString(firstDay.brightLightStartHour)}–" +
+                        "Day 1: bright light ${clockString(firstDay.brightLightStartHour)} - " +
                             "${clockString(firstDay.brightLightEndHour)}, lights-out around " +
                             "${clockString(firstDay.targetSleepHour)}.",
                         style = NoopType.subhead,
@@ -396,7 +396,7 @@ private fun cyclePhaseTitle(phase: CyclePhaseEngine.Phase): String = when (phase
 private fun cycleDayText(r: CyclePhaseEngine.Result): String? {
     val lo = r.cycleDayLow ?: return null
     val hi = r.cycleDayHigh ?: return null
-    return if (lo == hi) "· ~day $lo" else "· ~day $lo–$hi"
+    return if (lo == hi) "· ~day $lo" else "· ~day $lo - $hi"
 }
 
 private fun cycleConfidenceLabel(c: CyclePhaseEngine.Confidence): String = when (c) {

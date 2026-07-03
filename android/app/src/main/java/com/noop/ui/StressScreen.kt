@@ -331,7 +331,7 @@ private fun StressHeroCard(model: StressModel, modifier: Modifier = Modifier) {
                         )
                     }
                     Text(
-                        "on the 0–3 autonomic-load scale",
+                        "on the 0-3 autonomic-load scale",
                         style = NoopType.footnote,
                         color = Palette.textTertiary,
                     )
@@ -497,7 +497,7 @@ private fun StressDaytimeSection(
 
                 Text(
                     "The line traces your autonomic load across the waking day, scored " +
-                        "against your own calm hours today (the same 0–3 proxy as the score " +
+                        "against your own calm hours today (the same 0-3 proxy as the score " +
                         "above, read hour by hour). Hours without enough data are skipped.",
                     style = NoopType.footnote,
                     color = Palette.textTertiary,
@@ -963,7 +963,7 @@ private fun StressTrendSection(model: StressModel, modifier: Modifier = Modifier
                         Column(modifier = Modifier.weight(1f)) {
                             Overline("Stress · ${range.label}")
                             Text(
-                                "Daily 0–3 proxy",
+                                "Daily 0-3 proxy",
                                 style = NoopType.footnote,
                                 color = Palette.textTertiary,
                             )
@@ -1036,7 +1036,7 @@ private fun StressMethodologyCard(model: StressModel, modifier: Modifier = Modif
             Overline("How this is computed")
             Text(
                 if (model.usingStored) {
-                    "Today's value is your recorded daily stress score (0–3)."
+                    "Today's value is your recorded daily stress score (0-3)."
                 } else {
                     "Stress is derived from two autonomic signals."
                 },
@@ -1047,16 +1047,16 @@ private fun StressMethodologyCard(model: StressModel, modifier: Modifier = Modif
                 "We compare today's resting heart rate and HRV to your own 30-day " +
                     "baseline. A higher-than-usual resting HR and a lower-than-usual HRV " +
                     "both push the score up, classic signs the body is activated. The " +
-                    "combined shift is mapped onto a 0–3 scale: 0 is calm, 1.5 sits at " +
+                    "combined shift is mapped onto a 0-3 scale: 0 is calm, 1.5 sits at " +
                     "your baseline, 3 is highly activated.",
                 style = NoopType.subhead,
                 color = Palette.textSecondary,
             )
             HorizontalDivider(color = Palette.hairline)
             Row(modifier = Modifier.fillMaxWidth()) {
-                BandLegend("0–1", "LOW", StressRamp.CALM)
-                BandLegend("1–2", "MEDIUM", StressRamp.STEADY)
-                BandLegend("2–3", "HIGH", StressRamp.TENSE)
+                BandLegend("0-1", "LOW", StressRamp.CALM)
+                BandLegend("1-2", "MEDIUM", StressRamp.STEADY)
+                BandLegend("2-3", "HIGH", StressRamp.TENSE)
             }
         }
     }

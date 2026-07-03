@@ -203,10 +203,10 @@ fun ScoringGuideScreen(
                     body = "Your cardiovascular load. NOOP turns every second of heart rate into a " +
                         "training-impulse using heart-rate-reserve zones (Karvonen), weights time in " +
                         "harder zones more heavily (Edwards / Banister), and places it on a " +
-                        "logarithmic 0–100 scale, so easy days sit low and an all-out day approaches " +
+                        "logarithmic 0-100 scale, so easy days sit low and an all-out day approaches " +
                         "100, which stays genuinely rare. A long walk with little cardio still counts, " +
                         "through a steps / active-energy floor.",
-                    vsWhoop = "Same cardiovascular-load idea as WHOOP's Day Strain (0–21). We " +
+                    vsWhoop = "Same cardiovascular-load idea as WHOOP's Day Strain (0-21). We " +
                         "rescaled the top of the ladder from 21 to 100 so all three scores share one " +
                         "scale. The rungs didn't move, so a 100 is as rare as a 21.0 was.",
                     highlighted = highlighted == ScoreSection.EFFORT,
@@ -274,7 +274,7 @@ private fun IntroCard() {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Overline("The three scores")
             Text(
-                "NOOP gives you three daily scores (Charge, Effort and Rest), each on a 0–100 " +
+                "NOOP gives you three daily scores (Charge, Effort and Rest), each on a 0-100 " +
                     "scale. They're built from your strap's raw signals using published, " +
                     "peer-reviewed sport science, and computed entirely on your device. They are " +
                     "NOT WHOOP's scores: we don't have WHOOP's private algorithms and don't pretend " +

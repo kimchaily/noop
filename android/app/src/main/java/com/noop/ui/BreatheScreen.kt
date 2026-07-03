@@ -494,7 +494,7 @@ fun BreatheScreen(viewModel: AppViewModel) {
         // Hidden while running and when there is nothing honest to show.
         val outcomeLine = when {
             running -> null
-            endedOutcome == "—" -> "RMSSD — · not enough R-R data"
+            endedOutcome == "—" -> "RMSSD - · not enough R-R data"
             endedOutcome != null -> "RMSSD $endedOutcome"
             lastStoredOutcome.isNotEmpty() -> "Last session: $lastStoredOutcome"
             else -> null

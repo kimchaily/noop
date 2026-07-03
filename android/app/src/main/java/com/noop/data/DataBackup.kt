@@ -126,7 +126,7 @@ object DataBackup {
                     "The backup archive doesn't contain a database file."
                 )
                 StageResult.NOT_A_BACKUP -> return ImportResult.Failed(
-                    "That file is not a NOOP backup — it doesn't look like a .noopbak archive or a SQLite database."
+                    "That file is not a NOOP backup - it doesn't look like a .noopbak archive or a SQLite database."
                 )
                 else -> error("unreachable stage result $staged")
             }

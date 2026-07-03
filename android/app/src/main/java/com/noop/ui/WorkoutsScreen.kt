@@ -1403,7 +1403,7 @@ private fun SessionEffortCard(strain: Double, effortScale: EffortScale) {
                         color = Palette.effortBright,
                     )
                     Text(
-                        if (effortScale == EffortScale.WHOOP) "strain (0–21)" else "Effort (0–100)",
+                        if (effortScale == EffortScale.WHOOP) "strain (0-21)" else "Effort (0-100)",
                         style = NoopType.footnote,
                         color = Palette.textTertiary,
                     )
@@ -1608,7 +1608,7 @@ private fun ManualWorkoutDialog(
                 DialogField("Calories (kcal, optional)", kcal, onChange = { kcal = it }, numeric = true)
                 if (built == null) {
                     Text(
-                        "Enter a sport, a positive duration (≤ 24h), and valid HR (25–250) / calories (0–20,000).",
+                        "Enter a sport, a positive duration (≤ 24h), and valid HR (25-250) / calories (0-20,000).",
                         style = NoopType.footnote, color = Palette.statusWarning,
                     )
                 }
@@ -1958,7 +1958,7 @@ private fun timeLabel(ts: Long): String = timeFmt.format(Instant.ofEpochSecond(t
 
 /** Session span "HH:mm–HH:mm"; start-only when the end isn't after the start (#157). */
 private fun timeRangeLabel(startTs: Long, endTs: Long): String =
-    if (endTs > startTs) "${timeLabel(startTs)}–${timeLabel(endTs)}" else timeLabel(startTs)
+    if (endTs > startTs) "${timeLabel(startTs)} - ${timeLabel(endTs)}" else timeLabel(startTs)
 
 private fun durationLabel(s: Double?): String {
     if (s == null || s <= 0.0) return "–"

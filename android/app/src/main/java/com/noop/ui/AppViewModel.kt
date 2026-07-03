@@ -687,7 +687,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     if (purged > 0) {
                         ble.externalLog(
                             "Heal #547: purged $purged row(s) with an implausible timestamp " +
-                                "(bad strap clock — far-past or future-dated); rescoring clean days.",
+                                "(bad strap clock - far-past or future-dated); rescoring clean days.",
                         )
                     }
                     NoopPrefs.setTsHealDone(appContext)

@@ -442,7 +442,7 @@ private fun napWindowLabel(nap: NapCandidate, ctx: android.content.Context): Str
     val start = fmt.format(java.util.Date(nap.start * 1000L))
     val end = fmt.format(java.util.Date(nap.end * 1000L))
     val mins = nap.durationS / 60
-    return "$start – $end · ~$mins min"
+    return "$start-$end · ~$mins min"
 }
 
 private fun napDetailLabel(nap: NapCandidate): String =

@@ -291,8 +291,8 @@ private fun ZoneRail(zone: Int, zoneSet: com.noop.analytics.HrZoneSet) {
         val band = zoneSet.zones.firstOrNull { it.number == zone }
         Text(
             if (band != null)
-                "Zone $zone: ${band.lower.toInt()}–${band.upper.toInt()} bpm (${(band.lowerPct * 100).toInt()}–${(band.upperPct * 100).toInt()}% max HR)"
-            else "Warming up — keep moving to climb into Zone 1.",
+                "Zone $zone: ${band.lower.toInt()} - ${band.upper.toInt()} bpm (${(band.lowerPct * 100).toInt()} - ${(band.upperPct * 100).toInt()}% max HR)"
+            else "Warming up - keep moving to climb into Zone 1.",
             style = NoopType.footnote,
             color = Palette.textTertiary,
         )

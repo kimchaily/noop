@@ -2233,7 +2233,7 @@ class WhoopBleClient(
         send(CommandNumber.SET_ADVERTISING_NAME, payload, withResponse = true)
         log("Strap rename: wrote advertising name=$clamped")
         _state.update { it.copy(
-            renameStatus = "Sent — your strap will reboot to apply, then reconnect with the new name.",
+            renameStatus = "Sent - your strap will reboot to apply, then reconnect with the new name.",
         ) }
     }
 
@@ -2908,7 +2908,7 @@ class WhoopBleClient(
                 log("WHOOP 5/MG detected — will send CLIENT_HELLO after subscribing (experimental).")
                 _state.update { it.copy(
                     whoop5Detected = true,
-                    statusNote = "WHOOP 5/MG connected — experimental. After bonding, NOOP brings up live " +
+                    statusNote = "WHOOP 5/MG connected - experimental. After bonding, NOOP brings up live " +
                         "heart rate from the strap's realtime stream. Deeper metrics (recovery, strain, " +
                         "sleep) for 5/MG are still being figured out. WHOOP 4.0 is fully supported today.",
                 ) }
@@ -4440,7 +4440,7 @@ class WhoopBleClient(
                 syncChunksThisSession = ackedChunksThisSession,
                 lastSyncAt = nowSec,
                 lastSyncError = if (bankedNothing && sustainedEmpty)
-                    "Synced, but your strap had no stored history to hand over — only its diagnostic output. This usually means its clock has lost sync, so it isn't saving data to flash. Fully charge it to 100%, then reconnect, and it should start banking again."
+                    "Synced, but your strap had no stored history to hand over - only its diagnostic output. This usually means its clock has lost sync, so it isn't saving data to flash. Fully charge it to 100%, then reconnect, and it should start banking again."
                 else null,
                 historySyncExperimental = whoop5HistoryExperimental,
             )
@@ -4450,7 +4450,7 @@ class WhoopBleClient(
                 // #580: on a history-experimental 5/MG this isn't a sync failure — suppress the "went quiet"
                 // error (it's just the empty offload), and surface the experimental flag instead.
                 lastSyncError = if (isWhoop5) null
-                    else "Sync interrupted — the strap went quiet. It will retry on the next sync.",
+                    else "Sync interrupted - the strap went quiet. It will retry on the next sync.",
                 historySyncExperimental = whoop5HistoryExperimental,
             )
             else -> it.copy(
@@ -4711,7 +4711,7 @@ class WhoopBleClient(
             if (_state.value.reconnectGuide == null) {
                 _state.update { it.copy(
                     reconnectGuide = """
-                    Your strap keeps connecting and then dropping a second later. This is almost always a stale Bluetooth pairing — usually after a WHOOP firmware update, or the official WHOOP app holding the strap. NOOP works fine once it's re-paired:
+                    Your strap keeps connecting and then dropping a second later. This is almost always a stale Bluetooth pairing - usually after a WHOOP firmware update, or the official WHOOP app holding the strap. NOOP works fine once it's re-paired:
 
                     1. Quit the official WHOOP app (or turn off Bluetooth on that phone).
                     2. Open Settings → Bluetooth, find your WHOOP, and Forget / Unpair it.
@@ -4794,7 +4794,7 @@ class WhoopBleClient(
                 if (staleDirectFailures >= 2) {
                     _state.update { it.copy(
                         reconnectGuide = """
-                        Your strap's Bluetooth pairing was reset — usually by a WHOOP firmware update, or the official WHOOP app reconnecting. NOOP works fine on the new firmware; you just need to re-pair:
+                        Your strap's Bluetooth pairing was reset - usually by a WHOOP firmware update, or the official WHOOP app reconnecting. NOOP works fine on the new firmware; you just need to re-pair:
 
                         1. Quit the official WHOOP app (or turn off Bluetooth on that phone).
                         2. Open Settings → Bluetooth, find your WHOOP, and Forget / Unpair it.
@@ -5177,7 +5177,7 @@ internal fun redactStrapLogPii(s: String): String = try {
     s.replace(PII_MAC_RE, "$1:••:••:••:••:$2")
         .replace(PII_WHOOP_SERIAL_RE, "WHOOP <serial>")
 } catch (t: Throwable) {
-    "[redaction error — line withheld]"
+    "[redaction error - line withheld]"
 }
 
 /** Prefix a compact, parseable domain marker onto an already-redacted strap-log line, or return it

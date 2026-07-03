@@ -260,7 +260,7 @@ fun LiveScreen(viewModel: AppViewModel, onManageDevices: () -> Unit = {}) {
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
-                    "Can't connect — your strap's pairing was reset",
+                    "Can't connect - your strap's pairing was reset",
                     style = NoopType.subhead,
                     color = Palette.textPrimary,
                 )
@@ -1181,7 +1181,7 @@ private fun SignalTrustTile(tile: SignalTile, modifier: Modifier = Modifier) {
 // MARK: - Pure helpers (shared by the body console + the trust rail)
 
 private fun signalTrustSummary(live: LiveState, activeConnection: Boolean): String = when {
-    activeConnection && live.encryptedBond -> "Encrypted stream — deep controls and history sync available."
+    activeConnection && live.encryptedBond -> "Encrypted stream - deep controls and history sync available."
     activeConnection -> "Live heart rate is flowing; full strap controls need an encrypted bond."
     live.connected -> "Connected, waiting for a streaming state."
     // The actionable "Scan and connect…" CTA now lives in the above-the-fold OfflineConnectCallout,

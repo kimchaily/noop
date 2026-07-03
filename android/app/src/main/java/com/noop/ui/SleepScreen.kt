@@ -1021,7 +1021,7 @@ private fun NapRow(
     // with the Edit next-step. Inline disclosure (Compose has no anchored popover here); the COPY matches
     // iOS SleepView.whyPopover(napSuffix:) exactly. (spec 2026-06-20)
     var showWhy by remember(nap.startTs) { mutableStateOf(false) }
-    val window = "${clockTimeLabel(nap.effectiveStartTs)}–${clockTimeLabel(nap.endTs)}"
+    val window = "${clockTimeLabel(nap.effectiveStartTs)} - ${clockTimeLabel(nap.endTs)}"
     val durMin = (nap.endTs - nap.effectiveStartTs) / 60.0
     Column(verticalArrangement = Arrangement.spacedBy(Metrics.space10)) {
         Row(
@@ -3019,7 +3019,7 @@ private fun pctValue(v: Double?): String = v?.let { "${it.roundToInt()}%" } ?: "
 
 /** "+12% vs typical" / "−0.4 rpm vs typical" — the latest-vs-mean caption every tile carries. */
 private fun vsTypical(latest: Double?, typical: Double?, suffix: String, decimals: Int = 0): String {
-    if (latest == null || typical == null || typical == 0.0) return "vs typical —"
+    if (latest == null || typical == null || typical == 0.0) return "vs typical - "
     val diff = latest - typical
     val sign = if (diff >= 0) "+" else "−"
     val mag = abs(diff)
@@ -3122,7 +3122,7 @@ private fun clockLabelFor(onsetTs: Long, wakeTs: Long): String {
     val dateFmt = SimpleDateFormat("EEE d MMM", Locale.US)
     val onset = Date(onsetTs * 1000L)
     val wake = Date(wakeTs * 1000L)
-    return "${dateFmt.format(onset)} · ${timeFmt.format(onset)}–${timeFmt.format(wake)}"
+    return "${dateFmt.format(onset)} · ${timeFmt.format(onset)} - ${timeFmt.format(wake)}"
 }
 
 /** Unix seconds → "YYYY-MM-DD" in the DEVICE timezone (vs AnalyticsEngine.dayString = UTC). */

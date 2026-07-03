@@ -833,7 +833,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     SegmentedPillControl(
                         items = listOf(EffortScale.HUNDRED, EffortScale.WHOOP),
                         selection = effortScale,
-                        label = { if (it == EffortScale.HUNDRED) "0–100" else "0–21" },
+                        label = { if (it == EffortScale.HUNDRED) "0-100" else "0-21" },
                         onSelect = {
                             effortScale = it
                             UnitPrefs.setEffortScale(context, it)

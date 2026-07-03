@@ -240,7 +240,7 @@ class SourceCoordinator(
         } catch (t: Throwable) {
             lastSeenId = null
             log("SourceCoordinator: device switch to '$id' failed: ${t.javaClass.simpleName}: ${t.message}")
-            straplog("HR-strap: activating this device failed (${t.javaClass.simpleName}: ${t.message}) — " +
+            straplog("HR-strap: activating this device failed (${t.javaClass.simpleName}: ${t.message}) - " +
                 "staying on the previous source. Please share this log so we can fix it.")
         }
     }
