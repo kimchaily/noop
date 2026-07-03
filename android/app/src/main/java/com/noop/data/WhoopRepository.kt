@@ -539,6 +539,13 @@ class WhoopRepository(private val dao: WhoopDao) {
         strapDeviceId: String = "my-whoop",
         minSamples: Long = 60,
         cap: Int = 300,
+        // #961: the user's HRmax + sex. When supplied, a strap-native row whose Effort (strain) is null gets
+        // one recomputed from the strap trace on display, so a live/manual session that ended with sparse HR
+        // (near-zero strain at save on a 5/MG) can't read a blank Effort while the DAY total counted the bout.
+        // null (the default) leaves every existing call site byte-identical: no raw-sample read, strain stays
+        // as stored. Display-only; the durable value is written by IntelligenceEngine.rescoreManualWorkouts.
+        strainMaxHR: Double? = null,
+        strainSex: String = "male",
     ): List<WorkoutRow> {
         var budget = cap
         return rows.map { row ->
@@ -548,18 +555,28 @@ class WhoopRepository(private val dao: WhoopDao) {
             // their own avg/max and are only filled when missing.
             val src = row.source.lowercase()
             val strapNative = src == "manual" || src.endsWith("-noop")
-            if (!strapNative && row.avgHr != null) return@map row
+            // #961: a strap-native row still missing a strain is a fill target even when its avgHr is present.
+            val needsStrainFill = strapNative && row.strain == null && strainMaxHR != null
+            if (!strapNative && row.avgHr != null && !needsStrainFill) return@map row
             budget -= 1
             val stats = dao.hrWindowStats(strapDeviceId, row.startTs, row.endTs)
-            if (stats.n >= minSamples && stats.avg != null && stats.max != null) {
-                if (strapNative) {
-                    // True mean / peak of the very samples the graph + zones + effort use.
-                    row.copy(avgHr = stats.avg.roundToInt(), maxHr = stats.max)
-                } else {
-                    // Imported row with no avg , fill from strap, preserving any imported max.
-                    row.copy(avgHr = stats.avg.roundToInt(), maxHr = row.maxHr ?: stats.max)
-                }
-            } else row
+            if (stats.n < minSamples || stats.avg == null || stats.max == null) return@map row
+            // #961: recompute Effort from the SAME samples the graph/zones use. Read the raw window ONLY when
+            // this row actually needs a strain (keeps the common no-fill path a single aggregate query), and
+            // let StrainScorer return null on a still-too-thin window (never a fabricated number).
+            val filledStrain = if (needsStrainFill && strainMaxHR != null) {
+                val samples = dao.hrSamples(strapDeviceId, row.startTs, row.endTs, 8000)
+                com.noop.analytics.StrainScorer.strain(samples, maxHR = strainMaxHR, sex = strainSex)
+            } else null
+            if (strapNative) {
+                // True mean / peak of the very samples the graph + zones + effort use; FILL a null Effort
+                // (never override a stored one) from the recompute.
+                row.copy(avgHr = stats.avg.roundToInt(), maxHr = stats.max,
+                         strain = row.strain ?: filledStrain)
+            } else {
+                // Imported row with no avg , fill from strap, preserving any imported max.
+                row.copy(avgHr = stats.avg.roundToInt(), maxHr = row.maxHr ?: stats.max)
+            }
         }
     }
 

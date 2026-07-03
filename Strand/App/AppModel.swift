@@ -220,6 +220,19 @@ final class AppModel: ObservableObject {
         // inert (one UserDefaults bool read) when the mode is off. `live` is captured strongly, as above.
         self.repo.workoutsLog = { [live] line in live.append(log: line, domain: .workouts) }
         self.gpsRecorder.workoutsLog = { [live] line in live.append(log: line, domain: .workouts) }
+        // #961: give the read model the user's HRmax + sex so it can backfill a strap-native workout's
+        // Effort on display when the stored value is nil (a live/manual session that ended with sparse HR).
+        // Seed it now and keep it in step with any profile edit (objectWillChange fires just before a
+        // @Published setter lands, so read the CURRENT values , they're already committed by the time the
+        // next reconcile reads `strainProfile`). Display-only; the score itself is unchanged.
+        self.repo.strainProfile = Repository.StrainProfile(hrMax: Double(profile.hrMax), sex: profile.sex)
+        profile.objectWillChange.sink { [weak self] in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                self.repo.strainProfile = Repository.StrainProfile(
+                    hrMax: Double(self.profile.hrMax), sex: self.profile.sex)
+            }
+        }.store(in: &hrCancellables)
         // Smooth HR centrally so it's solid everywhere it's shown.
         live.$heartRate.sink { [weak self] _ in self?.ingestHR() }.store(in: &hrCancellables)
         live.$rr.sink { [weak self] _ in self?.ingestHR() }.store(in: &hrCancellables)

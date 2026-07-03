@@ -200,6 +200,52 @@ class WorkoutEditingTest {
         assertEquals("Strength Training", out[1].sport)
     }
 
+    // MARK: - detected-vs-real overlap collapse (#975)
+
+    @Test
+    fun detectedShadow_isDroppedWhenItOverlapsAManualSession() {
+        val manual = richRow(1000, 4600, "Strength Training", "manual")
+        val detected = row("my-whoop-noop", 900, 4800, "detected", "my-whoop-noop",
+            avgHr = 175, maxHr = 190, strain = 19.0)   // wider window, implausibly hot
+        val out = WorkoutEditing.dedupCrossSource(listOf(detected, manual))
+        assertEquals(1, out.size)
+        assertEquals("manual", out.first().source)
+    }
+
+    @Test
+    fun detectedBout_keptWhenItDoesNotOverlapAnyReal() {
+        val detected = row("my-whoop-noop", 1000, 4600, "detected", "my-whoop-noop",
+            avgHr = 150, maxHr = 170, strain = 12.0)
+        val manualLater = richRow(20_000, 23_600, "Running", "manual")
+        val out = WorkoutEditing.dedupCrossSource(listOf(detected, manualLater))
+        assertEquals(2, out.size)
+        assertTrue(out.any { WorkoutEditing.classify(it.source) == WorkoutSource.DETECTED })
+    }
+
+    @Test
+    fun detectedShadow_notDroppedForBriefTouchingOverlap() {
+        val manual = richRow(1000, 4600, "Running", "manual")            // 60 min
+        val detected = row("my-whoop-noop", 4500, 8100, "detected", "my-whoop-noop",
+            avgHr = 150, strain = 12.0)                                  // 60 min, 100 s overlap
+        val out = WorkoutEditing.dedupCrossSource(listOf(manual, detected))
+        assertEquals(2, out.size)
+    }
+
+    @Test
+    fun dedupTrace_emitsDroppedShadowLineAndStaysByteIdentical() {
+        val manual = richRow(1000, 4600, "Strength Training", "manual")
+        val detected = row("my-whoop-noop", 900, 4800, "detected", "my-whoop-noop",
+            avgHr = 175, strain = 19.0)
+        val plain = WorkoutEditing.dedupCrossSource(listOf(detected, manual))
+        val (kept, trace) = WorkoutEditing.dedupCrossSourceTrace(listOf(detected, manual))
+        assertEquals(plain.map { it.source }, kept.map { it.source })
+        assertEquals(1, kept.size)
+        assertEquals("manual", kept.first().source)
+        assertTrue(trace.any { it.contains("detectedBout verdict=droppedShadow") })
+        assertTrue(trace.any { it.contains("overlapSource=manual") })
+        assertFalse(trace.any { it.contains("—") })
+    }
+
     // MARK: - trace privacy (L5) + dedup label (L8)
 
     @Test

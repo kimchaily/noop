@@ -615,7 +615,7 @@ struct WorkoutsView: View {
         let diameter: CGFloat = 168
         let scaleMax: Double = effortScale == .whoop ? 21 : 100
         let displayValue = UnitFormatter.effortValue(avgStrain, scale: effortScale)
-        VStack(spacing: 8) {
+        VStack(spacing: 18) {
             Text("TYPICAL EFFORT")
                 .font(StrandFont.overline).tracking(StrandFont.overlineTracking)
                 .foregroundStyle(StrandPalette.effortColor)

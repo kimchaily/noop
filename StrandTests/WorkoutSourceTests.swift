@@ -171,6 +171,54 @@ final class WorkoutSourceTests: XCTestCase {
         XCTAssertEqual(out[1].sport, "Strength Training")
     }
 
+    // MARK: - detected-vs-real overlap collapse (#975)
+
+    func testDetectedShadowIsDroppedWhenItOverlapsAManualSession() {
+        // A live/manual "Strength" session and its detected twin (different sport, wider window) overlap
+        // heavily. Before the next engine pass both show; the read-time guard drops the detected shadow.
+        let manual = richRow(start: 1000, end: 4600, sport: "Strength Training", source: "manual")
+        let detected = row(start: 900, end: 4800, sport: "detected", source: "my-whoop-noop",
+                           avgHr: 175, maxHr: 190, strain: 19.0)   // wider window, implausibly hot
+        let out = WorkoutSource.dedupCrossSource([detected, manual])
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out.first?.source, "manual", "the real session survives, the detected shadow is dropped")
+    }
+
+    func testDetectedBoutKeptWhenItDoesNotOverlapAnyReal() {
+        // A detected bout on its own (no real session in its window) is untouched.
+        let detected = row(start: 1000, end: 4600, sport: "detected", source: "my-whoop-noop",
+                           avgHr: 150, maxHr: 170, strain: 12.0)
+        let manualLater = richRow(start: 20_000, end: 23_600, sport: "Running", source: "manual")
+        let out = WorkoutSource.dedupCrossSource([detected, manualLater])
+        XCTAssertEqual(out.count, 2)
+        XCTAssertTrue(out.contains { WorkoutSource.classify($0.source) == .detected })
+    }
+
+    func testDetectedShadowNotDroppedForBriefTouchingOverlap() {
+        // Back-to-back: a detected bout and a manual session that only touch at the edge (<50% of shorter)
+        // are genuinely separate and both survive.
+        let manual = richRow(start: 1000, end: 4600, sport: "Running", source: "manual")   // 60 min
+        let detected = row(start: 4500, end: 8100, sport: "detected", source: "my-whoop-noop",
+                           avgHr: 150, strain: 12.0)                                        // 60 min, 100 s overlap
+        let out = WorkoutSource.dedupCrossSource([manual, detected])
+        XCTAssertEqual(out.count, 2)
+    }
+
+    func testDedupTraceEmitsDroppedShadowLineAndStaysByteIdentical() {
+        // The trace twin must drop the same detected shadow the plain path does AND name it, without diverging.
+        let manual = richRow(start: 1000, end: 4600, sport: "Strength Training", source: "manual")
+        let detected = row(start: 900, end: 4800, sport: "detected", source: "my-whoop-noop",
+                           avgHr: 175, strain: 19.0)
+        let plain = WorkoutSource.dedupCrossSource([detected, manual])
+        let (kept, trace) = WorkoutSource.dedupCrossSourceTrace([detected, manual])
+        XCTAssertEqual(kept.map { $0.source }, plain.map { $0.source })
+        XCTAssertEqual(kept.count, 1)
+        XCTAssertEqual(kept.first?.source, "manual")
+        XCTAssertTrue(trace.contains { $0.contains("detectedBout verdict=droppedShadow") }, "got \(trace)")
+        XCTAssertTrue(trace.contains { $0.contains("overlapSource=manual") }, "got \(trace)")
+        XCTAssertFalse(trace.contains { $0.contains("\u{2014}") })
+    }
+
     // MARK: - trace privacy (L5) + dedup label (L8)
 
     func testTraceSportKeyWhitelistsCatalogAndFoldsFreeTextToCustom() {

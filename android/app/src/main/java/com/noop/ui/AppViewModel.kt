@@ -805,6 +805,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                     .active(com.noop.testcentre.TestDomain.UNIVERSAL))
                                 { line -> ble.externalLog(line, com.noop.testcentre.TestDomain.UNIVERSAL) }
                             else null,
+                        // Workouts & GPS test mode (#975): when the WORKOUTS domain is on, route each detected-
+                        // bout persist/drop decision into the .workouts-tagged strap log so an "auto workout
+                        // appeared then vanished" is explainable from an export (previously the auto path
+                        // produced NO trace). Zero-cost when off: one SharedPreferences bool read and the sink
+                        // stays null, so the detected-bout persist path is byte-identical. Mirrors macOS.
+                        workoutsTraceSink =
+                            if (com.noop.testcentre.TestCentre.from(appContext)
+                                    .active(com.noop.testcentre.TestDomain.WORKOUTS))
+                                { line -> ble.externalLog(line, com.noop.testcentre.TestDomain.WORKOUTS) }
+                            else null,
                     )
                     // analyzeRecent now hops to Dispatchers.Default; a scope cancellation surfaces as a
                     // CancellationException that runCatching would otherwise swallow, breaking the loop's
@@ -1273,8 +1283,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val lifting = repository.workouts(LiftingImporter.SOURCE_ID, 0L, now)
             val markers = repository.dismissedDetected(deviceId)
             // Fill imported sessions' missing HR from strap samples (#77), same as before; detected /
-            // manual rows already carry their own HR so they pass through unchanged.
-            val filled = repository.fillWorkoutHrFromStrap((whoop + apple + detected))
+            // manual rows already carry their own HR so they pass through unchanged. #961: also backfill a
+            // strap-native row's Effort (strain) from the strap trace when it's null, so a live/manual
+            // session that ended with sparse HR can't show a blank Effort while the day total counted it.
+            val filled = repository.fillWorkoutHrFromStrap(
+                (whoop + apple + detected),
+                strainMaxHR = profileStore.hrMax.toDouble(),
+                strainSex = profileStore.sex,
+            )
             // #687: collapse the SAME activity tracked live under the strap AND imported from Health
             // Connect / Apple Health into one richer entry — they sit under different sources so without
             // this they show as two sessions. Dedup runs on the dismissed-filtered set, before the sort.

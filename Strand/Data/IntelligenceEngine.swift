@@ -719,6 +719,11 @@ final class IntelligenceEngine: ObservableObject {
         // CAPTURE-B (#814/#799): the universal dayOwner line rides every export, so its gate is "ANY mode
         // active" (TestCentre.active(.universal) == anyActive). Read once here, like the other gates.
         let universalTraceActive = TestCentre.active(.universal)
+        // Workouts & GPS test mode (#975): read the zero-cost gate ONCE before the scoring loop so the
+        // detected-bout persist/drop decision can emit ONE `.workouts` line per derived bout. Without this
+        // the auto path produced NO trace at all (the "mode was on but produced NO trace" report), so an
+        // "auto workout appeared then vanished" could not be explained from an export. Diagnostic only.
+        let workoutsTraceActive = TestCentre.active(.workouts)
         for night in scoredNights {
             let daily = sleepEditedDaily(night.daily, detected: night.cachedSleep, editsByStart: editsByStart,
                                          habitualMidsleepSec: habitualMidsleepSec)
@@ -780,16 +785,32 @@ final class IntelligenceEngine: ObservableObject {
             }
             cachedSleep.append(contentsOf: night.cachedSleep)
             // Persist the detected workouts the pipeline already computes (previously discarded).
-            // Skip any bout overlapping a real imported workout so import+wear users don't
+            // Skip any bout overlapping a real imported/manual workout so import+wear users don't
             // double-count. sport = "detected"; energyKcal is the APPROXIMATE Keytel/BMR total.
             for s in night.workouts {
-                if realWorkouts.contains(where: { s.start < $0.endTs && $0.startTs < s.end }) { continue }
+                let durMin = max(0, (s.end - s.start) / 60)
+                let avgBpm = Int(s.avgHR)
+                // The overlap test is bare time overlap (any source), so a detected bout collapses against a
+                // manual session even though their SPORTS differ ("detected" vs the user's sport) , the
+                // #975 "two workouts, one vanished" seam. Find the collider so the trace can name its source.
+                if let hit = realWorkouts.first(where: { s.start < $0.endTs && $0.startTs < s.end }) {
+                    if workoutsTraceActive {
+                        diagnosticSink?(WorkoutsTrace.detectedBoutLine(
+                            verdict: "droppedOverlap", durMin: durMin, avgBpm: avgBpm,
+                            overlapSource: WorkoutSource.sourceLabel(hit)), .workouts)
+                    }
+                    continue
+                }
                 workoutRows.append(WorkoutRow(startTs: s.start, endTs: s.end,
                                               sport: "detected", source: computedId,
                                               durationS: s.durationS, energyKcal: s.caloriesKcal,
-                                              avgHr: Int(s.avgHR), maxHr: s.peakHR,
+                                              avgHr: avgBpm, maxHr: s.peakHR,
                                               strain: s.strain, distanceM: nil,
                                               zonesJSON: nil, notes: nil))
+                if workoutsTraceActive {
+                    diagnosticSink?(WorkoutsTrace.detectedBoutLine(
+                        verdict: "persisted", durMin: durMin, avgBpm: avgBpm), .workouts)
+                }
             }
         }
 

@@ -179,11 +179,16 @@ object IntelligenceEngine {
         // path. The Context-aware caller (AppViewModel) reads TestCentre.active(UNIVERSAL) and passes a
         // non-null sink ONLY when any test mode is on, routing each line to the .universal-tagged strap log.
         universalSink: ((String) -> Unit)? = null,
+        // Workouts & GPS test-mode trace sink (Test Centre, #975). Context-free layer, so the caller reads
+        // TestCentre.active(WORKOUTS) and passes a non-null sink ONLY when the mode is on, routing each
+        // detected-bout persist/drop decision to the .workouts-tagged strap log. null (the default) =
+        // byte-identical default path (no lines). Mirrors the Swift workoutsTraceActive wiring.
+        workoutsTraceSink: ((String) -> Unit)? = null,
     ): List<Computed> = withContext(Dispatchers.Default) {
         val (out, healed) = analyzeRecentOnCpu(repo, profile, maxDays, importedDeviceId, maxHROverride,
             nowSeconds, ownerSource, manualStepCoefficient, persistStepsCalibration, baselineEpoch,
             recoveryEpoch, diag, useExperimentalSleepV2, sleepTraceSink, recoveryTraceSink, stepsTraceSink,
-            universalSink)
+            universalSink, workoutsTraceSink)
         if (healed == 0) return@withContext out
         // #899 heal re-pass: the pass above deleted overlapping duplicate sleep sessions AFTER its days
         // were scored, and the read-side dedup those days consumed had no bank-recency witness (the fresh
@@ -193,7 +198,7 @@ object IntelligenceEngine {
         analyzeRecentOnCpu(repo, profile, maxDays, importedDeviceId, maxHROverride,
             nowSeconds, ownerSource, manualStepCoefficient, persistStepsCalibration, baselineEpoch,
             recoveryEpoch, diag, useExperimentalSleepV2, sleepTraceSink, recoveryTraceSink, stepsTraceSink,
-            universalSink).first
+            universalSink, workoutsTraceSink).first
     }
 
     /** History span for the one-shot Effort rescore , large enough to cover any real wear history,
@@ -269,6 +274,10 @@ object IntelligenceEngine {
         // CAPTURE-B universal diagnostic sink. null = byte-identical default (no lines); when non-null each
         // scored day emits the verbatim `dayOwner …` line. See the public overload's doc.
         universalSink: ((String) -> Unit)? = null,
+        // Workouts & GPS test-mode trace sink (#975). null = byte-identical default (no lines); when non-null
+        // each detected bout emits a `detectedBout verdict=persisted|droppedOverlap …` line to the .workouts-
+        // tagged strap log, so an "auto workout appeared then vanished" is explainable from an export. Swift twin.
+        workoutsTraceSink: ((String) -> Unit)? = null,
         // #899 heal re-pass: the second component of the return is how many overlapping duplicate sleep
         // sessions the heal below deleted this pass. The public wrapper re-runs ONCE when it is non-zero
         // so the affected days re-score against the cleaned store.
@@ -731,10 +740,23 @@ object IntelligenceEngine {
                 )
             }
             // Persist the detected workouts the pipeline already computes (previously discarded).
-            // Skip any bout overlapping a real imported workout so import+wear users don't
+            // Skip any bout overlapping a real imported/manual workout so import+wear users don't
             // double-count. sport="detected"; energyKcal is the APPROXIMATE Keytel/BMR total.
             for (s in res.workouts) {
-                if (realWorkouts.any { w -> s.start < w.endTs && w.startTs < s.end }) continue
+                val durMin = maxOf(0L, (s.end - s.start) / 60L).toInt()
+                val avgBpm = s.avgHR.toInt()
+                // Bare time overlap (any source), so a detected bout collapses against a manual session even
+                // though their sports differ , the #975 "two workouts, one vanished" seam. Name the collider.
+                val collider = realWorkouts.firstOrNull { w -> s.start < w.endTs && w.startTs < s.end }
+                if (collider != null) {
+                    workoutsTraceSink?.invoke(
+                        WorkoutsTrace.detectedBoutLine(
+                            verdict = "droppedOverlap", durMin = durMin, avgBpm = avgBpm,
+                            overlapSource = colliderSourceLabel(collider.source),
+                        ),
+                    )
+                    continue
+                }
                 workoutRows.add(
                     WorkoutRow(
                         deviceId = computedId,
@@ -744,10 +766,13 @@ object IntelligenceEngine {
                         source = computedId,
                         durationS = s.durationS,
                         energyKcal = s.caloriesKcal,
-                        avgHr = s.avgHR.toInt(),
+                        avgHr = avgBpm,
                         maxHr = s.peakHR,
                         strain = s.strain,
                     ),
+                )
+                workoutsTraceSink?.invoke(
+                    WorkoutsTrace.detectedBoutLine(verdict = "persisted", durMin = durMin, avgBpm = avgBpm),
                 )
             }
         }
@@ -1033,6 +1058,24 @@ object IntelligenceEngine {
         rescoreManualWorkouts(repo, profile, importedDeviceId, maxHROverride, nowSeconds)
 
         return out to healDropped.size
+    }
+
+    /**
+     * The source-only label for a detected-bout overlap collider in the #975 workouts trace, computed WITHOUT
+     * reaching into the UI-layer WorkoutEditing (the analytics layer must not depend on com.noop.ui). Mirrors
+     * WorkoutEditing.sourceLabel / the Swift WorkoutSource.sourceLabel token set. No PII (a source class only).
+     */
+    private fun colliderSourceLabel(source: String): String {
+        val s = source.lowercase()
+        return when {
+            s.endsWith("-noop") -> "detected"
+            s == "manual" -> "manual"
+            s == "lifting" -> "lifting"
+            s == "activity-file" -> "activityFile"
+            s == "apple-health" || s == "apple_health" || s == "health-connect" -> "apple"
+            s.contains("whoop") -> "strap"
+            else -> "apple"
+        }
     }
 
     /**

@@ -604,7 +604,7 @@ private fun EffortHero(
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     Overline("Typical effort", color = Palette.effortColor)
                     StrainGauge(

@@ -184,6 +184,18 @@ final class Repository: ObservableObject {
     /// the workout list the query returns.
     var workoutsLog: ((String) -> Void)?
 
+    /// The user's HRmax + sex, injected once by AppModel so the read path can BACKFILL a strap-native
+    /// workout's Effort (strain) on display when its stored value is nil (#961). Default nil (inert): tests
+    /// and non-prod inits skip the fill and take the byte-identical untraced path. A live/manual session can
+    /// end with strain nil (sparse live HR at save time on a 5/MG) while the DAY total already counted the
+    /// bout from the raw stream; the backend rescore (IntelligenceEngine.rescoreManualWorkouts) fills it on
+    /// the next analyze tick, but that can be up to a tick away. This lets the row show a real Effort the
+    /// instant the strap trace covers the window, recomputed from the SAME samples the graph/zones use, so
+    /// per-workout Effort can never read blank while the day total counted it. Honest: only filled when the
+    /// window is genuinely dense (the same minSamples gate the HR reconcile uses); never fabricated.
+    struct StrainProfile: Sendable { let hrMax: Double; let sex: String }
+    var strainProfile: StrainProfile?
+
     /// Emit one Workouts & GPS test-mode line iff the mode is on and a sink is wired. The cheap
     /// `TestCentre.active(.workouts)` gate is checked BEFORE `build()` runs, so the string is never
     /// constructed when the mode is off (the @autoclosure defers it).
@@ -1949,7 +1961,13 @@ final class Repository: ObservableObject {
         for (i, row) in rows.enumerated() {
             let cls = WorkoutSource.classify(row.source)
             let strapNative = cls == .manual || cls == .detected
-            guard row.endTs > row.startTs, budget > 0, strapNative || row.avgHr == nil else { continue }
+            // #961: a strap-native row whose Effort (strain) is nil is ALSO eligible even when its avgHr is
+            // already present, so a session that ended with an HR but no strain (sparse live HR at save)
+            // still gets its Effort backfilled once the strap trace covers the window. Needs the injected
+            // profile; without it the strain fill is skipped and eligibility is unchanged from before.
+            let needsStrainFill = strapNative && row.strain == nil && strainProfile != nil
+            guard row.endTs > row.startTs, budget > 0,
+                  strapNative || row.avgHr == nil || needsStrainFill else { continue }
             budget -= 1
             eligibleIndices.append(i)
         }
@@ -1959,13 +1977,22 @@ final class Repository: ObservableObject {
         // `WorkoutRow` build out of the group means only Sendable scalars cross the task boundary; the row is
         // rebuilt on the main actor in Phase 3. The samples are the very ones the graph + zones + effort use
         // (strap deviceId, COALESCEd PPG fallback). Keyed by row index so reassembly stays in original order.
-        var reduced: [Int: (avg: Int, peak: Int)] = [:]
+        // #961: capture the injected profile ONCE (a Sendable scalar pair) so each child task can compute a
+        // backfill strain off the main actor. nil ⇒ no fill, and the strain slot always comes back nil.
+        let strainProfile = self.strainProfile
+        var reduced: [Int: (avg: Int, peak: Int, strain: Double?)] = [:]
         for chunkStart in stride(from: 0, to: eligibleIndices.count, by: readChunk) {
             let chunk = eligibleIndices[chunkStart..<min(chunkStart + readChunk, eligibleIndices.count)]
-            await withTaskGroup(of: (index: Int, avg: Int, peak: Int)?.self) { group in
+            await withTaskGroup(of: (index: Int, avg: Int, peak: Int, strain: Double?)?.self) { group in
                 for idx in chunk {
                     let startTs = rows[idx].startTs
                     let endTs = rows[idx].endTs
+                    // Only strap-native rows still missing a strain get one computed (the fill target); an
+                    // imported row, or one that already has a strain, returns nil for the slot and keeps its
+                    // own. Resolve this on the main actor (WorkoutSource.classify) and capture the plain Bool,
+                    // so the child task crosses only Sendable scalars.
+                    let cls = WorkoutSource.classify(rows[idx].source)
+                    let wantStrain = (cls == .manual || cls == .detected) && rows[idx].strain == nil
                     group.addTask { [deviceId] in
                         let samples = (try? await store.hrSamples(deviceId: deviceId,
                                                                   from: startTs, to: endTs,
@@ -1973,11 +2000,20 @@ final class Repository: ObservableObject {
                         guard samples.count >= minSamples else { return nil }
                         // Sum + max over up to 8000 ints , off the @MainActor (the freeze fix).
                         let (avg, peak) = Repository.reduceWorkoutHr(samples)
-                        return (index: idx, avg: avg, peak: peak)
+                        // #961: recompute Effort from the SAME samples the graph/zones use, off-main. Uses the
+                        // app's StrainScorer with the injected HRmax + sex so it matches endWorkout's own score;
+                        // StrainScorer returns nil on a still-too-thin window (never a fabricated number).
+                        let strain: Double?
+                        if wantStrain, let p = strainProfile {
+                            strain = StrainScorer.strain(samples, maxHR: p.hrMax, sex: p.sex)
+                        } else {
+                            strain = nil
+                        }
+                        return (index: idx, avg: avg, peak: peak, strain: strain)
                     }
                 }
                 for await result in group {
-                    if let r = result { reduced[r.index] = (avg: r.avg, peak: r.peak) }
+                    if let r = result { reduced[r.index] = (avg: r.avg, peak: r.peak, strain: r.strain) }
                 }
             }
         }
@@ -1990,9 +2026,13 @@ final class Repository: ObservableObject {
             let cls = WorkoutSource.classify(row.source)
             let strapNative = cls == .manual || cls == .detected
             let newMax = strapNative ? r.peak : (row.maxHr ?? r.peak)
+            // #961: FILL a nil Effort from the recomputed strain (never override a stored one). Display-only,
+            // like the avg/max reconcile , the workout-PK upsert would wipe it, and the backend rescore
+            // persists the durable value on the next analyze tick.
+            let newStrain = row.strain ?? r.strain
             return WorkoutRow(startTs: row.startTs, endTs: row.endTs, sport: row.sport,
                               source: row.source, durationS: row.durationS, energyKcal: row.energyKcal,
-                              avgHr: r.avg, maxHr: newMax, strain: row.strain, distanceM: row.distanceM,
+                              avgHr: r.avg, maxHr: newMax, strain: newStrain, distanceM: row.distanceM,
                               zonesJSON: row.zonesJSON, notes: row.notes)
         }
     }

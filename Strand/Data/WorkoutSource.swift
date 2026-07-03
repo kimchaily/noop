@@ -182,13 +182,51 @@ enum WorkoutSource: Equatable {
         return a
     }
 
+    // MARK: - Detected-vs-real overlap collapse (#975)
+    //
+    // The engine derives a "detected" bout from raw HR and DROPS it when it overlaps a real logged session
+    // (IntelligenceEngine: bare time overlap, ANY source), but only on the next analyze pass. Between a live
+    // /manual session ending and that pass, BOTH the manual row AND the detected shadow of the same bout show
+    // in the list, and the detected shadow (a WIDER, sport-agnostic HR window) reads an implausibly high
+    // interpolated Effort/HR next to the real one. `sameActivity` cannot collapse them because their SPORTS
+    // differ ("detected" vs the user's sport). This read-time guard mirrors the engine's own rule so the list
+    // never shows the transient duplicate: a DETECTED row is dropped when its time window overlaps a REAL
+    // (non-detected) session by more than half of the shorter of the two. The >50%-of-shorter test (not bare
+    // touching) keeps a genuinely separate back-to-back session distinct, matching `sameActivity`'s overlap
+    // rule. Runs BEFORE the same-sport cross-source dedup, so the detected shadow is gone before that walk.
+
+    /// True when `detected` (a detected bout) is a redundant shadow of `real` (a logged session of any source
+    /// other than detected): their windows overlap by more than half of the shorter session. Order matters ,
+    /// `detected` must be the detected row and `real` a non-detected row; the caller enforces that.
+    static func detectedShadowsReal(_ detected: WorkoutRow, _ real: WorkoutRow) -> Bool {
+        let overlap = min(detected.endTs, real.endTs) - max(detected.startTs, real.startTs)
+        guard overlap > 0 else { return false }
+        let shorter = max(1, min(detected.endTs - detected.startTs, real.endTs - real.startTs))
+        return Double(overlap) > 0.5 * Double(shorter)
+    }
+
+    /// Drop every DETECTED row whose window shadows a REAL (non-detected) session in the same list (#975), so
+    /// the live/manual session and its detected twin never both show. Order-stable; a list with no detected
+    /// row, or no real row, passes through unchanged. Runs before `dedupCrossSource`.
+    static func dropDetectedShadows(_ rows: [WorkoutRow]) -> [WorkoutRow] {
+        let reals = rows.filter { classify($0.source) != .detected }
+        guard !reals.isEmpty else { return rows }
+        return rows.filter { row in
+            guard classify(row.source) == .detected else { return true }
+            return !reals.contains { detectedShadowsReal(row, $0) }
+        }
+    }
+
     /// Collapse cross-source duplicates of the same activity, keeping the richer row of each pair.
     /// Order-stable: walks the input once, and a row that duplicates one already kept is dropped (with
     /// the kept row swapped for the richer of the two). Single-source lists pass through unchanged.
+    /// #975: a DETECTED bout that shadows a real logged session is dropped FIRST so the transient
+    /// live+detected duplicate never shows and can't pollute the Effort/HR read-out.
     static func dedupCrossSource(_ rows: [WorkoutRow]) -> [WorkoutRow] {
         var kept: [WorkoutRow] = []
-        kept.reserveCapacity(rows.count)
-        outer: for row in rows {
+        let input = dropDetectedShadows(rows)
+        kept.reserveCapacity(input.count)
+        outer: for row in input {
             for i in kept.indices where sameActivity(kept[i], row) {
                 kept[i] = preferred(kept[i], row)
                 continue outer
@@ -215,11 +253,29 @@ enum WorkoutSource: Equatable {
     /// kept list (the SAME walk, the SAME `preferred` choice) plus a trace line per collapsed pair naming the
     /// kept vs dropped source and their richness. The kept output equals `dedupCrossSource(...)` exactly, so
     /// the trace can never diverge from the list the screen shows. Only called when the mode is on.
+    /// #975: it FIRST drops any detected shadow of a real session (the SAME `dropDetectedShadows` step the
+    /// plain path runs) and emits one `detectedBout verdict=droppedShadow` line per drop, so the export shows
+    /// exactly which detected twin was suppressed to keep the live/manual session single.
     static func dedupCrossSourceTrace(_ rows: [WorkoutRow]) -> (kept: [WorkoutRow], trace: [String]) {
         var kept: [WorkoutRow] = []
-        kept.reserveCapacity(rows.count)
         var lines: [String] = []
-        outer: for row in rows {
+        // Detected-shadow drop first (byte-identical to dedupCrossSource's `dropDetectedShadows`), tracing each.
+        let reals = rows.filter { classify($0.source) != .detected }
+        var input: [WorkoutRow] = []
+        input.reserveCapacity(rows.count)
+        for row in rows {
+            if classify(row.source) == .detected,
+               let hit = reals.first(where: { detectedShadowsReal(row, $0) }) {
+                let durMin = max(0, (row.endTs - row.startTs) / 60)
+                lines.append(WorkoutsTrace.detectedBoutLine(
+                    verdict: "droppedShadow", durMin: durMin, avgBpm: row.avgHr ?? 0,
+                    overlapSource: sourceLabel(hit)))
+                continue
+            }
+            input.append(row)
+        }
+        kept.reserveCapacity(input.count)
+        outer: for row in input {
             for i in kept.indices where sameActivity(kept[i], row) {
                 // L8: identify kept-vs-dropped by the REAL keep decision, not by a (startTs, source) tuple
                 // that collides when row and kept[i] share both fields (e.g. a same-start same-source pair

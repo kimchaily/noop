@@ -168,14 +168,51 @@ object WorkoutEditing {
         return a
     }
 
+    // MARK: - Detected-vs-real overlap collapse (#975)
+    //
+    // The engine derives a "detected" bout from raw HR and DROPS it when it overlaps a real logged session,
+    // but only on the next analyze pass. Between a live/manual session ending and that pass, BOTH the manual
+    // row AND the detected shadow of the same bout show, and the detected shadow (a wider, sport-agnostic HR
+    // window) reads an implausibly high interpolated Effort/HR next to the real one. sameActivity cannot
+    // collapse them because their SPORTS differ ("detected" vs the user's sport). This read-time guard mirrors
+    // the engine's rule so the list never shows the transient duplicate. Runs before the same-sport dedup.
+
+    /**
+     * True when [detected] (a detected bout) is a redundant shadow of [real] (a non-detected logged session):
+     * their windows overlap by more than half of the shorter session. The caller enforces the row roles.
+     */
+    fun detectedShadowsReal(detected: WorkoutRow, real: WorkoutRow): Boolean {
+        val overlap = minOf(detected.endTs, real.endTs) - maxOf(detected.startTs, real.startTs)
+        if (overlap <= 0) return false
+        val shorter = maxOf(1L, minOf(detected.endTs - detected.startTs, real.endTs - real.startTs))
+        return overlap.toDouble() > 0.5 * shorter.toDouble()
+    }
+
+    /**
+     * Drop every DETECTED row whose window shadows a REAL (non-detected) session in the same list (#975), so
+     * the live/manual session and its detected twin never both show. Order-stable; a list with no detected row
+     * (or no real row) passes through unchanged. Runs before [dedupCrossSource]. Mirrors Swift.
+     */
+    fun dropDetectedShadows(rows: List<WorkoutRow>): List<WorkoutRow> {
+        val reals = rows.filter { classify(it.source) != WorkoutSource.DETECTED }
+        if (reals.isEmpty()) return rows
+        return rows.filter { row ->
+            if (classify(row.source) != WorkoutSource.DETECTED) return@filter true
+            reals.none { detectedShadowsReal(row, it) }
+        }
+    }
+
     /**
      * Collapse cross-source duplicates of the same activity, keeping the richer row of each pair.
      * Order-stable: walks the input once, and a row that duplicates one already kept is dropped (with
      * the kept row swapped for the richer of the two). Single-source lists pass through unchanged.
+     * #975: a DETECTED bout that shadows a real logged session is dropped FIRST so the transient
+     * live+detected duplicate never shows and can't pollute the Effort/HR read-out.
      */
     fun dedupCrossSource(rows: List<WorkoutRow>): List<WorkoutRow> {
-        val kept = ArrayList<WorkoutRow>(rows.size)
-        outer@ for (row in rows) {
+        val input = dropDetectedShadows(rows)
+        val kept = ArrayList<WorkoutRow>(input.size)
+        outer@ for (row in input) {
             for (i in kept.indices) {
                 if (sameActivity(kept[i], row)) {
                     kept[i] = preferred(kept[i], row)
@@ -203,9 +240,29 @@ object WorkoutEditing {
      * vs dropped source and their richness. The kept output equals [dedupCrossSource] exactly. Mirrors Swift.
      */
     fun dedupCrossSourceTrace(rows: List<WorkoutRow>): Pair<List<WorkoutRow>, List<String>> {
-        val kept = ArrayList<WorkoutRow>(rows.size)
         val lines = ArrayList<String>()
-        outer@ for (row in rows) {
+        // #975: detected-shadow drop first (byte-identical to dedupCrossSource's dropDetectedShadows), tracing
+        // each drop with a `detectedBout verdict=droppedShadow` line naming the real row it collided with.
+        val reals = rows.filter { classify(it.source) != WorkoutSource.DETECTED }
+        val input = ArrayList<WorkoutRow>(rows.size)
+        for (row in rows) {
+            if (classify(row.source) == WorkoutSource.DETECTED) {
+                val hit = reals.firstOrNull { detectedShadowsReal(row, it) }
+                if (hit != null) {
+                    val durMin = maxOf(0L, (row.endTs - row.startTs) / 60L).toInt()
+                    lines.add(
+                        WorkoutsTrace.detectedBoutLine(
+                            verdict = "droppedShadow", durMin = durMin, avgBpm = row.avgHr ?: 0,
+                            overlapSource = sourceLabel(hit),
+                        ),
+                    )
+                    continue
+                }
+            }
+            input.add(row)
+        }
+        val kept = ArrayList<WorkoutRow>(input.size)
+        outer@ for (row in input) {
             for (i in kept.indices) {
                 if (sameActivity(kept[i], row)) {
                     // L8: identify kept-vs-dropped by the REAL keep decision, not by a (startTs, source)
