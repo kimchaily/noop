@@ -1,0 +1,138 @@
+# Builds the shippable Android **release** APK from source and hands it back as a
+# downloadable artifact — this is how you obtain an installable NOOP APK from CI.
+#
+# It is deliberately anonymity-safe and needs NOTHING from the repository owner to run:
+#   • No secrets required. If no signing keystore is configured, the release build falls
+#     back to the Android debug key (see android/app/build.gradle.kts), so `assembleFullRelease`
+#     still produces an installable APK. A debug-key APK installs fine for personal/sideload use;
+#     it is simply not the maintainer's official signature.
+#   • A REAL signing key is used only if the maintainer adds the optional secrets below, so the
+#     published `NOOP-full.apk` can be reproduced with the maintainer's identity when wanted:
+#       ANDROID_KEYSTORE_BASE64   – base64 of the .jks keystore
+#       ANDROID_KEYSTORE_PASSWORD – store password
+#       ANDROID_KEY_ALIAS         – key alias
+#       ANDROID_KEY_PASSWORD      – key password
+#
+# Triggers:
+#   • workflow_dispatch – build on demand (optionally also the sample-data demo flavour).
+#   • push of a version tag (v* / android-v*) – build and attach NOOP-full.apk to that Release.
+name: Android Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_demo:
+        description: 'Also build the sample-data demo flavour (NOOP-demo.apk)'
+        type: boolean
+        default: false
+  push:
+    tags:
+      - 'v*'
+      - 'android-v*'
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write  # needed only to attach the APK to a Release on tag builds
+
+jobs:
+  release-apk:
+    runs-on: ubuntu-latest
+    # Mapped here because the `secrets` context can't be used in a step-level `if:` —
+    # this lets the signing step below gate on presence via `env.HAS_KEYSTORE`.
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Optional real signing. When the secrets are absent (forks, no-secret runs) this step is a
+      # no-op and the build transparently falls back to the debug key — the APK still installs.
+      - name: Configure signing (optional)
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > noop-release.jks
+          cat > keystore.properties <<EOF
+          storeFile=noop-release.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Build full release APK
+        run: ./gradlew assembleFullRelease
+
+      - name: Build demo release APK
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_demo }}
+        run: ./gradlew assembleDemoRelease
+
+      # Collect the outputs under a stable, published-asset name (NOOP-full.apk).
+      - name: Stage APKs
+        run: |
+          mkdir -p ../dist
+          cp app/build/outputs/apk/full/release/app-full-release.apk ../dist/NOOP-full.apk
+          if [ -f app/build/outputs/apk/demo/release/app-demo-release.apk ]; then
+            cp app/build/outputs/apk/demo/release/app-demo-release.apk ../dist/NOOP-demo.apk
+          fi
+          ls -l ../dist
+
+      # Print the APK's signing certificate so you can confirm which key signed it. Compare the
+      # "SHA-256 digest" printed here against your keystore's fingerprint
+      # (keytool -list -v -keystore choop-release.jks). They match ⇒ CI signed with YOUR key;
+      # if it instead shows the Android debug cert, the ANDROID_KEYSTORE_* secrets weren't picked up.
+      # Informational only — never fails the build.
+      - name: Print APK signing certificate
+        run: |
+          set +e
+          echo "Keystore secret present (HAS_KEYSTORE): $HAS_KEYSTORE"
+          APKSIGNER=$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}" -name apksigner -type f 2>/dev/null | sort -V | tail -1)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs ../dist/NOOP-full.apk | grep -i "SHA-256\|Signer"
+          else
+            echo "apksigner not found; skipping certificate print"
+          fi
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: noop-android-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+      # On a version tag, publish (or update) the GitHub Release for that tag and attach the APK.
+      # A pushed tag is NOT a Release on its own, so create it if missing — this is what makes the
+      # tag show up under /releases/latest, which the in-app "Check for updates" reads.
+      - name: Publish APK to Release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" \
+              --notes "Automated Choop release build. Install NOOP-full.apk (updates in place over an existing Choop install signed with the same key)."
+          fi
+          gh release upload "$TAG" ../dist/NOOP-full.apk --clobber --repo "$REPO"

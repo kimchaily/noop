@@ -19,11 +19,19 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.noop.whoop"
+        // Personal fork identity (kimchaily/noop). The original NoopApp build shipped as
+        // com.noop.whoop; this fork ships under its own applicationId so it is a distinct install
+        // and can be signed + updated with the fork owner's own key. The code `namespace` below
+        // stays com.noop (all sources are `package com.noop.*`) — only the on-device app identity
+        // changes. App display name is "Choop" (see res/values/strings.xml).
+        applicationId = "com.kimchai.choop"
         minSdk = 26
         targetSdk = 34
-        versionCode = 261
-        versionName = "8.2.2"
+        // Fork versioning continues the upstream line (NOOP ended at 8.2.2 / build 261) so the
+        // in-app updater's numeric compare keeps working and the lineage stays legible. First Choop
+        // release is 8.2.3 / 262. Keep versionName numeric-only — UpdateCheck.isNewer parses digits.
+        versionCode = 262
+        versionName = "8.2.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -69,8 +77,8 @@ android {
     }
 
     // Two clearly-distinct apps that install side-by-side:
-    //   • full → "NOOP"      (com.noop.whoop)     — the real app, starts empty, pair a strap / import.
-    //   • demo → "NOOP Demo"  (com.noop.whoop.demo) — preloaded with 120 days of synthetic data and
+    //   • full → "Choop"      (com.kimchai.choop)      — the real app, starts empty, pair a strap / import.
+    //   • demo → "Choop Demo"  (com.kimchai.choop.demo) — preloaded with 120 days of synthetic data and
     //                          a visible DEMO badge, so anyone can explore every screen with no strap.
     // Build e.g. ./gradlew assembleFullRelease assembleDemoRelease.
     flavorDimensions += "tier"

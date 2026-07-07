@@ -46,7 +46,9 @@ import androidx.compose.ui.unit.dp
 object DonationStats {
     const val DOWNLOADS = 8_500
     const val DONORS = 12
-    const val DONATE_URL = "https://github.com/NoopApp/noop/wiki/Donations"
+    // Unused while the nudge is disabled (see NUDGE_ENABLED); points at the fork repo so it isn't a
+    // dead upstream link if the nudge is ever re-enabled with a real donation target.
+    const val DONATE_URL = "https://github.com/kimchaily/noop"
 }
 
 /** Plain-prefs persistence for the nudge cadence (12 h) + permanent opt-out. */
@@ -56,12 +58,18 @@ object DonationNudgePrefs {
     private const val KEY_OPT_OUT = "donate.optOut"
     private const val WINDOW_MS = 12 * 3_600_000L
 
+    // Disabled in this personal fork: the donation nudge solicited support for the original solo
+    // maintainer, which doesn't apply here (and there's no fork donation target). Flip to true to
+    // re-enable the 12 h cadence below.
+    private const val NUDGE_ENABLED = false
+
     private fun prefs(ctx: Context) =
         ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
     /** Whether the card should render now; arms the 12 h timer on first sight so a fresh
      *  install gets its first nudge after 12 h of real use, not on first launch. */
     fun shouldShow(ctx: Context): Boolean {
+        if (!NUDGE_ENABLED) return false
         val p = prefs(ctx)
         if (p.getBoolean(KEY_OPT_OUT, false)) return false
         val last = p.getLong(KEY_LAST_SHOWN, 0L)
