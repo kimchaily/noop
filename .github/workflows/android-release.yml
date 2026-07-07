@@ -98,6 +98,22 @@ jobs:
           fi
           ls -l ../dist
 
+      # Print the APK's signing certificate so you can confirm which key signed it. Compare the
+      # "SHA-256 digest" printed here against your keystore's fingerprint
+      # (keytool -list -v -keystore choop-release.jks). They match ⇒ CI signed with YOUR key;
+      # if it instead shows the Android debug cert, the ANDROID_KEYSTORE_* secrets weren't picked up.
+      # Informational only — never fails the build.
+      - name: Print APK signing certificate
+        run: |
+          set +e
+          echo "Keystore secret present (HAS_KEYSTORE): $HAS_KEYSTORE"
+          APKSIGNER=$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}" -name apksigner -type f 2>/dev/null | sort -V | tail -1)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs ../dist/NOOP-full.apk | grep -i "SHA-256\|Signer"
+          else
+            echo "apksigner not found; skipping certificate print"
+          fi
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
