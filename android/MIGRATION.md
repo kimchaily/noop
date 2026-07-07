@@ -1,0 +1,108 @@
+# Migrating to your own Choop build (data + updates)
+
+You have the original **NOOP v8.2.2** app (from the now-deleted `NoopApp/noop` repo) installed on
+your phone, and you want to move to a build **you** can keep updating — without losing the history
+you've already collected. This fork ships as **Choop** (`com.kimchai.choop`), signed with your own
+key, so from here on every future version installs as a normal in-place update.
+
+## The one hard constraint: the signing key
+
+Android only lets an APK **update over** an installed app when both are signed with the **same key**.
+Your installed app is signed with the original maintainer's key, which is gone — so the switch to a
+build you control costs a **one-time uninstall + reinstall**. And the app sets
+`android:allowBackup="false"`, so **uninstalling wipes its local database**. That's why you export
+your data *first*.
+
+Good news: the app has a lossless, built-in **`.noopbak` export/restore**, and the restore validates
+only that the file is a Choop/NOOP Room database (`room_master_table`) — **not** the signature or the
+package name. So a backup taken from the original `com.noop.whoop` install imports cleanly into
+`com.kimchai.choop` (same v8.2.2 source ⇒ identical DB schema). You lose nothing.
+
+You pay the uninstall/reinstall **once**. Every Choop-to-Choop update afterwards is in-place.
+
+---
+
+## Do it in this order
+
+### 1. Export your data from the app you have now — before anything else
+In the installed app: **Settings → "Backup & restore" → "Export…"**. It writes
+`noop-backup-<date>.noopbak` (a ZIP of the whole SQLite DB + your profile/display settings) to a
+folder you pick.
+- Move that file **off the app's sandbox**: to Downloads, then copy it to Google Drive / your PC /
+  an SD card. Verify it's really there (it opens as a ZIP containing `noop-backup.sqlite`).
+- **Second copy for safety:** also do the CSV export (Settings → Data sources → Export CSV). The
+  `.noopbak` is the lossless restore path; CSV is a fallback and marks on-device-computed rows as
+  APPROXIMATE.
+
+> Do not skip or reorder this. Once you uninstall, un-exported data is unrecoverable.
+
+### 2. Create your signing key — once
+Run the helper (needs a JDK/`keytool`, which you already have if you build the app):
+
+```bash
+./android/tools/make-keystore.sh
+```
+
+It writes `choop-release.jks`, then prints (a) a `keystore.properties` block for local release
+builds and (b) the four values to paste into GitHub Actions secrets. **Back up the `.jks` and its
+password** in a password manager — lose them and you can never ship an in-place update again. Never
+commit them (`*.jks` and `keystore.properties` are already git-ignored).
+
+### 3. Give CI your key, so the pipeline signs with it
+In **GitHub → repo → Settings → Secrets and variables → Actions**, add:
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | the one-line base64 the script printed |
+| `ANDROID_KEYSTORE_PASSWORD` | your keystore password |
+| `ANDROID_KEY_ALIAS` | `choop` |
+| `ANDROID_KEY_PASSWORD` | your keystore password (same, unless you set a separate key password) |
+
+With these set, the **Android Release APK** workflow signs `NOOP-full.apk` with *your* key. Without
+them it falls back to the shared debug key — fine for a throwaway test, but **not** what you install
+and keep, or you'd have to uninstall/reinstall again when you later switch to the real key.
+
+### 4. Build the release APK with your key
+GitHub → **Actions → "Android Release APK" → Run workflow**. When it's green, download the
+`noop-android-apk` artifact and unzip it to get `NOOP-full.apk` (the Choop `full` release).
+*(Or push a version tag like `v8.2.3` and the pipeline attaches the APK straight to that Release.)*
+
+### 5. Switch phones over
+- **Uninstall** the old NOOP app (your data is already exported in step 1).
+- **Install** `NOOP-full.apk` — you'll appear as **Choop** on the home screen, installing alongside
+  nothing else (new applicationId, so even the old app's leftovers don't collide). Enable "install
+  from unknown sources" for your file manager if prompted.
+- From now on, dropping a newer Choop APK on top updates **in place** — data intact, no uninstall.
+
+### 6. Restore your data
+Open Choop → **Settings → "Backup & restore" → Import** → pick your `.noopbak`. It validates the
+file (SQLite header, Room origin, `PRAGMA quick_check`) and swaps in your database, then asks you to
+**fully close and reopen** the app. Your entire history is back.
+
+### 7. Re-grant what a fresh install can't carry over
+These are tied to the OS / the old signature and don't travel in a `.noopbak`:
+- **Re-pair your WHOOP strap** and re-grant runtime permissions: Bluetooth, Notifications, and (if you
+  use them) Health Connect and exact-alarm access.
+- **Re-enter your AI Coach API key** — it lives in the Android Keystore, which is scoped to the
+  app + signature, so it does not survive the reinstall.
+- Re-add the **home-screen widget** and re-pick your app-icon variant if you'd changed it.
+
+---
+
+## Keeping it updated after the move
+1. Make your changes; bump `versionCode` **and** `versionName` in `android/app/build.gradle.kts`.
+2. Run the **Android Release APK** workflow (or push a `v*` tag).
+3. Install the new `NOOP-full.apk` over Choop — in-place, data preserved.
+
+For an ongoing off-device safety net, turn on **Settings → "Backup & Sync"**: an opt-in daily
+`.noopbak` written into a folder you choose (point it at a Drive/Dropbox sync folder). Nothing leaves
+the phone except the file your own sync client uploads.
+
+## Why "Choop" and not "com.noop.whoop"
+The `applicationId` is just an install identifier — it is not a claim of authorship, and nothing
+verifies the reverse-DNS name for a sideloaded APK. This fork uses `com.kimchai.choop` so it's
+clearly *your* build with *your* signature, and so it could coexist with the original if you ever
+reinstalled that. The code `namespace` stays `com.noop` (all sources are `package com.noop.*`), so
+the rename is a two-line change with no source churn. The upstream project name "NOOP" is retained
+in the licence, attribution, and disclaimer text, which document the code's origin and the WHOOP
+trademark position — that lineage is unchanged.
