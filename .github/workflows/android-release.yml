@@ -40,6 +40,10 @@ permissions:
 jobs:
   release-apk:
     runs-on: ubuntu-latest
+    # Mapped here because the `secrets` context can't be used in a step-level `if:` —
+    # this lets the signing step below gate on presence via `env.HAS_KEYSTORE`.
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
     defaults:
       run:
         working-directory: android
@@ -62,7 +66,7 @@ jobs:
       # Optional real signing. When the secrets are absent (forks, no-secret runs) this step is a
       # no-op and the build transparently falls back to the debug key — the APK still installs.
       - name: Configure signing (optional)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_KEYSTORE == 'true' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
