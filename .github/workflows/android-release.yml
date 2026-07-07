@@ -105,9 +105,18 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
-      # On a version tag, attach the freshly-built APK to that GitHub Release.
-      - name: Attach APK to Release
+      # On a version tag, publish (or update) the GitHub Release for that tag and attach the APK.
+      # A pushed tag is NOT a Release on its own, so create it if missing — this is what makes the
+      # tag show up under /releases/latest, which the in-app "Check for updates" reads.
+      - name: Publish APK to Release
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.ref_name }}" ../dist/NOOP-full.apk --clobber --repo "${{ github.repository }}"
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$REPO" --title "$TAG" \
+              --notes "Automated Choop release build. Install NOOP-full.apk (updates in place over an existing Choop install signed with the same key)."
+          fi
+          gh release upload "$TAG" ../dist/NOOP-full.apk --clobber --repo "$REPO"

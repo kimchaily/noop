@@ -89,10 +89,60 @@ These are tied to the OS / the old signature and don't travel in a `.noopbak`:
 
 ---
 
+## About the strap history during the switch (read before you unpair)
+
+Three facts about how NOOP/WHOOP handle history decide whether you lose anything:
+
+1. **The strap records to its own memory whether or not any app is connected.** Turning your phone's
+   Bluetooth off doesn't stop the strap recording — it only pauses live streaming. So a gap while
+   you migrate is buffered on the strap and offloaded on the next history sync.
+2. **History offload is consume-on-read.** When the connected app receives a history chunk it *acks*
+   it, and the strap then **frees (deletes) that history** from its buffer (see `Backfiller` — "the
+   strap frees acked history"). So a given slice of history can only ever be drained **once**, by
+   **one** app. Whichever app syncs it first owns it; the other app can never pull it from the strap
+   afterwards.
+3. **A WHOOP 5.0/MG bonds to one app at a time.** You cannot have the old app and Choop both paired
+   to the same strap simultaneously — you must unpair/forget it from the old app (and the official
+   WHOOP app) before Choop can pair. Having both *installed* is fine; both *paired* is not.
+
+**What this means for the move:**
+- **Import replaces the whole database** (`DataBackup` swaps the SQLite file — it is not a row-merge).
+  So always **import your `.noopbak` BEFORE you pair/sync Choop with the strap**. If you pair first
+  and let Choop backfill, then import, the import wipes what Choop just pulled.
+- **Stop the old app from stealing the gap.** Before you turn Bluetooth back on, **disable or
+  uninstall the old app** (and forget the strap in it). Otherwise its background auto-reconnect can
+  grab the strap and drain the buffered gap into the old app — after which Choop can't get it.
+- With the old app out of the way, when Choop finally pairs it drains the buffered gap into Choop —
+  **as long as it's still within the strap's on-device retention window**, which is limited (order of
+  days). Don't let the migration sit for a week.
+
+**Recommended, lossless sequence** (this is the safe version of "BT off → export → switch → backfill"):
+1. Open the **old** app connected to the strap and let it finish one last history sync (drains the
+   strap buffer into the old app's DB).
+2. **Export** the `.noopbak` (+ a CSV copy) and move it off-device.
+3. **Disable or uninstall** the old app and **forget** the strap in Bluetooth settings, so nothing
+   can auto-reconnect and drain the strap.
+4. Install **Choop**, then **import** the `.noopbak` (no pairing needed for import).
+5. **Now** pair Choop with the strap. It offloads anything the strap buffered since step 1, forward
+   from there.
+
+> Your three-app-variant question, resolved: you can't pair both apps at once (fact 3), and you can't
+> "backfill the same gap into both" (fact 2 — it's consumed once). The only way both apps end up with
+> the same data is export→import, never dual streaming.
+
+---
+
 ## Keeping it updated after the move
 1. Make your changes; bump `versionCode` **and** `versionName` in `android/app/build.gradle.kts`.
-2. Run the **Android Release APK** workflow (or push a `v*` tag).
-3. Install the new `NOOP-full.apk` over Choop — in-place, data preserved.
+2. **Push a version tag** (e.g. `git tag v8.2.3 && git push origin v8.2.3`). The **Android Release
+   APK** workflow builds the APK, creates the GitHub **Release** for that tag, and attaches
+   `NOOP-full.apk` to it. (Or run the workflow manually and grab the artifact — but a tagged Release
+   is what powers in-app update discovery.)
+3. In the app, **Settings → About → "Check for updates"** reads this repo's *latest* Release
+   (`api.github.com/repos/kimchaily/noop/releases/latest`), and if it's newer than the installed
+   `versionName` it links you to the Release page to download the new `NOOP-full.apk`. Install it
+   over Choop — in-place, data preserved. (The check is manual-only; nothing is sent, nothing
+   auto-updates.)
 
 For an ongoing off-device safety net, turn on **Settings → "Backup & Sync"**: an opt-in daily
 `.noopbak` written into a folder you choose (point it at a Drive/Dropbox sync folder). Nothing leaves
