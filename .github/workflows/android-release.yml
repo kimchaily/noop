@@ -14,7 +14,8 @@
 #       ANDROID_KEY_PASSWORD      – key password
 #
 # Triggers:
-#   • workflow_dispatch – build on demand (optionally also the sample-data demo flavour).
+#   • workflow_dispatch – build on demand (optionally also the sample-data demo flavour, and
+#     optionally create a Release at a given tag via the release_tag input).
 #   • push of a version tag (v* / android-v*) – build and attach NOOP-full.apk to that Release.
 name: Android Release APK
 
@@ -25,6 +26,10 @@ on:
         description: 'Also build the sample-data demo flavour (NOOP-demo.apk)'
         type: boolean
         default: false
+      release_tag:
+        description: 'Create a GitHub Release at this tag and attach the APK (e.g. v8.2.3). Blank = artifact only.'
+        type: string
+        default: ''
   push:
     tags:
       - 'v*'
@@ -121,18 +126,22 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
-      # On a version tag, publish (or update) the GitHub Release for that tag and attach the APK.
-      # A pushed tag is NOT a Release on its own, so create it if missing — this is what makes the
-      # tag show up under /releases/latest, which the in-app "Check for updates" reads.
+      # Publish (or update) a GitHub Release and attach the APK. Fires on a pushed version tag OR
+      # a manual run with a `release_tag` input. A tag/Release is created if missing (a pushed tag
+      # is not a Release on its own, and CI creates the tag when dispatched) — this is what makes it
+      # show up under /releases/latest, which the in-app "Check for updates" reads.
       - name: Publish APK to Release
-        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.release_tag != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          DISPATCH_TAG: ${{ inputs.release_tag }}
         run: |
+          if [ -n "$DISPATCH_TAG" ]; then TAG="$DISPATCH_TAG"; else TAG="$GITHUB_REF_NAME"; fi
+          echo "Publishing release $TAG at $SHA"
           if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            gh release create "$TAG" --repo "$REPO" --title "$TAG" \
+            gh release create "$TAG" --repo "$REPO" --target "$SHA" --title "$TAG" \
               --notes "Automated Choop release build. Install NOOP-full.apk (updates in place over an existing Choop install signed with the same key)."
           fi
           gh release upload "$TAG" ../dist/NOOP-full.apk --clobber --repo "$REPO"
