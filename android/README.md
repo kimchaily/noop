@@ -1,5 +1,12 @@
 # NOOP — Android
 
+> **Fork note (Choop).** This is a personal fork of `NoopApp/noop`, taken just before the upstream
+> repo disappeared. It ships on Android under its own identity — display name **Choop**,
+> applicationId **`com.kimchai.choop`** — signed with the fork owner's own key so it can be updated
+> in place. Version numbering continues the upstream line (upstream ended at **8.2.2 / build 261**;
+> this fork starts at **8.2.3 / build 262**). The code `namespace` stays `com.noop`. See
+> [`MIGRATION.md`](MIGRATION.md) to move an existing NOOP install (with its data) over to Choop.
+
 An **offline WHOOP companion** for Android. NOOP connects directly to a WHOOP 4.0
 (and WHOOP 5.0) strap over Bluetooth Low Energy, reads heart rate, R-R intervals,
 battery, and sensor data, and stores everything **locally** on the device. There is
