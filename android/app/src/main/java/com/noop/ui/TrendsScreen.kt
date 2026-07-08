@@ -172,7 +172,7 @@ fun TrendsScreen(vm: AppViewModel) {
             }
         }
 
-        // --- Week in review , the Charge / Effort / Rest trio in NOOP's pip language (PipBar +
+        // --- Week in review , the Charge / Effort / Rest trio in Choop's pip language (PipBar +
         // CountUpText), mirroring the iOS TrendsView.weekInReview card. White count-up numbers over
         // segmented count-up bars; self-hides when none of the three carry a window mean. ---
         item {
@@ -425,7 +425,7 @@ private fun WeekNavBar(weekOffset: Int, minWeekOffset: Int, onStep: (Int) -> Uni
 
 // MARK: - Week in review , the Charge / Effort / Rest trio in pip language
 //
-// The three daily scores as NOOP pip rows over the resolved window: Charge (recovery, 0–100),
+// The three daily scores as Choop pip rows over the resolved window: Charge (recovery, 0–100),
 // Effort (strain, shown on the WHOOP 0–21 / 0–100 scale per the unit toggle) and Rest (sleep
 // efficiency, 0–100). Each value ticks up via CountUpText; the segmented PipBar cascades on appear.
 // Self-hides when none of the three carry a window mean. Mirrors iOS TrendsView.weekInReview.

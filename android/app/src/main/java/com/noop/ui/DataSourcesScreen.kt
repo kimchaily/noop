@@ -188,7 +188,7 @@ fun DataSourcesScreen(vm: AppViewModel) {
                     restartNeeded = true
                     Toast.makeText(
                         context,
-                        "Imported. Fully close and reopen NOOP to load it.",
+                        "Imported. Fully close and reopen Choop to load it.",
                         Toast.LENGTH_LONG,
                     ).show()
                 }
@@ -459,7 +459,7 @@ fun DataSourcesScreen(vm: AppViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                 ) { startHealthConnect() }
 
-                // Auto-sync: pull new Health Connect data when you open NOOP, if it's been longer than
+                // Auto-sync: pull new Health Connect data when you open Choop, if it's been longer than
                 // the chosen interval — no manual taps. On-open only (no background worker): it avoids a
                 // sensitive background-health permission and is reliable, and opening the app is enough.
                 Row(
@@ -471,7 +471,7 @@ fun DataSourcesScreen(vm: AppViewModel) {
                         Text("Auto-sync periodically", style = NoopType.subhead, color = Palette.textPrimary)
                         Text(
                             "Re-pull new Health Connect data (e.g. Samsung Health → Health Connect) each " +
-                                "time you open NOOP, if it's been longer than the interval below. " +
+                                "time you open Choop, if it's been longer than the interval below. " +
                                 "Read-only; never overwrites strap data.",
                             style = NoopType.footnote,
                             color = Palette.textTertiary,
@@ -527,9 +527,9 @@ fun DataSourcesScreen(vm: AppViewModel) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Share back to Health Connect", style = NoopType.subhead, color = Palette.textPrimary)
                         Text(
-                            "Write the metrics NOOP computes from your strap (resting HR, HRV, SpO₂, " +
+                            "Write the metrics Choop computes from your strap (resting HR, HRV, SpO₂, " +
                                 "respiratory rate, heart rate, steps, active energy and sleep) into " +
-                                "Health Connect so other apps can use them. Only NOOP's own values are " +
+                                "Health Connect so other apps can use them. Only Choop's own values are " +
                                 "shared. Imported data is never echoed back.",
                             style = NoopType.footnote,
                             color = Palette.textTertiary,
@@ -709,7 +709,7 @@ fun DataSourcesScreen(vm: AppViewModel) {
         }
         }
 
-        // --- Broadcast heart rate (NOOP as a standard BLE HR peripheral) ---
+        // --- Broadcast heart rate (Choop as a standard BLE HR peripheral) ---
         item {
         SourceCard(
             title = "Broadcast heart rate",
@@ -750,7 +750,7 @@ fun DataSourcesScreen(vm: AppViewModel) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Broadcast heart rate", style = NoopType.subhead, color = Palette.textPrimary)
                     Text(
-                        "Acts as a standard Bluetooth heart-rate strap. Pair NOOP from your treadmill, " +
+                        "Acts as a standard Bluetooth heart-rate strap. Pair Choop from your treadmill, " +
                             "bike or app to see your strap's heart rate there.",
                         style = NoopType.footnote,
                         color = Palette.textTertiary,
@@ -851,7 +851,7 @@ fun DataSourcesScreen(vm: AppViewModel) {
             }
             if (restartNeeded) {
                 Text(
-                    "Import staged. Fully close and reopen NOOP to load the new data.",
+                    "Import staged. Fully close and reopen Choop to load the new data.",
                     style = NoopType.subhead,
                     color = Palette.statusWarning,
                 )

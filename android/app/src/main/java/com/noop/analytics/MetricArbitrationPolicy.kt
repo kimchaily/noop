@@ -12,7 +12,7 @@ package com.noop.analytics
  * Trust tiers (lower = more trusted), grounded in what a device MEASURES vs ESTIMATES (spec §1):
  *   0 — Direct dedicated sensor for this metric (WHOOP R-R for HRV; a wrist band's pedometer for
  *       steps; chest/PPG strap for avg/max/resting HR; ring/strap temp for skin temp).
- *   1 — Derived on-device from raw by NOOP (computed recovery/strain/sleep from strap streams).
+ *   1 — Derived on-device from raw by Choop (computed recovery/strain/sleep from strap streams).
  *   2 — Phone aggregate (Apple Health / Health Connect) of a declared-compatible quantity.
  *   3 — Estimate / proxy (a strap's STEP estimate; a calories estimate).
  *
@@ -96,13 +96,13 @@ object MetricArbitrationPolicy {
                 FusionSource.APPLE_HEALTH -> 0   // phone pedometer — counts directly
                 FusionSource.HEALTH_CONNECT -> 0
                 FusionSource.WHOOP_IMPORT -> 3   // strap step estimate is a last resort
-                FusionSource.NOOP_COMPUTED -> 3  // NOOP step estimate from motion
+                FusionSource.NOOP_COMPUTED -> 3  // Choop step estimate from motion
                 FusionSource.NUTRITION_CSV -> 3
                 FusionSource.LOCAL_CACHE -> 3
             }
 
         MetricKind.SLEEP ->
-            // The best STAGER wins: imported WHOOP stages > NOOP-computed stages > phone sleep buckets.
+            // The best STAGER wins: imported WHOOP stages > Choop-computed stages > phone sleep buckets.
             when (source) {
                 FusionSource.WHOOP_IMPORT -> 0
                 FusionSource.NOOP_COMPUTED -> 1
@@ -140,7 +140,7 @@ object MetricArbitrationPolicy {
 
     /**
      * Stable tiebreak WITHIN a tier (lower wins). Mirrors the existing precedence baked into
-     * sourceCandidates: imported WHOOP first, then NOOP-computed, then phone (Apple before Health
+     * sourceCandidates: imported WHOOP first, then Choop-computed, then phone (Apple before Health
      * Connect, matching the #443 ordering), then a dedicated band, then single-source, then cache.
      * Used only when two sources land on the SAME tier, so the resolver stays deterministic.
      */

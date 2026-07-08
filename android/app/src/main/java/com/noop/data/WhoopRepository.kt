@@ -339,7 +339,7 @@ class WhoopRepository(private val dao: WhoopDao) {
     ): Int {
         val maxTs = nowSec + futureMargin
         // The far-past floor day (local day of MIN_PLAUSIBLE_UNIX). A computed (`-noop`) row before this
-        // can't legitimately predate NOOP, so it is bad-clock garbage and is purged; the prune queries
+        // can't legitimately predate Choop, so it is bad-clock garbage and is purged; the prune queries
         // apply this floor ONLY to `-noop` rows so a WHOOP CSV import (bare "my-whoop", REAL dates going
         // back years) is never touched (v8.2.1). A day after `today` is future-dated and always purged.
         val minDay = java.time.Instant.ofEpochSecond(minTs)
@@ -1057,7 +1057,7 @@ class WhoopRepository(private val dao: WhoopDao) {
     //
     // Product surfaces (Compare/Insights/Stress/Explore/Today) historically read rows under the EXACT
     // requested source, hiding freshly-computed and Apple-compatible data sat under another device id.
-    // [resolvedSeries] resolves a metric over an explicit precedence , imported WHOOP wins, NOOP-computed
+    // [resolvedSeries] resolves a metric over an explicit precedence , imported WHOOP wins, Choop-computed
     // fills the days it doesn't cover, and Apple Health only fills declared-compatible vitals on days
     // neither strap source has. Port of macOS Repository.resolvedSeries / sourceCandidates.
 
@@ -1103,7 +1103,7 @@ class WhoopRepository(private val dao: WhoopDao) {
     /**
      * Product-facing daily series for [key] across every COMPATIBLE source, freshest-wins. Use this
      * on surfaces where the user expects the best available signal; use [metricSeries] where one source
-     * must be honoured verbatim. Precedence per [sourceCandidates]: imported WHOOP > NOOP-computed >
+     * must be honoured verbatim. Precedence per [sourceCandidates]: imported WHOOP > Choop-computed >
      * declared-compatible Apple Health. [from]/[to] are YYYY-MM-DD bounds.
      *
      * [strapDeviceId] is the registry's ACTIVE strap id (SPINE / #814) , callers should thread it
@@ -1369,7 +1369,7 @@ class WhoopRepository(private val dao: WhoopDao) {
             else -> null
         }
 
-        /** Whether the NOOP-computed strap source may fill an Apple-preferred metric. Only the two
+        /** Whether the Choop-computed strap source may fill an Apple-preferred metric. Only the two
          *  daily totals the strap genuinely estimates (steps, calories) , never a derived score. */
         private fun noopComputedCanFillAppleMetric(key: String): Boolean = when (key) {
             "steps", "active_kcal" -> true

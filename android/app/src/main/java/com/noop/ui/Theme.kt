@@ -475,7 +475,7 @@ object NoopType {
 // MARK: - Material3 bridge
 
 /** Build the Material3 colour scheme from a token set. Dark/light differ only in the builder used
- *  (which sets sensible defaults for the slots we don't override); the NOOP surfaces are all driven
+ *  (which sets sensible defaults for the slots we don't override); the Choop surfaces are all driven
  *  by `Palette.*` directly, so this only feeds Material components (text fields, switches, etc.). */
 private fun noopColorScheme(t: PaletteTokens, dark: Boolean): ColorScheme {
     val base = if (dark) darkColorScheme() else lightColorScheme()

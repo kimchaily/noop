@@ -125,7 +125,7 @@ object OuraDecoders {
      * a short body. (The reverse read is the footgun: we walk index 11 down to 7.)
      *
      * SCOPE NOTE (honest, not accidental): the 0x6E record also carries a 7-amplitude PPG channel
-     * (s6.3: "7 amplitudes: first byte<<3, rest byte<<shift"). NOOP v1 deliberately decodes the R-R
+     * (s6.3: "7 amplitudes: first byte<<3, rest byte<<shift"). Choop v1 deliberately decodes the R-R
      * (IBI) channel ONLY and drops the amplitude channel, exactly as the 0x47 motion decoder is held
      * out of v1 scope. This partial decode is an explicit scope choice, not a missed field.
      */
@@ -150,7 +150,7 @@ object OuraDecoders {
     /**
      * Decode the 0x5D hrv_event: samples each carrying a time_ms field + two int8 fields (b1, b2).
      * Per OURA_PROTOCOL.md s6.9 the per-sample stride is time(2 LE) + b1(1) + b2(1) = 4 bytes.
-     * Returns null on a short body. NOOP consumes this as the ring's OWN RMSSD-derived HRV tag.
+     * Returns null on a short body. Choop consumes this as the ring's OWN RMSSD-derived HRV tag.
      */
     fun decodeHRV(rec: OuraRecord): List<OuraHRV>? {
         val b = rec.payload
@@ -292,7 +292,7 @@ object OuraDecoders {
      * voltage estimate as uint16 LE at body[4..6] (fallback only). charging_progress at body[1],
      * recommended_flag at body[2]. Per OURA_PROTOCOL.md s6.10. Returns null on a short body.
      *
-     * CONFLICT (s6.10): open_oura-r3 reads percent at body[0], open_ring reads voltage at [4]. NOOP
+     * CONFLICT (s6.10): open_oura-r3 reads percent at body[0], open_ring reads voltage at [4]. Choop
      * rule: percent from body[0]; voltage from [4..6] is a fixture-validated fallback estimate only.
      */
     fun decodeBattery(body: IntArray): OuraBattery? {

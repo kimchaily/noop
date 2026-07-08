@@ -28,10 +28,12 @@ android {
         minSdk = 26
         targetSdk = 34
         // Fork versioning continues the upstream line (NOOP ended at 8.2.2 / build 261) so the
-        // in-app updater's numeric compare keeps working and the lineage stays legible. First Choop
-        // release is 8.2.3 / 262. Keep versionName numeric-only — UpdateCheck.isNewer parses digits.
-        versionCode = 262
-        versionName = "8.2.3"
+        // in-app updater's numeric compare keeps working and the lineage stays legible. Keep
+        // versionName numeric-only — UpdateCheck.isNewer parses digits.
+        //   8.2.3 / 262 — first Choop release (rebrand + own key).
+        //   8.2.4 / 263 — in-app "NOOP" wordmarks/copy → "Choop"; versioned APK filename.
+        versionCode = 263
+        versionName = "8.2.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

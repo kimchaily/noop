@@ -1,15 +1,15 @@
 package com.noop.ingest
 
 /**
- * Pure (Android-free, HC-SDK-free) planning logic for what NOOP exports INTO Health Connect.
+ * Pure (Android-free, HC-SDK-free) planning logic for what Choop exports INTO Health Connect.
  *
  * Everything here operates on plain Kotlin types so it is unit-testable on the JVM, mirroring
  * [HealthConnectImporter.sumActiveKcalInWindow]. [HealthConnectWriter] turns these descriptors into
  * actual Health Connect records (the untestable SDK glue is kept thin, as in `buildExerciseRecords`).
  *
  * #528 (reimplemented from @sunny-noop): close the export gaps so a strap-only user surfaces the
- * metrics NOOP genuinely computed — daily steps, active energy, heart-rate series, sleep sessions —
- * into Health Connect for other apps. Honest: only days/samples NOOP actually has are emitted; a
+ * metrics Choop genuinely computed — daily steps, active energy, heart-rate series, sleep sessions —
+ * into Health Connect for other apps. Honest: only days/samples Choop actually has are emitted; a
  * day with no steps and no active kcal produces nothing (never a fabricated zero).
  */
 object HealthExportPlan {
@@ -133,7 +133,7 @@ object HealthExportPlan {
      *
      *  The asleep test mirrors [HealthConnectImporter] / `WhoopRepository.sleepEfficiency`, which
      *  treat any stage that is not `wake`/`awake` as asleep — so the exported AWAKE/SLEEPING split
-     *  matches what the rest of NOOP already considers asleep. */
+     *  matches what the rest of Choop already considers asleep. */
     private fun parseStages(json: String?): List<StagePlan> {
         json ?: return emptyList()
         val arr = runCatching { org.json.JSONArray(json) }.getOrNull() ?: return emptyList()

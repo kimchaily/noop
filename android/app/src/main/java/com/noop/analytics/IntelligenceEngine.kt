@@ -27,8 +27,8 @@ import kotlinx.coroutines.withContext
  *     import always wins; this only fills the days the strap collected but no import
  *     covered.
  *
- * This is what makes NOOP independent of WHOOP's cloud , for any day the strap
- * collected raw data with NOOP connected, NOOP scores it itself rather than relying on
+ * This is what makes Choop independent of WHOOP's cloud , for any day the strap
+ * collected raw data with Choop connected, Choop scores it itself rather than relying on
  * the values WHOOP computed in the imported CSV.
  *
  * Stateless object (no ObservableObject equivalent here): the Compose layer observes
@@ -92,7 +92,7 @@ object IntelligenceEngine {
 
     private const val SECONDS_PER_DAY: Long = 86_400L
 
-    /** Imported wearable-export source ids whose DAILY aggregates can be scored for a NOOP Charge/Rest on
+    /** Imported wearable-export source ids whose DAILY aggregates can be scored for a Choop Charge/Rest on
      *  an import-only day (#823). Matches WearableExportImporter.Brand.deviceId. Mirrors the Swift
      *  Repository.wearableImportSources. */
     private val WEARABLE_IMPORT_SOURCES = listOf("oura-import", "fitbit-import", "garmin-import")
@@ -232,7 +232,7 @@ object IntelligenceEngine {
 
     /**
      * One-shot, on-upgrade FULL-history Effort rescore (#313 PART B). The Effort hero gauge + numbers
-     * moved from the old 0–21 axis to NOOP's own 0–100 axis. On-device computed rows since v2.6.0 already
+     * moved from the old 0–21 axis to Choop's own 0–100 axis. On-device computed rows since v2.6.0 already
      * store 0–100, but rows the engine computed on an OLDER build (capped at [maxDays] per run, so deep
      * history was never revisited) may still hold 0–21 strain.
      *
@@ -547,12 +547,12 @@ object IntelligenceEngine {
             nightlySkinByDay[day] = res.nightlySkinTempC
             nightlyRespByDay[day] = res.daily.respRateBpm
             // ── RHR floor-vs-mean diagnostic (#691) ────────────────────────────────────────────────
-            // Make the recurring "NOOP's resting HR reads LOWER than my sleeping-HR app" reports
+            // Make the recurring "Choop's resting HR reads LOWER than my sleeping-HR app" reports
             // explainable from the strap log instead of a guess. The two numbers measure different
-            // things BY DESIGN, not a bug: NOOP's restingHr is the WHOOP-style FLOOR (the lowest
+            // things BY DESIGN, not a bug: Choop's restingHr is the WHOOP-style FLOOR (the lowest
             // sustained 5-min in-bed level , SleepStager picks the min 5-min rolling-mean HR per session,
             // and the day takes the min across them), whereas a "sleeping HR" app reports the night MEAN
-            // over the whole asleep span. The mean always sits above the floor, so NOOP looking lower is
+            // over the whole asleep span. The mean always sits above the floor, so Choop looking lower is
             // correct. Log BOTH so a report ships proof of the gap. Mean is computed over the SAME matched
             // in-bed span the floor came from (so they're directly comparable); a night with no banked
             // floor (no matched sleep) logs nil and the line is skipped. Logging only , no scoring change.
@@ -835,7 +835,7 @@ object IntelligenceEngine {
         // from the daily aggregate vs the person's own baseline with the [watchRecoveries] engine (which
         // reuses RecoveryScorer.recovery verbatim), then write the score under the COMPUTED ("-noop") source
         // so it merges onto Today exactly like a live day. The imported daily row keeps its raw values
-        // untouched; the computed row carries the NOOP-derived Charge + the Rest composite. HONEST DATA: the
+        // untouched; the computed row carries the Choop-derived Charge + the Rest composite. HONEST DATA: the
         // engine returns null + calibrating until the HRV baseline is usable, so an import-only day stays
         // calibrating rather than faking a number. Strap/WHOOP-import days keep winning , we skip any day
         // already scored this pass. Health Connect writes its DailyMetric rows under the strap source
@@ -1525,11 +1525,11 @@ object IntelligenceEngine {
     }
 
     /**
-     * The per-day RHR floor-vs-mean diagnostic line (#691). NOOP's [floor] is the WHOOP-style resting
+     * The per-day RHR floor-vs-mean diagnostic line (#691). Choop's [floor] is the WHOOP-style resting
      * HR , the lowest SUSTAINED 5-min in-bed level (SleepStager picks the min 5-min rolling-mean HR per
      * session, the day takes the min across them) , whereas a "sleeping HR" app reports the night MEAN
-     * over the whole asleep span. The mean always sits at-or-above the floor, so NOOP reading lower is
-     * BY DESIGN, not a bug; logging both makes a "NOOP RHR is lower than my other app" report explainable
+     * over the whole asleep span. The mean always sits at-or-above the floor, so Choop reading lower is
+     * BY DESIGN, not a bug; logging both makes a "Choop RHR is lower than my other app" report explainable
      * from the strap log. [inBedBpms] is the bpm of every HR sample inside a matched in-bed session (the
      * SAME span the floor came from, so the two numbers are directly comparable). Empty in-bed → nightMean
      * is "nil". Counts/bpm only , no timestamps or PII. Pure so it's unit-tested directly and is the SAME
@@ -1539,6 +1539,6 @@ object IntelligenceEngine {
         val meanLog = if (inBedBpms.isEmpty()) "nil"
             else Math.round(inBedBpms.sum().toDouble() / inBedBpms.size).toString()
         return "rhr day=$day floor=$floor nightMean=$meanLog inBedSamples=${inBedBpms.size} " +
-            "(floor = WHOOP-style lowest-sustained = NOOP RHR; mean = sleeping-HR-app number)"
+            "(floor = WHOOP-style lowest-sustained = Choop RHR; mean = sleeping-HR-app number)"
     }
 }

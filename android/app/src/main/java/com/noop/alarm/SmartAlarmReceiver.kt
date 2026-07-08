@@ -19,7 +19,7 @@ import com.noop.ui.appLaunchIntent
  *
  * Raises a FULL-SCREEN, high-priority, alarm-category notification with the device alarm sound and a
  * vibration pattern — the standard way a sideloaded app delivers a dependable wake without owning a
- * foreground Activity. The full-screen intent re-opens NOOP; on a locked screen the system promotes
+ * foreground Activity. The full-screen intent re-opens Choop; on a locked screen the system promotes
  * the notification to a heads-up / full-screen alarm. This path is reached whether the alarm fired at
  * the smart (light-sleep) time or the hard deadline, so the user is woken either way.
  *
@@ -89,7 +89,7 @@ class SmartAlarmReceiver : BroadcastReceiver() {
                 "Smart alarm",
                 NotificationManager.IMPORTANCE_HIGH,
             ).apply {
-                description = "The phone wake alarm NOOP fires inside your chosen wake window."
+                description = "The phone wake alarm Choop fires inside your chosen wake window."
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 600, 400, 600, 400, 600)
                 setBypassDnd(true)   // a wake alarm should sound through Do Not Disturb

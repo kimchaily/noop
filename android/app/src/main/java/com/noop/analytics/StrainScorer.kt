@@ -7,7 +7,7 @@ import kotlin.math.ln
 import kotlin.math.roundToLong
 
 /*
- * StrainScorer.kt — cardiovascular load (NOOP "Effort") on a 0–100 logarithmic scale.
+ * StrainScorer.kt — cardiovascular load (Choop "Effort") on a 0–100 logarithmic scale.
  *
  * Faithful Kotlin port of StrandAnalytics/StrainScorer.swift (verified on macOS),
  * itself ported from server/ingest/app/analysis/strain.py. INDEPENDENT implementation

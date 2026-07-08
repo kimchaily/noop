@@ -58,18 +58,18 @@ In **GitHub → repo → Settings → Secrets and variables → Actions**, add:
 | `ANDROID_KEY_ALIAS` | `choop` |
 | `ANDROID_KEY_PASSWORD` | your keystore password (same, unless you set a separate key password) |
 
-With these set, the **Android Release APK** workflow signs `NOOP-full.apk` with *your* key. Without
+With these set, the **Android Release APK** workflow signs `Choop-v<version>.apk` with *your* key. Without
 them it falls back to the shared debug key — fine for a throwaway test, but **not** what you install
 and keep, or you'd have to uninstall/reinstall again when you later switch to the real key.
 
 ### 4. Build the release APK with your key
 GitHub → **Actions → "Android Release APK" → Run workflow**. When it's green, download the
-`noop-android-apk` artifact and unzip it to get `NOOP-full.apk` (the Choop `full` release).
+`noop-android-apk` artifact and unzip it to get `Choop-v<version>.apk` (the Choop `full` release).
 *(Or push a version tag like `v8.2.3` and the pipeline attaches the APK straight to that Release.)*
 
 ### 5. Switch phones over
 - **Uninstall** the old NOOP app (your data is already exported in step 1).
-- **Install** `NOOP-full.apk` — you'll appear as **Choop** on the home screen, installing alongside
+- **Install** `Choop-v<version>.apk` — you'll appear as **Choop** on the home screen, installing alongside
   nothing else (new applicationId, so even the old app's leftovers don't collide). Enable "install
   from unknown sources" for your file manager if prompted.
 - From now on, dropping a newer Choop APK on top updates **in place** — data intact, no uninstall.
@@ -136,11 +136,11 @@ Three facts about how NOOP/WHOOP handle history decide whether you lose anything
 1. Make your changes; bump `versionCode` **and** `versionName` in `android/app/build.gradle.kts`.
 2. **Push a version tag** (e.g. `git tag v8.2.3 && git push origin v8.2.3`). The **Android Release
    APK** workflow builds the APK, creates the GitHub **Release** for that tag, and attaches
-   `NOOP-full.apk` to it. (Or run the workflow manually and grab the artifact — but a tagged Release
+   `Choop-v<version>.apk` to it. (Or run the workflow manually and grab the artifact — but a tagged Release
    is what powers in-app update discovery.)
 3. In the app, **Settings → About → "Check for updates"** reads this repo's *latest* Release
    (`api.github.com/repos/kimchaily/noop/releases/latest`), and if it's newer than the installed
-   `versionName` it links you to the Release page to download the new `NOOP-full.apk`. Install it
+   `versionName` it links you to the Release page to download the new `Choop-v<version>.apk`. Install it
    over Choop — in-place, data preserved. (The check is manual-only; nothing is sent, nothing
    auto-updates.)
 

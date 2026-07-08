@@ -41,7 +41,7 @@ import com.noop.ble.PuffinExperiment
 /**
  * Smart alarm (#207) — Android phone-based wake, with a guaranteed hard-deadline fallback.
  *
- * The user picks the EARLIEST acceptable wake time and a window length. NOOP watches the overnight
+ * The user picks the EARLIEST acceptable wake time and a window length. Choop watches the overnight
  * strap stream and, if it spots a lighter sleep phase inside the window, wakes you then — but a
  * GUARANTEED exact OS alarm is always scheduled at the window's END (via AlarmManager), independent
  * of Bluetooth, the strap, or the app being alive. The smart logic can only ever move the alarm
@@ -106,7 +106,7 @@ fun SmartAlarmScreen(vm: AppViewModel) {
             if (enabled && !canSchedule) {
                 RowDividerLocal()
                 Text(
-                    "NOOP doesn't have permission to set exact alarms, so your wake isn't guaranteed. " +
+                    "Choop doesn't have permission to set exact alarms, so your wake isn't guaranteed. " +
                         "Tap to allow it in system settings.",
                     style = NoopType.footnote,
                     color = Palette.statusWarning,
@@ -124,7 +124,7 @@ fun SmartAlarmScreen(vm: AppViewModel) {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text("Wake me no earlier than", style = NoopType.body, color = Palette.textPrimary)
-                        Text("The earliest NOOP will wake you.", style = NoopType.footnote, color = Palette.textTertiary)
+                        Text("The earliest Choop will wake you.", style = NoopType.footnote, color = Palette.textTertiary)
                     }
                     Spacer(Modifier.width(16.dp))
                     TimeChip(
@@ -185,7 +185,7 @@ fun SmartAlarmScreen(vm: AppViewModel) {
 
 /**
  * The strap's standalone silent wake-alarm (#766, moved from AutomationsScreen). Arms the strap's own
- * firmware alarm at the chosen time/weekdays over BLE, so it buzzes even if NOOP is closed. Reuses the
+ * firmware alarm at the chosen time/weekdays over BLE, so it buzzes even if Choop is closed. Reuses the
  * shared [AlarmWeekdayPicker] / [AlarmDayOverridePicker] from AutomationsScreen (same behaviour, just a
  * new home). Functions are untouched: it drives the same `viewModel.setSmartAlarm*` calls as before.
  */
@@ -216,7 +216,7 @@ private fun StrapAlarmCard(vm: AppViewModel) {
             // 4.0 path experimental. The 5/MG Experimental-gate branch below is deliberately untouched.
             ToggleRowLocal(
                 label = "Wake me with a strap buzz",
-                help = "Arms the strap to buzz at your wake time, even if NOOP is closed. Sends the exact alarm command the official app sends, confirmed buzzing on a real WHOOP 4.0 (community wire capture + on-device test, #535). Keep a backup alarm for anything you truly can't miss.",
+                help = "Arms the strap to buzz at your wake time, even if Choop is closed. Sends the exact alarm command the official app sends, confirmed buzzing on a real WHOOP 4.0 (community wire capture + on-device test, #535). Keep a backup alarm for anything you truly can't miss.",
                 checked = smartAlarm,
                 onChange = { vm.setSmartAlarmEnabled(it) },
             )
@@ -267,7 +267,7 @@ private fun StrapAlarmCard(vm: AppViewModel) {
                         if (live.bonded)
                             // Truth-sync (#535): confirmed buzzing on a real WHOOP 4.0; byte-identical
                             // wording to the Swift SmartAlarmView.
-                            "Armed on the strap itself, so it can buzz at your wake time even if your phone is asleep or NOOP is closed. Sends the exact alarm command the official app sends, confirmed buzzing on a real WHOOP 4.0 (community wire capture + on-device test, #535). Keep a backup alarm for anything you truly can't miss."
+                            "Armed on the strap itself, so it can buzz at your wake time even if your phone is asleep or Choop is closed. Sends the exact alarm command the official app sends, confirmed buzzing on a real WHOOP 4.0 (community wire capture + on-device test, #535). Keep a backup alarm for anything you truly can't miss."
                         else
                             "Connect your strap to arm this; it's set on the strap's own firmware alarm. Confirmed working on WHOOP 4.0; still experimental on 5.0 and MG. Keep a backup alarm for anything you truly can't miss.",
                         style = NoopType.footnote, color = Palette.textTertiary,
@@ -306,7 +306,7 @@ private fun WindowCard(enabled: Boolean, targetMinutes: Int, windowMinutes: Int)
                         Text(hhmm(deadline), style = NoopType.number(28f), color = DomainTheme.Rest.bright)
                     }
                     Text(
-                        "A backup alarm is set for ${hhmm(deadline)}. It fires even if Bluetooth drops, the strap isn't worn, or NOOP is closed.",
+                        "A backup alarm is set for ${hhmm(deadline)}. It fires even if Bluetooth drops, the strap isn't worn, or Choop is closed.",
                         style = NoopType.footnote, color = Palette.textSecondary,
                     )
                 } else {
@@ -369,9 +369,9 @@ private fun ExplanationCard() {
                 Text("How the smart wake works", style = NoopType.headline, color = Palette.textPrimary)
             }
             Text(
-                "While you're inside the window, NOOP watches your live heart rate from the strap. Deep " +
+                "While you're inside the window, Choop watches your live heart rate from the strap. Deep " +
                     "sleep sits near your nightly low and stays steady; when your heart rate lifts above " +
-                    "that (a sign you're sleeping more lightly or starting to stir), NOOP wakes you a " +
+                    "that (a sign you're sleeping more lightly or starting to stir), Choop wakes you a " +
                     "little early so you come up from a lighter phase.",
                 style = NoopType.footnote, color = Palette.textSecondary,
             )

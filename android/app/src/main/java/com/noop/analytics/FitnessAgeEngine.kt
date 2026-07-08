@@ -10,7 +10,7 @@ package com.noop.analytics
 //     corroborated by CERG/NTNU). SEE ≈ 5.70 (men) / 5.14 (women). The circulating BMI-variant
 //     coefficients could NOT be reliably confirmed against the original and are deliberately not used.
 //   • Physical-activity index: HUNT1 PA-Q (Kurtze 2008), frequency×intensity×duration ∈ [0, 15];
-//     reconstructed from NOOP's measured weekly signals.
+//     reconstructed from Choop's measured weekly signals.
 //   • Fitness Age: invert the SAME Nes equation self-consistently — normative curve at population-
 //     reference RHR and PA-index. The waist term cancels, so the headline number needs only
 //     age/sex/RHR/PA, and an average-fitness person maps to their own age by construction.
@@ -86,7 +86,7 @@ object FitnessAgeEngine {
         return frequency * intensity * duration
     }
 
-    /** PA-index (0–15) from NOOP's measured weekly load — the UNIVERSAL path the orchestrator uses
+    /** PA-index (0–15) from Choop's measured weekly load — the UNIVERSAL path the orchestrator uses
      *  (strain is computed from HR on any device; zone minutes only exist for CSV-importers). `strain`
      *  already integrates intensity × duration, so map mean active-day strain to the HUNT
      *  intensity×duration product (0–3) and multiply by the frequency factor (no double-counting).

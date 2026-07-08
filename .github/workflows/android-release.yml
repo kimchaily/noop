@@ -1,5 +1,5 @@
 # Builds the shippable Android **release** APK from source and hands it back as a
-# downloadable artifact — this is how you obtain an installable NOOP APK from CI.
+# downloadable artifact — this is how you obtain an installable Choop APK from CI.
 #
 # It is deliberately anonymity-safe and needs NOTHING from the repository owner to run:
 #   • No secrets required. If no signing keystore is configured, the release build falls
@@ -7,7 +7,7 @@
 #     still produces an installable APK. A debug-key APK installs fine for personal/sideload use;
 #     it is simply not the maintainer's official signature.
 #   • A REAL signing key is used only if the maintainer adds the optional secrets below, so the
-#     published `NOOP-full.apk` can be reproduced with the maintainer's identity when wanted:
+#     published `Choop-v*.apk` can be reproduced with the maintainer's identity when wanted:
 #       ANDROID_KEYSTORE_BASE64   – base64 of the .jks keystore
 #       ANDROID_KEYSTORE_PASSWORD – store password
 #       ANDROID_KEY_ALIAS         – key alias
@@ -16,14 +16,14 @@
 # Triggers:
 #   • workflow_dispatch – build on demand (optionally also the sample-data demo flavour, and
 #     optionally create a Release at a given tag via the release_tag input).
-#   • push of a version tag (v* / android-v*) – build and attach NOOP-full.apk to that Release.
+#   • push of a version tag (v* / android-v*) – build and attach the versioned Choop APK to that Release.
 name: Android Release APK
 
 on:
   workflow_dispatch:
     inputs:
       build_demo:
-        description: 'Also build the sample-data demo flavour (NOOP-demo.apk)'
+        description: 'Also build the sample-data demo flavour (Choop demo APK)'
         type: boolean
         default: false
       release_tag:
@@ -93,14 +93,19 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_demo }}
         run: ./gradlew assembleDemoRelease
 
-      # Collect the outputs under a stable, published-asset name (NOOP-full.apk).
+      # Collect the outputs under a versioned, published-asset name (Choop-v<versionName>.apk),
+      # matching the upstream "NOOP-vX.Y.Z.apk" convention. The exact name is exported as APK_NAME
+      # for the later cert-print and Release-upload steps.
       - name: Stage APKs
         run: |
+          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          APK="Choop-v${VERSION}.apk"
           mkdir -p ../dist
-          cp app/build/outputs/apk/full/release/app-full-release.apk ../dist/NOOP-full.apk
+          cp app/build/outputs/apk/full/release/app-full-release.apk "../dist/$APK"
           if [ -f app/build/outputs/apk/demo/release/app-demo-release.apk ]; then
-            cp app/build/outputs/apk/demo/release/app-demo-release.apk ../dist/NOOP-demo.apk
+            cp app/build/outputs/apk/demo/release/app-demo-release.apk "../dist/Choop-v${VERSION}-demo.apk"
           fi
+          echo "APK_NAME=$APK" >> "$GITHUB_ENV"
           ls -l ../dist
 
       # Print the APK's signing certificate so you can confirm which key signed it. Compare the
@@ -114,7 +119,7 @@ jobs:
           echo "Keystore secret present (HAS_KEYSTORE): $HAS_KEYSTORE"
           APKSIGNER=$(find "${ANDROID_SDK_ROOT:-$ANDROID_HOME}" -name apksigner -type f 2>/dev/null | sort -V | tail -1)
           if [ -n "$APKSIGNER" ]; then
-            "$APKSIGNER" verify --print-certs ../dist/NOOP-full.apk | grep -i "SHA-256\|Signer"
+            "$APKSIGNER" verify --print-certs "../dist/$APK_NAME" | grep -i "SHA-256\|Signer"
           else
             echo "apksigner not found; skipping certificate print"
           fi
@@ -142,6 +147,6 @@ jobs:
           echo "Publishing release $TAG at $SHA"
           if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
             gh release create "$TAG" --repo "$REPO" --target "$SHA" --title "$TAG" \
-              --notes "Automated Choop release build. Install NOOP-full.apk (updates in place over an existing Choop install signed with the same key)."
+              --notes "Automated Choop release build. Install $APK_NAME (updates in place over an existing Choop install signed with the same key)."
           fi
-          gh release upload "$TAG" ../dist/NOOP-full.apk --clobber --repo "$REPO"
+          gh release upload "$TAG" "../dist/$APK_NAME" --clobber --repo "$REPO"

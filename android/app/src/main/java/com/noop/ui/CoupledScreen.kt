@@ -55,7 +55,7 @@ import kotlin.math.roundToInt
 //
 // An optional, default-OFF day view that reads like the classic coupled home: one screen, three numbers,
 // Recovery % / Day Strain on 0-21 / Sleep, for users who came across from another band and want the old
-// glance back. NOOP's Today stays the default and is untouched.
+// glance back. Choop's Today stays the default and is untouched.
 //
 // DISPLAY-ONLY, like the #268 Effort-scale toggle. It reads the SAME values Today already computes (recovery
 // / Rest composite / Effort strain / readiness) and re-presents them in the coupled layout. The only new
@@ -127,7 +127,7 @@ fun CoupledScreen(
     val recovery = todayRow?.recovery ?: carriedRecoveryDay?.recovery
     val isCarrying = todayRow?.recovery == null && carriedRecoveryDay?.recovery != null
 
-    // Effort strain on NOOP's 0-100 axis (stored row), mapped to the 0-21 coupled axis via the shipped
+    // Effort strain on Choop's 0-100 axis (stored row), mapped to the 0-21 coupled axis via the shipped
     // formatter, so the number matches every other Effort read-out's conversion factor.
     val dayStrain21 = todayRow?.strain?.let { UnitFormatter.effortValue(it, EffortScale.WHOOP) }
 
@@ -195,7 +195,7 @@ fun CoupledScreen(
             // The brief quotes the footer with the brand word, but the hard legal / anonymity rule wins over
             // the illustrative copy: this keeps the exact intent without the branding word. Byte-identical to
             // the Swift footer caption.
-            "A classic one-glance read of NOOP's own scores. Same data, different lens.",
+            "A classic one-glance read of Choop's own scores. Same data, different lens.",
             style = NoopType.footnote,
             color = Palette.textTertiary,
             modifier = Modifier.padding(top = 4.dp),

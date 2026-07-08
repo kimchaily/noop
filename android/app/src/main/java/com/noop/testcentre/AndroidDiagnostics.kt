@@ -43,7 +43,7 @@ object AndroidDiagnostics {
     internal fun oemKillHeuristic(manufacturer: String): String {
         val m = manufacturer.lowercase()
         val aggressive = listOf("xiaomi", "oppo", "vivo", "huawei", "oneplus", "realme", "meizu")
-        return if (aggressive.any { m.contains(it) }) "aggressive vendor ($m), whitelist NOOP to keep it alive"
+        return if (aggressive.any { m.contains(it) }) "aggressive vendor ($m), whitelist Choop to keep it alive"
         else "standard"
     }
 

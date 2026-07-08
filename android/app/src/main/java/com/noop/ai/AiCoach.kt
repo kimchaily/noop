@@ -312,7 +312,7 @@ class AiCoach(private val repo: WhoopRepository) {
         val latestByMarker = runCatching { latestLabMarkers() }.getOrDefault(emptyList())
         if (latestByMarker.isNotEmpty()) {
             if (sb.isNotEmpty()) sb.append("\n")
-            sb.append("LAB BOOK (numbers the user entered themselves from their own reports; NOOP does not ")
+            sb.append("LAB BOOK (numbers the user entered themselves from their own reports; Choop does not ")
             sb.append("test or interpret them — never assert whether a value is normal/high/low):\n")
             for (row in latestByMarker) {
                 val name = MarkerCatalog.definition(row.markerKey)?.displayName

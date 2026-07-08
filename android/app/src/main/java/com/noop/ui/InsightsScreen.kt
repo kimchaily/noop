@@ -487,7 +487,7 @@ fun InsightsScreen(vm: AppViewModel, onOpenInsightsHub: () -> Unit = {}) {
             // No journal yet, explain, without dead-ending on a paid export.
             DataPendingNote(
                 title = "Insights read your journal and outcomes",
-                body = "Log behaviours above. After a few days of answers, NOOP ranks how each " +
+                body = "Log behaviours above. After a few days of answers, Choop ranks how each " +
                     "one moves your recovery, HRV and sleep. Importing a WHOOP export (which " +
                     "includes its journal) backfills history instantly.",
             )
@@ -623,7 +623,7 @@ private fun ActivityCostSection(costs: List<com.noop.analytics.ActivityCost>) {
         if (costs.isEmpty()) {
             NoopCard {
                 Text(
-                    "Tag a few sessions of the same activity and NOOP will learn its personal recovery cost.",
+                    "Tag a few sessions of the same activity and Choop will learn its personal recovery cost.",
                     style = NoopType.subhead,
                     color = Palette.textSecondary,
                 )
@@ -974,7 +974,7 @@ private fun ExperimentSetupCard(
                 Text("Run a clean personal test", style = NoopType.headline, color = Palette.textPrimary)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Pick one behaviour you log, one outcome, and a short window. NOOP " +
+                    "Pick one behaviour you log, one outcome, and a short window. Choop " +
                         "compares the days you log the behaviour against your behaviour-free " +
                         "days before the start.",
                     style = NoopType.subhead,

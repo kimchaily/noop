@@ -7,9 +7,9 @@ package com.noop.analytics
  *
  * Per the spec §"New" and §"Non-clinical / legal framing":
  *   - Ships NO reference-range tables. `referenceTextHint` is a neutral placeholder
- *     prompting the user to copy the range FROM THEIR OWN REPORT — NOOP never defines,
+ *     prompting the user to copy the range FROM THEIR OWN REPORT — Choop never defines,
  *     computes, or asserts a normal range.
- *   - `higherIsBetter` is intentionally null for every entry: NOOP makes no value
+ *   - `higherIsBetter` is intentionally null for every entry: Choop makes no value
  *     judgement about a marker's direction.
  *   - The catalog is NOT a gate: a user can always add a custom marker (free name +
  *     unit), so the store is never limited by this dictionary.
@@ -49,14 +49,14 @@ data class MarkerDefinition(
     /** Neutral placeholder prompting the user to copy the range from their own report.
      *  NOT a shipped reference range. null where a range makes no sense. */
     val referenceTextHint: String? = null,
-    /** Direction hint — ALWAYS null (NOOP makes no value judgement). */
+    /** Direction hint — ALWAYS null (Choop makes no value judgement). */
     val higherIsBetter: Boolean? = null,
 )
 
 /** The built-in, non-diagnostic marker dictionary. Extensible at runtime via [custom]. */
 object MarkerCatalog {
 
-    /** Neutral hint shown in the range field — the user copies their own report's range; NOOP ships none. */
+    /** Neutral hint shown in the range field — the user copies their own report's range; Choop ships none. */
     private const val FROM_REPORT = "From your own report (optional)"
 
     /** ~30 common markers across the categories. Order is the suggested picker order.

@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.noop.R
 import java.util.Calendar
 
-// MARK: - Scene Hero Background (NOOP day-cycle atmosphere behind the Today rings)
+// MARK: - Scene Hero Background (Choop day-cycle atmosphere behind the Today rings)
 //
 // Compose port of the iOS scene-hero treatment. A premium, NON-intrusive day-cycle illustration washed
 // behind the top hero cards: full-WIDTH, aspect-fill, TOP-aligned so the sky shows, faded out top-down so

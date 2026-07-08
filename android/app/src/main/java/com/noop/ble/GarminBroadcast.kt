@@ -5,7 +5,7 @@ package com.noop.ble
  *
  * Faithful Kotlin twin of Strand/BLE/GarminBroadcast.swift.
  *
- * HONEST, NON-PROPRIETARY BY DESIGN. Garmin watches do NOT expose a NOOP-readable proprietary live
+ * HONEST, NON-PROPRIETARY BY DESIGN. Garmin watches do NOT expose a Choop-readable proprietary live
  * stream. They DO broadcast the STANDARD Bluetooth Heart Rate profile (0x180D / 0x2A37) when the user
  * turns on "Broadcast Heart Rate" on the watch. So Garmin live HR is the EXISTING generic-HR path
  * ([StandardHrSource]) — there is nothing Garmin-proprietary to implement, and we don't pretend there is.
@@ -19,7 +19,7 @@ object GarminBroadcast {
     fun isGarmin(name: String): Boolean = ExperimentalBrand.recognise(name) == ExperimentalBrand.GARMIN
 
     /**
-     * Step-by-step guidance to put a Garmin watch into Broadcast Heart Rate mode so NOOP (and any other
+     * Step-by-step guidance to put a Garmin watch into Broadcast Heart Rate mode so Choop (and any other
      * standard-HR app) can read it. Human, US-neutral, no em-dashes. The exact menu path varies a little
      * by model, so we keep it general and accurate.
      */

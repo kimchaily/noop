@@ -28,7 +28,7 @@ import java.util.zip.ZipInputStream
  *              variant): sleep periods (durations/HRV/RHR/breath; a `deleted` type is skipped), daily
  *              readiness (RHR, temperature deviation, score), daily activity (steps/calories/distance),
  *              daily SpO2 (`spo2_percentage.average`), VO2max (`vo2_max`). Field names verified against a
- *              REAL Oura export schema (issue #862). The many health types NOOP doesn't model
+ *              REAL Oura export schema (issue #862). The many health types Choop doesn't model
  *              (bloodglucose, contraception, medication, ring config, raw sample streams, ...) are skipped
  *              gracefully, since an unknown category/column is ignored, never an error.
  *   • Fitbit — Google Takeout → Fitbit JSON: per-day sleep-*.json / resting_heart_rate-*.json /
@@ -36,9 +36,9 @@ import java.util.zip.ZipInputStream
  *   • Garmin — Garmin Connect "Export Your Data" (GDPR) ZIP wellness JSON: *_sleepData.json + daily
  *              RHR / steps / stress. (The FIT activity files in the same ZIP are wave-1's lane.)
  *
- * Maps onto NOOP's DAILY metrics + sleep sessions (NOT workouts). HONEST DATA: only fields the export
+ * Maps onto Choop's DAILY metrics + sleep sessions (NOT workouts). HONEST DATA: only fields the export
  * carries are written; a brand's OWN score (Oura "readiness", a sleep score) is stored under a
- * reference metricSeries key only — NEVER as NOOP's Charge/Effort/Rest. Every row is written under the
+ * reference metricSeries key only — NEVER as Choop's Charge/Effort/Rest. Every row is written under the
  * brand's source/deviceId ("oura-import" / "fitbit-import" / "garmin-import").
  *
  * SECURITY: every byte is UNTRUSTED. The read/extract is byte-capped (zip-bomb guard, parity with the
@@ -46,7 +46,7 @@ import java.util.zip.ZipInputStream
  * (org.json's optInt/optLong SATURATE a hostile 1e308, so we never store garbage); per-collection
  * counts are bounded. A malformed file yields a failure summary, never a crash.
  *
- * LICENSE: the file shapes are DOCUMENTED format facts. No GPL/AGPL code is copied — NOOP's own code.
+ * LICENSE: the file shapes are DOCUMENTED format facts. No GPL/AGPL code is copied — Choop's own code.
  */
 object WearableExportImporter {
 
@@ -671,7 +671,7 @@ object WearableExportImporter {
             add(d.day, "stress", d.avgStress?.toDouble())
             add(d.day, "sleep_total_min", d.totalSleepMin); add(d.day, "sleep_deep_min", d.deepMin)
             add(d.day, "sleep_light_min", d.lightMin); add(d.day, "sleep_rem_min", d.remMin)
-            // Reference-only: the brand's own scores, never a NOOP Charge/Effort/Rest input.
+            // Reference-only: the brand's own scores, never a Choop Charge/Effort/Rest input.
             add(d.day, "ref_readiness_score", d.readinessScore?.toDouble())
             add(d.day, "ref_sleep_score", d.sleepScore?.toDouble())
         }

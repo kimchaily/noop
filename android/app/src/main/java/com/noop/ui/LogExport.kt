@@ -127,7 +127,7 @@ object LogExport {
             val out = arrayListOf<File>()
 
             val header = buildString {
-                appendLine("NOOP strap log (scheduled debug export)")
+                appendLine("Choop strap log (scheduled debug export)")
                 appendLine("App:     ${BuildConfig.VERSION_NAME} (${BuildConfig.TIER})")
                 for (line in com.noop.testcentre.AndroidDiagnostics.summaryLines(context)) appendLine(line)
                 appendLine("─".repeat(40))
@@ -166,7 +166,7 @@ object LogExport {
         // background export has a current source even when the live BLE client is gone.
         mirrorToRollingBuffer(logText)
         val header = buildString {
-            appendLine("NOOP strap log")
+            appendLine("Choop strap log")
             appendLine("App:     ${BuildConfig.VERSION_NAME} (${BuildConfig.TIER})")
             for (line in com.noop.testcentre.AndroidDiagnostics.summaryLines(context)) appendLine(line)
             appendLine("─".repeat(40))
@@ -194,7 +194,7 @@ object LogExport {
         val prev = File(context.filesDir, "${com.noop.ble.WhoopBleClient.WHOOP5_CAPTURE_FILE}.1")
         if (!main.exists() && !prev.exists()) return null
         val header = buildString {
-            appendLine("# NOOP 5/MG raw backfill capture (JSONL; one frame per line)")
+            appendLine("# Choop 5/MG raw backfill capture (JSONL; one frame per line)")
             appendLine("# App: ${BuildConfig.VERSION_NAME} (${BuildConfig.TIER}) · Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT}) · ${Build.MANUFACTURER} ${Build.MODEL}")
             appendLine("# NOTE: contains raw biometric frames (heart rate, R-R, skin temp, motion) and the strap's console text. Share only if you're comfortable with that.")
         }
@@ -217,7 +217,7 @@ object LogExport {
             val send = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, fileUri(context, file))
-                putExtra(Intent.EXTRA_SUBJECT, "NOOP strap log")
+                putExtra(Intent.EXTRA_SUBJECT, "Choop strap log")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(Intent.createChooser(send, "Share strap log"))
@@ -259,7 +259,7 @@ object LogExport {
             val send = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, fileUri(context, out))
-                putExtra(Intent.EXTRA_SUBJECT, "NOOP 5/MG protocol capture")
+                putExtra(Intent.EXTRA_SUBJECT, "Choop 5/MG protocol capture")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             context.startActivity(Intent.createChooser(send, "Share 5/MG capture"))

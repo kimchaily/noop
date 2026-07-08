@@ -163,7 +163,7 @@ private fun MoversSection(
                 Text(
                     "Not enough overlap between your journal answers and " +
                         "${outcome.outcomeName.lowercase(Locale.US)} yet. Keep logging. Each behaviour " +
-                        "needs days both with and without it before NOOP can read its effect.",
+                        "needs days both with and without it before Choop can read its effect.",
                     style = NoopType.subhead,
                     color = Palette.textTertiary,
                 )
@@ -269,7 +269,7 @@ private fun DoseSection(cards: List<DoseCardData>) {
         if (cards.isEmpty()) {
             NoopCard {
                 Text(
-                    "Log alcohol or late caffeine with an amount and NOOP fits a personal dose curve: " +
+                    "Log alcohol or late caffeine with an amount and Choop fits a personal dose curve: " +
                         "how much each extra unit tends to move your numbers. Until then it shows " +
                         "typical patterns, clearly labelled as not yet yours.",
                     style = NoopType.subhead,

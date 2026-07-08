@@ -19,7 +19,7 @@ import kotlin.math.roundToInt
 //   1. A MORNING RECAP (Charge + Rest) once a fresh night has been processed.
 //   2. A POST-WORKOUT SUMMARY (Effort + duration + avg HR) when a newly synced workout is first seen.
 //
-// Neither is alarm-precise: NOOP reads the strap over BLE and scores on a ~15-minute analytics pass, so a
+// Neither is alarm-precise: Choop reads the strap over BLE and scores on a ~15-minute analytics pass, so a
 // report lands when the next sync + pass completes — NOT the instant you wake or finish a session. The copy
 // is honest about that timing ("after your strap synced"). Everything is on-device.
 //

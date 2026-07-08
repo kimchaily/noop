@@ -29,7 +29,7 @@ object DemoSeeder {
 
     private const val WHOOP = "my-whoop"
     private const val APPLE = "apple-health"
-    // The NOOP-COMPUTED strap source ("<strap>-noop") the IntelligenceEngine persists its derived weekly
+    // The Choop-COMPUTED strap source ("<strap>-noop") the IntelligenceEngine persists its derived weekly
     // scores under (fitness_age / vo2max_est / vitality / body_age). The Health screen reads these from this
     // source verbatim (HealthScreen.COMPUTED_SOURCE), and the Today "Your cards" + Trends resolve them off
     // it too — so the demo MUST seed them here, not under the imported "my-whoop" source, or those surfaces
@@ -253,7 +253,7 @@ object DemoSeeder {
             val date = startDay.plusDays(i.toLong())
             if (date.dayOfWeek.value != 6) continue // 6 = Saturday
             val day = date.toString()
-            // Seed under the NOOP-COMPUTED source (WHOOP_NOOP), exactly where the IntelligenceEngine writes
+            // Seed under the Choop-COMPUTED source (WHOOP_NOOP), exactly where the IntelligenceEngine writes
             // these derived weekly scores in the real app — so the Health screen (reads COMPUTED_SOURCE), the
             // Today "Your cards" Fitness age / Vitality cards and Trends all resolve them in the demo instead
             // of showing "No Data". Trends ~42 → ~34 (younger) for Fitness age; vitality climbs ~55 → ~80.

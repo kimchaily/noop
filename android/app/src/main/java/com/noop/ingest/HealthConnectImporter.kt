@@ -154,11 +154,11 @@ object HealthConnectImporter {
         // rest, instead of refusing the whole import when any single type is missing. Each per-type read
         // below is already independently fault-tolerant — a type whose read permission was revoked throws
         // and is caught/skipped in [readAll] (same path as #34) — so we only need to bail when NOTHING is
-        // granted. The user choosing exactly what NOOP can see is the intended behaviour.
+        // granted. The user choosing exactly what Choop can see is the intended behaviour.
         if (granted.none { it in PERMISSIONS }) {
             return ImportSummary.failure(
                 SOURCE,
-                "No Health Connect data types are granted. Allow at least one type for NOOP in Health Connect, then import.",
+                "No Health Connect data types are granted. Allow at least one type for Choop in Health Connect, then import.",
             )
         }
 
@@ -455,7 +455,7 @@ object HealthConnectImporter {
                 )
                 a.weightKg?.let { metricSeriesRows += MetricSeriesRow(HC_DEVICE, day, "weight", round2(it)) }
                 // Health Connect has NO BMI record (Apple Health carries one, which iOS imports directly),
-                // so DERIVE it from the day's weight + the user's PROFILE height — the same height NOOP
+                // so DERIVE it from the day's weight + the user's PROFILE height — the same height Choop
                 // already uses for its calorie / fitness-age estimates (it defaults to 178 cm until the user
                 // sets theirs, so this reflects the profile, not a measured BMI). It sits inside the weight
                 // gate because BMI needs a weight; the heightCm > 0 guard skips it when a caller passes none.
@@ -640,7 +640,7 @@ object HealthConnectImporter {
                     )
                 )
                 for (record in response.records) {
-                    // #528: never re-ingest what NOOP itself wrote to Health Connect, or "share back"
+                    // #528: never re-ingest what Choop itself wrote to Health Connect, or "share back"
                     // + import would double-count our own daily totals (steps / active energy / sleep).
                     if (isSelfWritten(record.metadata.dataOrigin.packageName, selfPackage)) continue
                     onRecord(record)
@@ -728,8 +728,8 @@ object HealthConnectImporter {
     )
 
     /**
-     * #528 — true when a record's origin is NOOP itself, so [readAll] skips it on import. Without this,
-     * turning on "share back" makes a later import re-read NOOP's own daily totals and SUM them on top
+     * #528 — true when a record's origin is Choop itself, so [readAll] skips it on import. Without this,
+     * turning on "share back" makes a later import re-read Choop's own daily totals and SUM them on top
      * of the original source records (cumulative steps / active energy / sleep would ~double). HC's
      * `dataOriginFilter` is include-only, so the exclusion has to be a code-level package check here.
      * Empty [selfPackage] (origin undeterminable) never skips, so we err toward keeping data.

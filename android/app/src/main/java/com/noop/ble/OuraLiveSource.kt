@@ -50,7 +50,7 @@ import java.util.concurrent.ConcurrentHashMap
  * probe: where that probe only proved "there's no OPEN stream", this transport speaks the
  * ring's OWN documented protocol (clean-room, see docs/OURA_PROTOCOL.md) to authenticate with the
  * 16-byte application key, enable the daytime-HR feature, and decode the ring's RAW signals
- * (HR / IBI / RMSSD / SpO2 / skin-temp / sleep-phase tags). NOOP computes its OWN Charge/Rest from
+ * (HR / IBI / RMSSD / SpO2 / skin-temp / sleep-phase tags). Choop computes its OWN Charge/Rest from
  * those raw signals; the ring's encrypted readiness/sleep SCORES are never read or surfaced
  * (honest-data invariant).
  *
@@ -905,7 +905,7 @@ class OuraLiveSource(
         }
         pendingInstallKey = key
         _adoptPhase.value = AdoptPhase.InstallingKey
-        log("Oura: installing NOOP's key on the reset ring")
+        log("Oura: installing Choop's key on the reset ring")
         write(cmd)
     }
 
@@ -1151,7 +1151,7 @@ class OuraLiveSource(
     // MARK: - Honest fallback
 
     /**
-     * Record the honest "this ring needs a pairing handshake NOOP can't complete" outcome (the message is
+     * Record the honest "this ring needs a pairing handshake Choop can't complete" outcome (the message is
      * already RECOVERY-HONEST: a factory-reset ring is NOT bricked, re-pairing in the Oura app brings it
      * back, and adopt is Beta). Also marks [AdoptPhase.Failed] so an in-flight adopt's Adopting step lands
      * on a REACHABLE honest Failed state, and clears any in-flight install key WITHOUT persisting it (a
@@ -1216,12 +1216,12 @@ class OuraLiveSource(
 
         /**
          * Honest fallback copy: live data is not available, AND the ring is RECOVERABLE. A factory-reset
-         * ring is not bricked: re-pairing it in the Oura app sets it up again. NOOP adopt is Beta and may
+         * ring is not bricked: re-pairing it in the Oura app sets it up again. Choop adopt is Beta and may
          * not succeed on every ring or firmware yet. No "installing key" wording (no install ran here).
          */
         private const val KEY_INSTALL_MESSAGE =
-            "NOOP couldn't pair with this Oura ring. Live data isn't available. The ring is not damaged: " +
-                "re-pair it in the Oura app to set it up again. NOOP adopt is Beta and may not work on " +
+            "Choop couldn't pair with this Oura ring. Live data isn't available. The ring is not damaged: " +
+                "re-pair it in the Oura app to set it up again. Choop adopt is Beta and may not work on " +
                 "every ring or firmware yet. You can also export from the Oura app and use file import."
 
         /** Honest fallback copy: a key IS installed but it does not match this ring. Same recovery note. */

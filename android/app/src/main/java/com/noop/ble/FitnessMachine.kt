@@ -4,7 +4,7 @@ package com.noop.ble
  * FTMS (Fitness Machine Service, 0x1826) pure decoders + the standard Battery Level (0x2A19) parser.
  *
  * Faithful Kotlin twin of WhoopProtocol/FTMSDecode.swift. Spec-deterministic field parsing for the four
- * machine-data characteristics NOOP reads live:
+ * machine-data characteristics Choop reads live:
  *   - Treadmill Data     0x2ACD
  *   - Cross Trainer Data 0x2ACE
  *   - Rower Data         0x2AD1
@@ -22,7 +22,7 @@ package com.noop.ble
  * Pure (no android.bluetooth) → unit-tested on the JVM against byte fixtures built from the FTMS spec.
  *
  * Reference: Bluetooth SIG "Fitness Machine Service" 1.0 + the GATT Specification Supplement field
- * tables. NOOP's own clean re-implementation of the public spec.
+ * tables. Choop's own clean re-implementation of the public spec.
  */
 object FitnessMachine {
 

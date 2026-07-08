@@ -22,7 +22,7 @@ data class OuraHR(val ringTimestamp: Long, val bpm: Int, val ibiMs: Int)
 
 /**
  * One decoded HRV (RMSSD-derived) sample from the ring's own 0x5D tag (OURA_PROTOCOL.md s6.9).
- * NOOP also reconstructs RMSSD itself from the IBI streams for its own scoring; this is the ring's
+ * Choop also reconstructs RMSSD itself from the IBI streams for its own scoring; this is the ring's
  * open HRV tag, NOT Oura's encrypted readiness score.
  */
 data class OuraHRV(val ringTimestamp: Long, val timeMs: Int, val b1: Int, val b2: Int)

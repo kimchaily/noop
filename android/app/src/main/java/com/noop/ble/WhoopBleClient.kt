@@ -1272,8 +1272,8 @@ class WhoopBleClient(
                         recoveryEpoch = NoopPrefs.of(context)
                             .getLong(Baselines.recoveryBaselineEpochKey, 0L).toDouble(),
                         // #691: route the engine's per-day diagnostics (incl. the new RHR floor-vs-mean
-                        // line) into THIS sync's strap log, so a "NOOP RHR reads lower than my sleeping-HR
-                        // app" report carries the proof — the floor (NOOP's WHOOP-style resting HR) beside
+                        // line) into THIS sync's strap log, so a "Choop RHR reads lower than my sleeping-HR
+                        // app" report carries the proof — the floor (Choop's WHOOP-style resting HR) beside
                         // the night MEAN (the other app's number) — from the post-backfill scoring pass, not
                         // only the UI's 15-min loop. log() PII-scrubs at the sink. Best-effort + logging only.
                         diag = { s -> log(s) },
@@ -1554,7 +1554,7 @@ class WhoopBleClient(
             log("No Bluetooth LE on this device")
             _state.update { it.copy(
                 scanning = false,
-                statusNote = "This device has no Bluetooth LE. NOOP has to run on a real phone with " +
+                statusNote = "This device has no Bluetooth LE. Choop has to run on a real phone with " +
                     "Bluetooth, near your strap. It can't connect from an emulator or virtual device.") }
             return
         }
@@ -1643,8 +1643,8 @@ class WhoopBleClient(
             log("Scan blocked (permission): ${se.message}")
             _state.update { it.copy(
                 scanning = false,
-                statusNote = "NOOP needs the Nearby devices / Bluetooth permission. Allow it in " +
-                    "Settings → Apps → NOOP → Permissions, then tap Connect.") }
+                statusNote = "Choop needs the Nearby devices / Bluetooth permission. Allow it in " +
+                    "Settings → Apps → Choop → Permissions, then tap Connect.") }
             return
         } catch (t: Throwable) {
             scanning = false
@@ -1810,11 +1810,11 @@ class WhoopBleClient(
 
     /**
      * H3 (#520): fully RELEASE the strap when the user REMOVES it from the Devices screen, so the band can
-     * enter pairing mode. Archiving the registry row alone left NOOP still holding the strap — the
+     * enter pairing mode. Archiving the registry row alone left Choop still holding the strap — the
      * disconnect→3s-reconnect timer, the targeted-connect pin, and the persisted last-device address ALL
      * still pointed at it, so it stayed connected and the user could never put it into pairing mode (a
      * connected WHOOP can't show its blue pairing LEDs). This stops auto-reconnect, drops the live link,
-     * and clears EVERY reference that points at this strap so NOOP lets go for good — until the user
+     * and clears EVERY reference that points at this strap so Choop lets go for good — until the user
      * deliberately reconnects (which clears intentionalDisconnect again via connect()). Kotlin twin of iOS
      * `BLEManager.forgetDevice` (which iOS already wires from DevicesView's Remove). Runs on the main looper.
      */
@@ -2341,7 +2341,7 @@ class WhoopBleClient(
 
     /**
      * Arm the strap's **firmware** alarm to buzz at [epochSec] (absolute UTC seconds). The strap fires
-     * at that instant even if the phone is asleep or NOOP is closed. SET_CLOCK is sent first so the
+     * at that instant even if the phone is asleep or Choop is closed. SET_CLOCK is sent first so the
      * strap's RTC is UTC-correct (a wrong RTC fires the alarm at the wrong wall-clock time). The 4.0
      * payload is `[0x01] + u32 LE epoch + [0x00, 0x00] + [0x00, 0x00]` (9 bytes — see
      * [whoop4AlarmPayload]; the trailing two bytes are the haptic-mode field the official app sends,
@@ -2590,7 +2590,7 @@ class WhoopBleClient(
             if (_state.value.reconnectGuide == null) {
                 _state.update { it.copy(
                     reconnectGuide = """
-                    Your strap connects but never finishes pairing with NOOP. This is almost always a stale Bluetooth pairing, usually after a WHOOP firmware update, or the official WHOOP app holding the strap. NOOP works fine once it's re-paired:
+                    Your strap connects but never finishes pairing with Choop. This is almost always a stale Bluetooth pairing, usually after a WHOOP firmware update, or the official WHOOP app holding the strap. Choop works fine once it's re-paired:
 
                     1. Quit the official WHOOP app (or turn off Bluetooth on that phone).
                     2. Open Settings → Bluetooth, find your WHOOP, and Forget / Unpair it.
@@ -3018,7 +3018,7 @@ class WhoopBleClient(
                 log("WHOOP 5/MG detected — will send CLIENT_HELLO after subscribing (experimental).")
                 _state.update { it.copy(
                     whoop5Detected = true,
-                    statusNote = "WHOOP 5/MG connected - experimental. After bonding, NOOP brings up live " +
+                    statusNote = "WHOOP 5/MG connected - experimental. After bonding, Choop brings up live " +
                         "heart rate from the strap's realtime stream. Deeper metrics (recovery, strain, " +
                         "sleep) for 5/MG are still being figured out. WHOOP 4.0 is fully supported today.",
                 ) }
@@ -3934,7 +3934,7 @@ class WhoopBleClient(
             // The R22 SET_CONFIG writes go over the encrypted command channel, so the live-HR-only
             // shortcut (bonded true, encryptedBond false on a 5/MG still owned by the official app,
             // #69/#266) can't carry them. Require the genuine bond, or the writes silently fail (#269).
-            log("Deep-data: needs the full encrypted bond, not the live-HR-only link. Close the official WHOOP app, put the strap in pairing mode, and bond it to NOOP first — ignored."); return
+            log("Deep-data: needs the full encrypted bond, not the live-HR-only link. Close the official WHOOP app, put the strap in pairing mode, and bond it to Choop first — ignored."); return
         }
         if (!s.worn) {
             log("Deep-data: the R22 stream is on-wrist only — put the strap ON, then try again."); return
@@ -4755,7 +4755,7 @@ class WhoopBleClient(
      * Run a raw GATT operation, swallowing the dead-binder exceptions that escape `BluetoothGatt`
      * once the OS Bluetooth radio is turned off mid-link, and route into full teardown if one fires.
      *
-     * The bug (#314, Pixel 7): turning Bluetooth off doesn't disconnect NOOP's `BluetoothGatt`; the
+     * The bug (#314, Pixel 7): turning Bluetooth off doesn't disconnect Choop's `BluetoothGatt`; the
      * next write hits a dead binder and `writeCharacteristic` throws `android.os.DeadObjectException`
      * (an unchecked `RuntimeException`) — which the GATT layer never declared, so nothing caught it
      * and the app crashed on the next buzz/sync. We also see `IllegalStateException` (adapter off) and
@@ -4849,7 +4849,7 @@ class WhoopBleClient(
             if (_state.value.reconnectGuide == null) {
                 _state.update { it.copy(
                     reconnectGuide = """
-                    Your strap keeps connecting and then dropping a second later. This is almost always a stale Bluetooth pairing - usually after a WHOOP firmware update, or the official WHOOP app holding the strap. NOOP works fine once it's re-paired:
+                    Your strap keeps connecting and then dropping a second later. This is almost always a stale Bluetooth pairing - usually after a WHOOP firmware update, or the official WHOOP app holding the strap. Choop works fine once it's re-paired:
 
                     1. Quit the official WHOOP app (or turn off Bluetooth on that phone).
                     2. Open Settings → Bluetooth, find your WHOOP, and Forget / Unpair it.
@@ -4884,7 +4884,7 @@ class WhoopBleClient(
             if (_state.value.reconnectGuide == null) {
                 _state.update { it.copy(
                     reconnectGuide = """
-                    Your strap connects but never finishes pairing with NOOP, so it drops and retries in a loop. This is almost always a stale Bluetooth pairing, usually after a WHOOP firmware update, or the official WHOOP app holding the strap. NOOP works fine once it's re-paired:
+                    Your strap connects but never finishes pairing with Choop, so it drops and retries in a loop. This is almost always a stale Bluetooth pairing, usually after a WHOOP firmware update, or the official WHOOP app holding the strap. Choop works fine once it's re-paired:
 
                     1. Quit the official WHOOP app (or turn off Bluetooth on that phone).
                     2. Open Settings → Bluetooth, find your WHOOP, and Forget / Unpair it.
@@ -4966,7 +4966,7 @@ class WhoopBleClient(
                 if (staleDirectFailures >= 2) {
                     _state.update { it.copy(
                         reconnectGuide = """
-                        Your strap's Bluetooth pairing was reset - usually by a WHOOP firmware update, or the official WHOOP app reconnecting. NOOP works fine on the new firmware; you just need to re-pair:
+                        Your strap's Bluetooth pairing was reset - usually by a WHOOP firmware update, or the official WHOOP app reconnecting. Choop works fine on the new firmware; you just need to re-pair:
 
                         1. Quit the official WHOOP app (or turn off Bluetooth on that phone).
                         2. Open Settings → Bluetooth, find your WHOOP, and Forget / Unpair it.

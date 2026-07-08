@@ -505,7 +505,7 @@ fun CompareScreen(vm: AppViewModel) {
 /**
  * Load the full history for [metric] (ascending by day). Mirrors macOS
  * repo.resolvedSeries(key, source) (PR#196): resolves across compatible sources freshest-wins —
- * imported WHOOP > NOOP-computed > declared-compatible Apple Health — and gap-fills from the
+ * imported WHOOP > Choop-computed > declared-compatible Apple Health — and gap-fills from the
  * DailyMetric columns for the days the long-format metricSeries doesn't carry, so the screen shows
  * real on-device data even when only the daily cache (not the generic importer) has populated.
  */

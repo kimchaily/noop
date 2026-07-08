@@ -102,7 +102,7 @@ class DebugExportWorker(
 
 /**
  * Persisted, opt-in settings for the daily debug export (#510). Mirrors the [com.noop.alarm.SmartAlarmStore]
- * SharedPreferences shape: enable flag (default OFF — every NOOP automation is opt-in) + a time-of-day in
+ * SharedPreferences shape: enable flag (default OFF — every Choop automation is opt-in) + a time-of-day in
  * minutes since local midnight. The maintainer wires a toggle + time picker in Settings to these and calls
  * [DebugExportScheduler.applyTimeChange] / [DebugExportScheduler.reschedule] on change. Single-user, on-device.
  */

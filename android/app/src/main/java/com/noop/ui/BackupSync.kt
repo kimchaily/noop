@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit
  * Backup & Sync (Phase 1 - folder destination). Writes the full `.noopbak` snapshot (the existing
  * [DataBackup] whole-DB format) into a user-chosen folder (a SAF tree), on demand and on an opt-in
  * daily schedule. Point that folder at a desktop Google Drive / Dropbox sync client (or a phone sync
- * app) and you get off-device backup with NO in-app cloud account, no OAuth, no secrets - NOOP only
+ * app) and you get off-device backup with NO in-app cloud account, no OAuth, no secrets - Choop only
  * ever writes a local file; the user's own sync client does any upload.
  *
  * DESIGN
@@ -292,7 +292,7 @@ object BackupSyncPrefs {
         if (uri == null) remove("tree_uri") else putString("tree_uri", uri.toString())
     }.apply()
 
-    /** Master enable for the daily auto-backup. Default OFF (every NOOP automation is opt-in). */
+    /** Master enable for the daily auto-backup. Default OFF (every Choop automation is opt-in). */
     fun autoEnabled(c: Context): Boolean = p(c).getBoolean("auto", false)
     fun setAutoEnabled(c: Context, on: Boolean) = p(c).edit().putBoolean("auto", on).apply()
 

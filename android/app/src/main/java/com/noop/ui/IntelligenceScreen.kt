@@ -37,7 +37,7 @@ import java.util.Calendar
 import kotlin.math.roundToInt
 
 /**
- * Intelligence — NOOP's own Charge / Effort / Rest scores, presented with the
+ * Intelligence — Choop's own Charge / Effort / Rest scores, presented with the
  * WHOOP-model explanation so the read-out is legible rather than a black box.
  *
  * Ports macOS Strand/Screens/IntelligenceView.swift. The macOS build runs an
@@ -373,7 +373,7 @@ private fun Meter(fraction: Float, color: Color) {
 
 // MARK: - Per-day card (ported from IntelligenceView.dayCard)
 //
-// Header = the day + a NOOP-computed source badge; a row of the five headline
+// Header = the day + a Choop-computed source badge; a row of the five headline
 // scores (Charge / Effort / Rest / HRV / RHR) tinted to the design-system metric
 // colors, then a thin Effort meter for at-a-glance load.
 
@@ -388,7 +388,7 @@ private fun DayCard(d: DailyMetric, effortScale: EffortScale) {
                     color = Palette.textPrimary,
                     modifier = Modifier.weight(1f),
                 )
-                // The REAL source of this day's dashboard headline, not a hard-coded "NOOP-computed".
+                // The REAL source of this day's dashboard headline, not a hard-coded "Choop-computed".
                 // The merged DailyMetric carries the WINNING row's deviceId (mergeDaily: an import wins
                 // over the computed "-noop" row), so a strap-scored night reads "On-device" while a day an
                 // import covers reads "Whoop" / "Apple Health". Computed rows keep the charge tint; imports
@@ -471,8 +471,8 @@ private fun sleepValue(totalMin: Double?): String {
 
 /**
  * The By-Day source badge (label + tint) for a merged [DailyMetric], from the WINNING row's [deviceId].
- * The By-Day numbers are always NOOP's on-device scores, but when an import covers the day it wins the
- * dashboard merge (mergeDaily), so the badge says so instead of the old hard-coded "NOOP-computed".
+ * The By-Day numbers are always Choop's on-device scores, but when an import covers the day it wins the
+ * dashboard merge (mergeDaily), so the badge says so instead of the old hard-coded "Choop-computed".
  * A computed row's id ends in "-noop"; imports keep their source id ("my-whoop" export, "apple-health" /
  * "health-connect"). Brand wording matches the rest of the app (macOS DaySource: "On-device"/"Whoop"/
  * "Apple Health"); imports use the accent tint, computed rows the charge tint. (Sleep overhaul §2.6.)

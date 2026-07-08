@@ -20,7 +20,7 @@ import android.content.SharedPreferences
  */
 class SmartAlarmStore(private val prefs: SharedPreferences) {
 
-    /** Master enable. Default OFF (every automation in NOOP is opt-in). */
+    /** Master enable. Default OFF (every automation in Choop is opt-in). */
     var enabled: Boolean
         get() = prefs.getBoolean(KEY_ENABLED, false)
         set(v) = prefs.edit().putBoolean(KEY_ENABLED, v).apply()

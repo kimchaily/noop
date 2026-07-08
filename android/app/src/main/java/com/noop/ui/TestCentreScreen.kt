@@ -386,7 +386,7 @@ private fun ExportCard(vm: AppViewModel, onReport: () -> Unit) {
     SettingsSectionTC(
         icon = Icons.Filled.Upload,
         title = "Export",
-        blurb = "Report a bug with your log, or have NOOP drop a daily copy into its export folder.",
+        blurb = "Report a bug with your log, or have Choop drop a daily copy into its export folder.",
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             NoopButton(

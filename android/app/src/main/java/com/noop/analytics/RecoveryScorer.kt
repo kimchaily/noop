@@ -9,7 +9,7 @@ import kotlin.math.roundToInt
 
 /*
  * RecoveryScorer.kt — resting HR during sleep + a transparent 0–100 recovery score
- * (NOOP "Charge").
+ * (Choop "Charge").
  *
  * Faithful Kotlin port of StrandAnalytics/RecoveryScorer.swift (verified on macOS),
  * itself ported from server/ingest/app/analysis/recovery.py.

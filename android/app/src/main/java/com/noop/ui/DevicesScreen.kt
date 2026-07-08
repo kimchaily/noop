@@ -66,7 +66,7 @@ import kotlinx.coroutines.launch
 
 // MARK: - Devices
 //
-// Pair and manage the bands NOOP reads from. WHOOP-FIRST: the WHOOP is the primary, fully-supported
+// Pair and manage the bands Choop reads from. WHOOP-FIRST: the WHOOP is the primary, fully-supported
 // device; generic heart-rate straps (Polar / Wahoo / Coospo / Garmin HRM …) are an early, in-development
 // addition. The screen is a thin UI over [com.noop.data.DeviceRegistry] (the Phase 1A/1B data layer):
 // every mutation goes through an [AppViewModel] registry op, and the [SourceCoordinator] (wired in
@@ -130,7 +130,7 @@ fun DevicesScreen(
     // Conditional rows use `if (cond) { item/items }` so a hidden section adds no row.
     LazyScreenScaffold(
         title = "Devices",
-        subtitle = "Pair and manage the bands NOOP reads from.",
+        subtitle = "Pair and manage the bands Choop reads from.",
         // LIQUID SKY BACKDROP (the pilot pattern — LiquidScreenSky.kt): the time-of-day liquid sky settles
         // into the flat canvas behind the top of the screen so the frosted device cards float over it. The
         // static sky (LiquidSkyStatic inside the helper) carries no per-frame cost on this scrolling list.
@@ -142,7 +142,7 @@ fun DevicesScreen(
             item {
             DataPendingNote(
                 title = "Getting your devices ready",
-                body = "NOOP is opening your on-device data. Your paired bands will appear here in a moment.",
+                body = "Choop is opening your on-device data. Your paired bands will appear here in a moment.",
             )
             }
             return@LazyScreenScaffold
@@ -231,7 +231,7 @@ fun DevicesScreen(
     removeTarget?.let { device ->
         ConfirmDialog(
             title = "Remove this device?",
-            message = "Remove ${displayName(device)}? NOOP will stop connecting to it. Its recorded data is " +
+            message = "Remove ${displayName(device)}? Choop will stop connecting to it. Its recorded data is " +
                 "kept and you can re-add it any time.",
             confirmLabel = "Remove",
             destructive = true,
@@ -353,7 +353,7 @@ private fun DeviceCard(
 
             // Honest local-takeover state row for an adopted Oura ring that is paired but not the
             // active+connected source right now. States the single-owner reality plainly (if the ring was
-            // reset again or re-claimed in the Oura app, NOOP no longer owns it) without faking a live
+            // reset again or re-claimed in the Oura app, Choop no longer owns it) without faking a live
             // reading. Suppressed for the active+connected ring and for removed rings. Mirrors the macOS
             // ouraLocalStateNote.
             if (device.sourceKind == SourceKind.oura.name && !isLiveConnected &&
@@ -365,7 +365,7 @@ private fun DeviceCard(
             // What this device CAPTURES — honest, per-model (not the generic stored set, which would
             // mislabel e.g. a "Blood oxygen" chip when no SpO₂ % ever comes off the strap).
             CapabilityInfoRow(Icons.Filled.FavoriteBorder, profile.captures)
-            // What NOOP USES it for — the scores / screens this device drives.
+            // What Choop USES it for — the scores / screens this device drives.
             CapabilityInfoRow(Icons.Filled.Bolt, profile.powers)
             // Honest footnote: the "*" estimates + the SpO₂/steps caveats.
             if (profile.footnote.isNotEmpty()) {
@@ -559,7 +559,7 @@ private fun WhoopFirstFooter() {
             modifier = Modifier.size(16.dp),
         )
         Text(
-            "WHOOP is NOOP's primary, fully-supported band. Other heart-rate straps are an early, " +
+            "WHOOP is Choop's primary, fully-supported band. Other heart-rate straps are an early, " +
                 "in-development addition: they stream live heart rate and HRV, but not WHOOP's deeper " +
                 "sleep and recovery data.",
             style = NoopType.footnote,
@@ -767,7 +767,7 @@ private fun deviceIcon(device: PairedDeviceRow): ImageVector = when {
 private data class DeviceCapabilityProfile(
     val displayModel: String,  // clean card subtitle (replaces the redundant "WHOOP · WHOOP")
     val captures: String,      // "·"-joined honest capture labels for THIS model
-    val powers: String,        // the NOOP scores / screens this device drives
+    val powers: String,        // the Choop scores / screens this device drives
     val footnote: String,      // one short honest caveat line ("*" estimates + the SpO₂/steps notes)
 )
 
@@ -790,12 +790,12 @@ private fun deviceProfile(device: PairedDeviceRow): DeviceCapabilityProfile {
             captures = "Heart rate (live, best-effort)",
             powers = "Powers the live console + Effort. No Charge, Rest or Sleep",
             footnote = "Experimental: live heart rate where the band exposes it. Some bands need a pairing " +
-                "we can't do yet. NOOP will say so honestly and never show a made-up number. No sleep, " +
+                "we can't do yet. Choop will say so honestly and never show a made-up number. No sleep, " +
                 "recovery, skin temp, SpO₂ or steps.",
         )
     }
     // EXPERIMENTAL locally-adopted Oura ring (gen 3/4/5). The gen is carried on `model` ("Oura Ring
-    // 3/4/5") and recovered with OuraRingGen.from(model). NOOP reads the ring's OWN raw signals + open
+    // 3/4/5") and recovered with OuraRingGen.from(model). Choop reads the ring's OWN raw signals + open
     // HRV/sleep-phase tags and computes its own Charge/Effort/Rest; it NEVER reads Oura's encrypted
     // Readiness/Sleep scores, and claims NO absolute SpO₂ %. Estimates carry "*"; a signal it can't read
     // stays "-". Per-gen copy + the canonical Beta caveat (spec
@@ -843,7 +843,7 @@ private fun deviceProfile(device: PairedDeviceRow): DeviceCapabilityProfile {
                 "motion count (#78). No SpO₂ % off the strap; import a WHOOP CSV for a real %.",
         )
     }
-    // WHOOP 4.0 — NOOP's primary band; no steps over BLE.
+    // WHOOP 4.0 — Choop's primary band; no steps over BLE.
     if (model.contains("4")) {
         return DeviceCapabilityProfile(
             displayModel = "WHOOP 4.0",
@@ -878,7 +878,7 @@ private fun CapabilityInfoRow(icon: androidx.compose.ui.graphics.vector.ImageVec
 /**
  * Honest paired-but-not-connected note for a locally-adopted Oura ring (Beta). Amber heads-up, no
  * fabricated reading: re-states the single-owner reality so the user understands why a re-reset or an Oura
- * re-claim would break NOOP's ownership. Mirrors the macOS DeviceCard.ouraLocalStateNote (no em-dashes).
+ * re-claim would break Choop's ownership. Mirrors the macOS DeviceCard.ouraLocalStateNote (no em-dashes).
  */
 @Composable
 private fun OuraLocalStateNote() {
@@ -888,8 +888,8 @@ private fun OuraLocalStateNote() {
     ) {
         Icon(Icons.Filled.Info, contentDescription = null, tint = Palette.statusWarning, modifier = Modifier.size(14.dp))
         Text(
-            "Paired locally. NOOP owns this ring while it holds the key. If you reset it again or set it " +
-                "up in the Oura app, NOOP no longer owns it and you would re-add it to take it over.",
+            "Paired locally. Choop owns this ring while it holds the key. If you reset it again or set it " +
+                "up in the Oura app, Choop no longer owns it and you would re-add it to take it over.",
             style = NoopType.caption,
             color = Palette.statusWarning,
         )

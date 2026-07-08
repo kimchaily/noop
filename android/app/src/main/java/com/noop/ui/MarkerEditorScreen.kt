@@ -52,7 +52,7 @@ import java.util.UUID
 // marker"). Pick a marker from MarkerCatalog (searchable) OR add a custom marker, then:
 // value (numeric, the canonical unit prefilled, a unit switcher where sensible — mmol/L↔
 // mg/dL, conversion shown), date taken, optional note, and an OPTIONAL "reference range
-// from my report" — NEVER a NOOP-shipped range. Blood pressure is a PAIRED marker
+// from my report" — NEVER a Choop-shipped range. Blood pressure is a PAIRED marker
 // (systolic + diastolic entered together, stored as two keys).
 //
 // On save it hands the caller `List<LabMarkerRow>` (one row, or two for BP) under the
@@ -60,7 +60,7 @@ import java.util.UUID
 // SELF-CONTAINED: no AppViewModel/Settings edits; the sheet owns all its state.
 //
 // NON-CLINICAL: captures only what the user types. The reference field is theirs, shown
-// back verbatim — NOOP defines no ranges and asserts no normality.
+// back verbatim — Choop defines no ranges and asserts no normality.
 
 private const val EDITOR_STRAP_DEVICE_ID = "my-whoop"
 
@@ -247,7 +247,7 @@ fun MarkerEditorScreen(
                             EditorTextField(referenceText, { referenceText = it }, "e.g. 2.0-5.0 (your report's own range)")
                         }
                         Text(
-                            "NOOP never fills this in - it only shows back exactly what you type from your own report.",
+                            "Choop never fills this in - it only shows back exactly what you type from your own report.",
                             style = NoopType.footnote,
                             color = Palette.textTertiary,
                         )

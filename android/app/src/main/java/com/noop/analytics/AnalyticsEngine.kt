@@ -656,7 +656,7 @@ object AnalyticsEngine {
 }
 
 /*
- * RestScorer — NOOP "Rest" (sleep_performance) composite, 0–100.
+ * RestScorer — Choop "Rest" (sleep_performance) composite, 0–100.
  *
  * Faithful Kotlin mirror of the Swift Rest composite (AnalyticsEngine / RestScorer). Keep every
  * constant and the weight set byte-identical to Swift — parity tests enforce it.

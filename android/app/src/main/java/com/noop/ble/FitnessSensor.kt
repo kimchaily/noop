@@ -11,7 +11,7 @@ package com.noop.ble
  *   - Cycling Power (CPS)              service 0x1818  measurement 0x2A63
  *
  * Each measurement begins with a flags field whose bits gate which fields follow in a FIXED spec order.
- * We decode the fields NOOP surfaces in a live workout (speed, cadence, power, and the cumulative
+ * We decode the fields Choop surfaces in a live workout (speed, cadence, power, and the cumulative
  * revolution counters CSC/CPS report) and IGNORE the rest by advancing the cursor by their spec width.
  *
  * HONEST DATA: RSC carries instantaneous speed + cadence directly. CSC/CPS report CUMULATIVE counts plus
@@ -26,7 +26,7 @@ package com.noop.ble
  * Pure (no android.bluetooth) → unit-tested on the JVM against spec byte fixtures, like FitnessMachine.
  *
  * Reference: Bluetooth SIG RSC 1.0, CSC 1.0, CPS 1.1 + the GATT Specification Supplement field tables.
- * NOOP's own clean re-implementation of the public spec (no GPL/AGPL source consulted — facts only).
+ * Choop's own clean re-implementation of the public spec (no GPL/AGPL source consulted — facts only).
  */
 object FitnessSensor {
 

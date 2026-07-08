@@ -13,7 +13,7 @@ import android.content.SharedPreferences
  */
 class WindDownStore(private val prefs: SharedPreferences) {
 
-    /** Master enable. Default OFF (opt-in like every NOOP automation). */
+    /** Master enable. Default OFF (opt-in like every Choop automation). */
     var enabled: Boolean
         get() = prefs.getBoolean(KEY_ENABLED, false)
         set(v) = prefs.edit().putBoolean(KEY_ENABLED, v).apply()

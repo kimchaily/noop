@@ -33,12 +33,12 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-// MARK: - PipBar (the NOOP segmented count-up bar)
+// MARK: - PipBar (the Choop segmented count-up bar)
 //
 // Compose port of StrandDesign/PipBar.swift. A horizontal row of N equal rounded segments
 // ("pips") separated by small uniform gaps. Segments from the left up to the value's fraction
 // are filled with the tint; the rest stay the track colour (`surfaceInset`). The last filled
-// segment is a touch brighter (the lead edge). NOOP's signature for a 0…max value — a flat,
+// segment is a touch brighter (the lead edge). Choop's signature for a 0…max value — a flat,
 // crisp, WHOOP-grade alternative to a smooth progress bar.
 //
 // COUNT-UP: on first composition AND on every value change, the fill cascades segment-by-segment

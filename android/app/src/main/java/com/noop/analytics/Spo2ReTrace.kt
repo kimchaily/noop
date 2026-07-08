@@ -5,7 +5,7 @@ package com.noop.analytics
  * twin of the Swift Spo2ReTrace; the emitted line is byte-identical on both platforms.
  *
  * WHOOP 4.0 has the Blood O2 sensor and the historical decode already maps the raw red/IR PPG channels
- * (spo2_red@68 / spo2_ir@70 on the v24 layout), but NOOP nulls spo2Pct for WHOOP on purpose: computing a
+ * (spo2_red@68 / spo2_ir@70 on the v24 layout), but Choop nulls spo2Pct for WHOOP on purpose: computing a
  * calibrated % from the raw ADC needs the dense dual-wavelength waveform plus WHOOP's proprietary
  * calibration curve, and guessing it would manufacture a plausible-but-wrong health number - the exact
  * trap that withdrew the #194 PPG->HR attempt. The ONLY honest path to a reliable value is to find out
