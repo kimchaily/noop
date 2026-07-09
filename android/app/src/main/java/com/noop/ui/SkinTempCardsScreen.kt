@@ -207,7 +207,7 @@ fun CycleAwarenessOptInCard(onEnable: () -> Unit) {
                 Text("Cycle awareness", style = NoopType.headline, color = Palette.textPrimary)
             }
             Text(
-                "NOOP can read a coarse menstrual-cycle phase from your nightly skin temperature, " +
+                "Choop can read a coarse menstrual-cycle phase from your nightly skin temperature, " +
                     "entirely on your device. It is awareness only: not contraception, not a fertility " +
                     "predictor, not a medical service.",
                 style = NoopType.subhead,

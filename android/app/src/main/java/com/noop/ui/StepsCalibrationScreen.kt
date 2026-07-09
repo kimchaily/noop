@@ -50,7 +50,7 @@ import kotlin.math.roundToInt
 
 // MARK: - StepsCalibrationScreen (ported from Strand/Screens/SettingsView.swift StepsCalibrationSheet)
 //
-// WHOOP 4.0 steps-ESTIMATE calibration. A 4.0 sends no step count over BLE, so NOOP estimates steps
+// WHOOP 4.0 steps-ESTIMATE calibration. A 4.0 sends no step count over BLE, so Choop estimates steps
 // from the strap's daily MOTION VOLUME, calibrated per-user against the phone's real step count. This
 // screen is read-only over the engine's fit (it never recomputes the headline): an honest explainer,
 // the current calibration, a recent estimated-vs-phone accuracy table, and a manual coefficient
@@ -245,13 +245,13 @@ private fun ExplainerCard() {
                 Text("How this works", style = NoopType.headline, color = Palette.textPrimary)
             }
             Text(
-                "NOOP estimates your steps from your WHOOP's motion, calibrated to your phone's step " +
+                "Choop estimates your steps from your WHOOP's motion, calibrated to your phone's step " +
                     "count. It's an estimate, not a step counter. A WHOOP 4.0 doesn't transmit steps.",
                 style = NoopType.subhead,
                 color = Palette.textSecondary,
             )
             Text(
-                "On the days your phone also counted steps, NOOP learns how much your motion maps to " +
+                "On the days your phone also counted steps, Choop learns how much your motion maps to " +
                     "steps, then applies that to the strap-only days. The more matching days it has, the " +
                     "more it trusts the estimate.",
                 style = NoopType.footnote,
@@ -274,13 +274,13 @@ private fun NoMotionNote() {
             }
             Text(
                 "We're not seeing any motion from your strap yet. Steps are estimated from your WHOOP's " +
-                    "banked motion history, so your strap needs to sync that history before NOOP has " +
+                    "banked motion history, so your strap needs to sync that history before Choop has " +
                     "anything to count.",
                 style = NoopType.subhead,
                 color = Palette.textSecondary,
             )
             Text(
-                "Open NOOP near your strap and let it catch up (a full history sync can take a while on " +
+                "Open Choop near your strap and let it catch up (a full history sync can take a while on " +
                     "first run). Once a day or two of motion lands, your step estimate and the calibration " +
                     "below will start to fill in.",
                 style = NoopType.footnote,
@@ -330,7 +330,7 @@ private fun CurrentFitCard(profile: ProfileStore, matchedDays: Int) {
                     color = Palette.accent,
                 )
                 Text(
-                    "These are the days where your phone also counted steps, so NOOP can learn how your " +
+                    "These are the days where your phone also counted steps, so Choop can learn how your " +
                         "motion maps to steps. Or set the coefficient manually below.",
                     style = NoopType.footnote,
                     color = Palette.textTertiary,
@@ -349,7 +349,7 @@ private fun ComparisonCard(rows: List<StepsComparisonRow>) {
             Overline("Estimated vs your phone")
             if (rows.isEmpty()) {
                 Text(
-                    "No days yet where both NOOP and your phone counted steps. Once your phone logs a " +
+                    "No days yet where both Choop and your phone counted steps. Once your phone logs a " +
                         "few days alongside the strap, they'll appear here so you can see how close the " +
                         "estimate is.",
                     style = NoopType.footnote,

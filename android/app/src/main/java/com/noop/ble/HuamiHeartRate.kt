@@ -5,7 +5,7 @@ package com.noop.ble
  *
  * Faithful Kotlin twin of Strand/BLE/HuamiHeartRate.swift.
  *
- * CLEAN-ROOM. NOOP's own implementation from PUBLICLY DOCUMENTED protocol FACTS about the Huami family
+ * CLEAN-ROOM. Choop's own implementation from PUBLICLY DOCUMENTED protocol FACTS about the Huami family
  * (the GATT layout is documented in several open projects — we reuse only the FACTS: the service /
  * characteristic UUIDs and the on-wire byte layout — and wrote our own code). No GPL/AGPL code copied.
  *

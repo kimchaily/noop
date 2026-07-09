@@ -112,7 +112,7 @@ object RhythmConsent {
         "Variation is normal and often benign" to
             "Beat-to-beat timing varies for many ordinary reasons: breathing, movement, an imperfect optical reading, or the occasional extra or skipped beat that most healthy people have.",
         "It is not a substitute for a professional" to
-            "If you feel unwell or are worried about your heart, contact a qualified professional; in an emergency, your local emergency service. Do not rely on NOOP.",
+            "If you feel unwell or are worried about your heart, contact a qualified professional; in an emergency, your local emergency service. Do not rely on Choop.",
         "Everything stays on your device" to
             "All of this is computed on your own device from data you already have. No heartbeat data leaves it.",
     )
@@ -456,7 +456,7 @@ private fun MethodologyCard() {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Overline("How this is measured")
             Text(
-                "During quiet, still, resting windows, NOOP looks at the timing between your heartbeats (R-R intervals) and draws their Poincaré scatter. From the cloud it computes its short and long axes (SD1, SD2) and a few plain regularity numbers. Movement and noisy windows are skipped, not shown. These are transparent, published descriptive statistics: a picture of your timing, never a clinical measurement.",
+                "During quiet, still, resting windows, Choop looks at the timing between your heartbeats (R-R intervals) and draws their Poincaré scatter. From the cloud it computes its short and long axes (SD1, SD2) and a few plain regularity numbers. Movement and noisy windows are skipped, not shown. These are transparent, published descriptive statistics: a picture of your timing, never a clinical measurement.",
                 style = NoopType.footnote, color = Palette.textTertiary,
             )
         }

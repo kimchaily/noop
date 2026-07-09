@@ -5,7 +5,7 @@ import kotlin.math.roundToLong
 
 /**
  * "~X days left" for a strap, worked out from its battery state-of-charge (SoC) history (#713). Neither
- * the WHOOP app nor WHOOP's API ever give you a runtime estimate, but NOOP already banks a SoC time
+ * the WHOOP app nor WHOOP's API ever give you a runtime estimate, but Choop already banks a SoC time
  * series from the strap over BLE, so no manual logging is needed. We fit the recent DISCHARGE slope and
  * divide the current charge by it. When the discharge run is too short or too flat to trust, we fall back
  * to the device's typical full-charge life for its generation.

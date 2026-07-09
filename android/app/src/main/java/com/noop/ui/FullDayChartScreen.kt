@@ -53,7 +53,7 @@ private enum class TimelineMetric(val title: String) {
     Respiration("Respiration"),
     Motion("Motion"),
     // #175: the strap's OWN band sleep_state track (0 wake/1 still/2 asleep/3 up), shown as a distinct
-    // stepped track alongside the derived hypnogram. This is the band's REPORTED state, NOT a stage NOOP
+    // stepped track alongside the derived hypnogram. This is the band's REPORTED state, NOT a stage Choop
     // trusts as truth — the pill names it "Band Sleep State" so it can't be mistaken for the derived stages.
     BandSleepState("Band Sleep State"),
 }

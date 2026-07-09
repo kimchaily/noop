@@ -50,7 +50,7 @@ import kotlin.math.roundToInt
  * closed.
  *
  * Android tears a process down shortly after its last Activity goes away, which is exactly why
- * people on Reddit saw the strap disconnect the moment they closed NOOP. A started foreground
+ * people on Reddit saw the strap disconnect the moment they closed Choop. A started foreground
  * service — with an ongoing notification — keeps the process (and therefore the
  * [com.noop.NoopApplication]-owned [WhoopBleClient] and its GATT link) resident, so heart rate
  * keeps streaming and offloads keep landing in the background.
@@ -118,7 +118,7 @@ class WhoopConnectionService : Service() {
     private val repo get() = (application as NoopApplication).repository
 
     /**
-     * Watches the OS Bluetooth radio so turning it off immediately tears down NOOP's orphaned GATT
+     * Watches the OS Bluetooth radio so turning it off immediately tears down Choop's orphaned GATT
      * link (#314). Without this there is no ACTION_STATE_CHANGED listener at all, so the radio going off
      * never reaches [WhoopBleClient] — the link stays "connected", the UI keeps showing live HR/buzz/sync
      * that isn't real, and the next write crashes on a dead binder (iOS/macOS are immune because
@@ -436,7 +436,7 @@ class WhoopConnectionService : Service() {
                 "Strap connection",
                 NotificationManager.IMPORTANCE_LOW,
             ).apply {
-                description = "Shown while NOOP keeps your WHOOP connected in the background."
+                description = "Shown while Choop keeps your WHOOP connected in the background."
                 setShowBadge(false)
                 enableVibration(false)
                 setSound(null, null)

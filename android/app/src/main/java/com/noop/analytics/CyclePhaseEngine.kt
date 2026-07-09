@@ -11,7 +11,7 @@ import kotlin.math.roundToInt
 // INDEPENDENT implementation of a publicly documented method (wrist skin-temperature cycle tracking,
 // e.g. PMC11294004, plus the biphasic-ovulatory-shift literature): skin temperature runs ~0.3–0.5 °C
 // HIGHER in the luteal phase than the follicular phase, with a nadir around ovulation, mirrored by a
-// luteal RESTING-HR RISE and a luteal HRV (RMSSD) DROP. NOOP re-derives this from the user's OWN banked
+// luteal RESTING-HR RISE and a luteal HRV (RMSSD) DROP. Choop re-derives this from the user's OWN banked
 // signals against their OWN baseline.
 //
 // WELLNESS / AWARENESS ONLY — APPROXIMATE. NOT contraception, NOT a fertility/ovulation predictor, NOT a

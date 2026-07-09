@@ -7,7 +7,7 @@ import kotlin.math.pow
  * CaffeineDecay.kt — caffeine window (#526): a simple, honest on-device half-life decay estimate.
  *
  * Faithful Kotlin mirror of Strand/Data/CaffeineLog.swift (the CaffeineDecay enum + CaffeineActiveEstimate
- * struct). The user logs a caffeine intake (time + OPTIONAL mg); NOOP shows a rough "still active" hint.
+ * struct). The user logs a caffeine intake (time + OPTIONAL mg); Choop shows a rough "still active" hint.
  * This is a GUIDE from what the user logged using a ~5–6 h population-average half-life, NOT a measurement
  * and NOT a health claim. The honesty rules — unknown dose stays unknown, future-dated logs can't amplify
  * a dose — are enforced here and pinned by CaffeineDecayTest. Cross-platform parity is the contract.

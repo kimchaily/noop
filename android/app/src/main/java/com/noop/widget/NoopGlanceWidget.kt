@@ -35,7 +35,7 @@ import java.util.Date
  * Home-screen widget: today's three top scores (Rest · Charge · Effort, Charge centred), with live HR
  * and strap battery at a glance (#516). Renders purely from the [WidgetSnapshotStore] SharedPreferences
  * snapshot — no BLE, no DB — so it costs nothing and survives process death. Tapping anywhere opens the
- * app. Each score is honest-null ("—") until NOOP has scored it; it never fabricates a number.
+ * app. Each score is honest-null ("—") until Choop has scored it; it never fabricates a number.
  *
  * Colours are hardcoded mirrors of the Titanium & Gold [com.noop.ui.Palette] (navy surface / textPrimary
  * / textSecondary, and the gold → amber → burnt-orange recovery tiers): Glance composes outside our
@@ -165,7 +165,7 @@ private fun WidgetContent(snap: WidgetSnapshot, dark: Boolean) {
                 snap.connected -> "Connected"
                 snap.updatedAtMs > 0L ->
                     DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(snap.updatedAtMs))
-                else -> "Open NOOP to connect"
+                else -> "Open Choop to connect"
             },
             style = TextStyle(color = textSecondary, fontSize = 11.sp),
         )

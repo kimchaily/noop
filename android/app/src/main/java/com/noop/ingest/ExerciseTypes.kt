@@ -50,7 +50,7 @@ object ExerciseTypes {
 
     /**
      * Sports the user can pick that Health Connect has NO dedicated type for, so they ride on a
-     * fallback HC type (here "Other") while keeping their own NOOP label. Kept OUT of [NAMES] because
+     * fallback HC type (here "Other") while keeping their own Choop label. Kept OUT of [NAMES] because
      * that map is int-keyed — "Padel" and "Other" would collide on EXERCISE_TYPE_OTHER_WORKOUT — and
      * because an inbound HC record of that type must still read back as the generic name, not Padel.
      * Padel (#77 / #152): a racquet sport HC doesn't enumerate yet → writes as "Other", stays "Padel"

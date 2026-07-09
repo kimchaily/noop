@@ -52,7 +52,7 @@ import kotlin.math.roundToInt
 // it shows the BEST-sourced value, a provenance badge naming the source, the plain published reason
 // from MetricArbitrationPolicy ("counts directly" / "best stager"), and the inline agreement state
 // from FusionResolver (agree / minor delta / conflict). On a conflict it opens a compare detail
-// listing EVERY source side by side and which one NOOP is using and why — it NEVER silently merges.
+// listing EVERY source side by side and which one Choop is using and why — it NEVER silently merges.
 //
 // SELF-CONTAINED: the screen takes a fully-resolved [FusedRecord] (the repository adapter that pulls
 // today's per-source metrics and runs FusionResolver.resolve lives in Wave 3). It does no I/O and
@@ -203,7 +203,7 @@ private fun PrivacyNote(deviceNoun: String) {
 @Composable
 private fun DisclaimerNote() {
     Text(
-        "NOOP picks the best-sourced number and shows you where each came from. It's for wellness and curiosity. It doesn't diagnose or replace medical advice.",
+        "Choop picks the best-sourced number and shows you where each came from. It's for wellness and curiosity. It doesn't diagnose or replace medical advice.",
         style = NoopType.footnote,
         color = Palette.textTertiary,
         modifier = Modifier.padding(horizontal = 4.dp),
@@ -338,8 +338,8 @@ private fun conflictSummary(point: FusedMetricPoint): String {
 // MARK: - Conflict-compare dialog
 
 /**
- * A small read-only dialog: every source's value for the metric, side by side, with the one NOOP is
- * using marked and its trust reason named. NOOP never adjudicates which is "correct" — it shows the
+ * A small read-only dialog: every source's value for the metric, side by side, with the one Choop is
+ * using marked and its trust reason named. Choop never adjudicates which is "correct" — it shows the
  * spread and explains its best-signal pick. Transparency, not diagnosis.
  */
 @Composable
@@ -355,7 +355,7 @@ private fun ConflictCompareDialog(row: FusedRow, onDismiss: () -> Unit) {
             ) {
                 SectionHeader(title = row.label, overline = "Sources differ")
                 Text(
-                    "Your bands report different numbers. Here's every source, and the one NOOP is using.",
+                    "Your bands report different numbers. Here's every source, and the one Choop is using.",
                     style = NoopType.subhead,
                     color = Palette.textSecondary,
                 )
@@ -385,7 +385,7 @@ private fun ConflictCompareDialog(row: FusedRow, onDismiss: () -> Unit) {
                             modifier = Modifier.size(16.dp),
                         )
                         Text(
-                            "NOOP shows the ${winner.source.displayName} reading because it ${winner.reason} for this metric: a higher-trust source here, not a verdict that the others are wrong.",
+                            "Choop shows the ${winner.source.displayName} reading because it ${winner.reason} for this metric: a higher-trust source here, not a verdict that the others are wrong.",
                             style = NoopType.subhead,
                             color = Palette.textSecondary,
                         )

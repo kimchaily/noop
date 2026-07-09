@@ -228,7 +228,7 @@ private enum class OnboardingPage(val cta: String) {
     Import("Continue"),
     Notifications("Continue"),
     Appearance("Continue"),
-    Done("Enter NOOP");
+    Done("Enter Choop");
 }
 
 // MARK: - Shell
@@ -246,7 +246,7 @@ private fun OnboardingTopBar(page: Int, total: Int, progress: Float) {
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Overline("NOOP", color = Palette.accent)
+            Overline("Choop", color = Palette.accent)
             Spacer(Modifier.weight(1f))
             Text("$page / $total", style = NoopType.captionNumber, color = Palette.textTertiary)
         }
@@ -358,7 +358,7 @@ private fun WelcomeStep() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            // The NOOP mark centred on a flat brushed-titanium hero tile (the metallic titanium ramp, a
+            // The Choop mark centred on a flat brushed-titanium hero tile (the metallic titanium ramp, a
             // reset token — no gold). Clean and flat: a hairline rim, no bloom.
             Box(contentAlignment = Alignment.Center, modifier = Modifier.size(150.dp)) {
                 Box(
@@ -391,7 +391,7 @@ private fun WelcomeStep() {
 @Composable
 private fun WhatItDoesStep() {
     StepShell(
-        title = "What NOOP does",
+        title = "What Choop does",
         subtitle = "Three quiet promises.",
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(Metrics.gap)) {
@@ -435,7 +435,7 @@ private fun ExpectationsStep() {
 private fun BluetoothStep() {
     StepShell(
         title = "A quick word before you connect",
-        subtitle = "NOOP uses Bluetooth to find your strap. When you continue, allow the permission so it can scan.",
+        subtitle = "Choop uses Bluetooth to find your strap. When you continue, allow the permission so it can scan.",
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -447,9 +447,9 @@ private fun BluetoothStep() {
                 icon = Icons.Filled.Lock,
                 tint = Palette.statusPositive,
                 title = "Nothing leaves your phone",
-                message = "NOOP talks to your strap directly over Bluetooth Low Energy. There's no server in the middle. The connection is local, and so is every reading it pulls in.",
+                message = "Choop talks to your strap directly over Bluetooth Low Energy. There's no server in the middle. The connection is local, and so is every reading it pulls in.",
             )
-            Checkline("When Android asks, allow Bluetooth so NOOP can scan and connect.")
+            Checkline("When Android asks, allow Bluetooth so Choop can scan and connect.")
             Checkline("WHOOP 5.0/MG may need pairing mode the first time, with the official WHOOP app closed.")
         }
     }
@@ -508,7 +508,7 @@ private fun ConnectStep(viewModel: AppViewModel) {
         title = "Find your strap",
         subtitle = when {
             live.bonded -> "Bonded. You can keep going."
-            bleGranted -> "NOOP starts looking as soon as this step appears. You can keep going while it bonds."
+            bleGranted -> "Choop starts looking as soon as this step appears. You can keep going while it bonds."
             else -> "Allow Bluetooth and tap Scan to find your strap, or keep going and connect later."
         },
     ) {
@@ -594,10 +594,10 @@ private fun ConnectStep(viewModel: AppViewModel) {
                 icon = Icons.Filled.Lock,
                 tint = Palette.statusPositive,
                 title = "This can run while you finish setup",
-                message = "If the strap is nearby, NOOP will keep the BLE link alive in the background. You can continue through profile and import while it bonds.",
+                message = "If the strap is nearby, Choop will keep the BLE link alive in the background. You can continue through profile and import while it bonds.",
             )
 
-            // WHOOP is NOOP's primary band, so onboarding leads with it — but it isn't required.
+            // WHOOP is Choop's primary band, so onboarding leads with it — but it isn't required.
             // Make that obvious so a non-WHOOP user doesn't feel stuck on this step (#415-adjacent):
             // they can continue now and pair a heart-rate strap or import data afterwards.
             if (!live.bonded) {
@@ -876,7 +876,7 @@ private fun ImportStep(viewModel: AppViewModel) {
 private fun NotificationsStep() {
     StepShell(
         title = "Stay in the loop",
-        subtitle = "NOOP keeps your strap connected in the background. When you continue, allow notifications so it can show that link and reach your wrist.",
+        subtitle = "Choop keeps your strap connected in the background. When you continue, allow notifications so it can show that link and reach your wrist.",
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -888,15 +888,15 @@ private fun NotificationsStep() {
                 icon = Icons.Filled.Bluetooth,
                 tint = Palette.statusPositive,
                 title = "A quiet, ongoing status",
-                message = "NOOP holds the Bluetooth link open in the background so your data stays current. One low-priority notification shows it's connected. Nothing noisy.",
+                message = "Choop holds the Bluetooth link open in the background so your data stays current. One low-priority notification shows it's connected. Nothing noisy.",
             )
             Checkline("Wrist alerts (strain nudges and your smart alarm) arrive as notifications too.")
-            Checkline("When Android asks, allow notifications so NOOP can keep you informed.")
+            Checkline("When Android asks, allow notifications so Choop can keep you informed.")
         }
     }
 }
 
-// A late step that tells new users NOOP's look is theirs to set — the same System / Light / Dark
+// A late step that tells new users Choop's look is theirs to set — the same System / Light / Dark
 // choice that lives in Settings → Appearance, with a live preview. Writing the choice flips the whole
 // app immediately (AppearancePrefs.mode is snapshot state; Palette re-resolves live), so the picker
 // IS the preview — and two mini swatches show both the warm-paper Light and dark blue-grey looks.
@@ -907,7 +907,7 @@ private fun AppearanceStep() {
 
     StepShell(
         title = "Make it yours",
-        subtitle = "NOOP follows your system by default, or pick Light or Dark. You can change this any time in Settings → Appearance.",
+        subtitle = "Choop follows your system by default, or pick Light or Dark. You can change this any time in Settings → Appearance.",
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -1064,7 +1064,7 @@ private fun DoneStep() {
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                "Every beat, every night, every day, woven into one quiet picture of you. Welcome to NOOP.",
+                "Every beat, every night, every day, woven into one quiet picture of you. Welcome to Choop.",
                 style = NoopType.body,
                 color = Palette.textSecondary,
                 textAlign = TextAlign.Center,

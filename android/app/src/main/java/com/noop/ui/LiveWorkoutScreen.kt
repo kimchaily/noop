@@ -133,7 +133,7 @@ fun LiveWorkoutScreen(vm: AppViewModel, onClose: () -> Unit) {
             // The hero — big live HR, tinted to the current zone.
             HeroHeartRate(bpm = bpm, zone = zone)
 
-            // The accumulating Effort on the shared layered StrainGauge — liveStrain is on NOOP's 0–100
+            // The accumulating Effort on the shared layered StrainGauge — liveStrain is on Choop's 0–100
             // Effort axis, mapped to the gauge's 0–21 span (mirrors the Today effort hero). Display-only.
             EffortGauge(liveStrain = w.liveStrain, effortScale = effortScale)
 

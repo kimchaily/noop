@@ -128,7 +128,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Archive (remove) a device — keeps its row + samples (invariant I4). H3 (#520): when the removed
      *  device is a WHOOP, also RELEASE the BLE link so the band can enter pairing mode — archiving the
-     *  registry row alone left NOOP re-grabbing it (the 3s reconnect timer + the persisted pin still
+     *  registry row alone left Choop re-grabbing it (the 3s reconnect timer + the persisted pin still
      *  pointed at it), so it stayed connected and couldn't show its blue pairing LEDs. iOS already does
      *  this in forgetDevice; this brings Android to parity. A non-WHOOP source (FTMS/HR strap) is owned by
      *  the SourceCoordinator, not the WHOOP client, so it isn't touched here. */
@@ -1549,11 +1549,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         ble.debugLogcat = enabled
     }
 
-    // --- Broadcast heart rate (NOOP acts as a standard BLE HR peripheral; gym kit reads the strap HR) ---
+    // --- Broadcast heart rate (Choop acts as a standard BLE HR peripheral; gym kit reads the strap HR) ---
     //
     // OPT-IN, OFF BY DEFAULT, OFFLINE. When on, [HrBroadcaster] advertises the standard Heart Rate Service
     // (0x180D) and notifies 0x2A37 with each live strap HR, so a treadmill / Zwift / Peloton can read the
-    // WHOOP HR NOOP receives. LOCAL Bluetooth only — nothing leaves the device. The broadcaster is a pure
+    // WHOOP HR Choop receives. LOCAL Bluetooth only — nothing leaves the device. The broadcaster is a pure
     // CONSUMER of [ble.state].heartRate (fed in the state-collect loop in init); it never writes back into
     // the WHOOP path, so the strap connection and scoring can't regress.
     private val broadcaster = HrBroadcaster(appContext, log = { ble.externalLog(it) })
@@ -1561,7 +1561,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _hrBroadcast = MutableStateFlow(NoopPrefs.hrBroadcast(appContext))
     /** Whether the "Broadcast heart rate" toggle is on. Default OFF. */
     val hrBroadcast: StateFlow<Boolean> = _hrBroadcast.asStateFlow()
-    /** True while NOOP is actually advertising as an HR peripheral (radio on + permission granted). */
+    /** True while Choop is actually advertising as an HR peripheral (radio on + permission granted). */
     val hrBroadcastAdvertising: StateFlow<Boolean> = broadcaster.advertising
     /** How many centrals (gym kit / apps) are subscribed to the broadcast right now. */
     val hrBroadcastSubscribers: StateFlow<Int> = broadcaster.subscriberCount
@@ -1592,7 +1592,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (enabled) broadcaster.start() else broadcaster.stop()
     }
 
-    // --- Health Connect periodic auto-sync (Samsung Health → Health Connect → NOOP) ---
+    // --- Health Connect periodic auto-sync (Samsung Health → Health Connect → Choop) ---
     private val _hcAutoSync = MutableStateFlow(NoopPrefs.hcAutoSync(appContext))
     val hcAutoSync: StateFlow<Boolean> = _hcAutoSync.asStateFlow()
     private val _hcSyncHours = MutableStateFlow(NoopPrefs.hcSyncHours(appContext))

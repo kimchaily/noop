@@ -6,7 +6,7 @@ import kotlin.math.roundToInt
 
 // MARK: - Unit system preference
 //
-// NOOP stores EVERYTHING in SI (km, kg, cm, °C) — the importers normalise on the way in, so this is a
+// Choop stores EVERYTHING in SI (km, kg, cm, °C) — the importers normalise on the way in, so this is a
 // purely cosmetic, display-only layer. There is no data migration and nothing in Room changes when the
 // user flips this. One Metric/Imperial switch for length+mass with a SEPARATE temperature override,
 // because plenty of people think in kg/cm but still read body temperature in °F (and vice versa).
@@ -40,20 +40,20 @@ enum class TemperatureUnit(val raw: String) {
 }
 
 /**
- * How the Effort score is displayed (#268). NOOP stores Effort 0–100 (StrainScorer.maxStrain = 100);
+ * How the Effort score is displayed (#268). Choop stores Effort 0–100 (StrainScorer.maxStrain = 100);
  * people coming from WHOOP often think in its 0–21 Day Strain axis, so this purely cosmetic toggle lets
- * the SAME stored value be shown on either scale. Default is NOOP's own 0–100 — the data never changes.
+ * the SAME stored value be shown on either scale. Default is Choop's own 0–100 — the data never changes.
  * Mirrors the macOS [EffortScale].
  */
 enum class EffortScale(val raw: String) {
-    /** NOOP's native 0–100 axis (the stored value, one decimal). */
+    /** Choop's native 0–100 axis (the stored value, one decimal). */
     HUNDRED("hundred"),
 
     /** WHOOP's 0–21 Day Strain axis — the stored 0–100 value rescaled down for display only. */
     WHOOP("whoop");
 
     companion object {
-        /** An unset/unknown value resolves to NOOP's native 0–100 axis. */
+        /** An unset/unknown value resolves to Choop's native 0–100 axis. */
         fun fromRaw(raw: String?): EffortScale = entries.firstOrNull { it.raw == raw } ?: HUNDRED
     }
 }
@@ -214,7 +214,7 @@ object UnitFormatter {
     // MARK: Effort scale (stored 0–100 — #268)
 
     /**
-     * NOOP stores Effort 0–100 (StrainScorer.maxStrain = 100). WHOOP's Day Strain axis is 0–21, and the
+     * Choop stores Effort 0–100 (StrainScorer.maxStrain = 100). WHOOP's Day Strain axis is 0–21, and the
      * import boundary rescales by 100/21 (WhoopCsvImporter / WhoopExportImporter.dayStrainToEffortScale),
      * so the exact inverse for a display-only 0–100 → 0–21 conversion is ×21/100. Kept byte-identical to
      * that factor and to the macOS `UnitFormatter.effortScaleFactor`.

@@ -42,7 +42,7 @@ object XiaomiBandImporter {
     const val SOURCE_LABEL = "Xiaomi Smart Band"
     const val DEFAULT_DEVICE_ID = "xiaomi-band"
 
-    /** Day-rollup tables, keyed by NOOP day. `goal_day` is skipped (targets, not measurements). */
+    /** Day-rollup tables, keyed by Choop day. `goal_day` is skipped (targets, not measurements). */
     private val DAY_TABLES = listOf(
         "steps_day", "calories_day", "heart_rate_day", "sleep_day",
         "stress_day", "spo2_day", "intensity_day", "valid_stand_day", "vitality",

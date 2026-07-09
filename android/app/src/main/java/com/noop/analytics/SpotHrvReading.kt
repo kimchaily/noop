@@ -3,14 +3,14 @@ package com.noop.analytics
 /**
  * On-demand "take an HRV reading now" — the single-value spot RMSSD path (#537, @sunny-noop).
  *
- * This wraps NOOP's canonical [HrvAnalyzer] for the LIVE, user-triggered HRV snapshot the Live screen
+ * This wraps Choop's canonical [HrvAnalyzer] for the LIVE, user-triggered HRV snapshot the Live screen
  * captures over ~60 s of beat-to-beat (R-R) intervals. It exists so the spot value, its honesty gate,
  * and its data-quality caveat live in ONE tested place rather than being re-derived in the view.
  *
  * Why delegate to [HrvAnalyzer] (and NOT roll our own RMSSD):
  *  - RMSSD is the textbook root-mean-square of successive R-R differences:
  *        RMSSD = sqrt( mean( (RR[i+1] - RR[i])^2 ) )   in ms.
- *  - NOOP's nightly HRV (`avgHrv`, fed into Vitality / Fitness Age) uses [HrvAnalyzer.rmssdRaw], which
+ *  - Choop's nightly HRV (`avgHrv`, fed into Vitality / Fitness Age) uses [HrvAnalyzer.rmssdRaw], which
  *    takes the Task Force (1996) SAMPLE denominator (n-1) over the cleaned NN series. To keep a spot
  *    reading COMPARABLE to the overnight number a user sees elsewhere, this path computes RMSSD the
  *    SAME way (same cleaning pipeline, same (n-1) denominator). Using a population (n) denominator —
@@ -59,7 +59,7 @@ object SpotHrvReading {
 
     /**
      * Compute a single spot HRV reading from the raw R-R intervals (ms) gathered during the live
-     * capture window. Runs NOOP's canonical cleaning + RMSSD (range filter -> Malik ectopic rejection
+     * capture window. Runs Choop's canonical cleaning + RMSSD (range filter -> Malik ectopic rejection
      * -> (n-1) RMSSD), so the value matches the nightly HRV math. Returns [Outcome.Insufficient] rather
      * than a number when too few clean beats survive — never a fabricated figure.
      *

@@ -14,13 +14,13 @@ import com.noop.protocol.WhoopEvent
  * `OuraStreamMapping` (WhoopStore), built from the architecture plan's section-4 table.
  *
  * HONEST-DATA INVARIANT (hard): we surface ONLY the ring's decoded raw signals and its OWN open
- * event tags. We never read or display Oura's encrypted readiness/sleep scores. NOOP computes its
+ * event tags. We never read or display Oura's encrypted readiness/sleep scores. Choop computes its
  * own Charge/Rest downstream:
- *   - the IBI stream becomes [Streams.rr], from which RecoveryScorer reconstructs NOOP's OWN RMSSD;
+ *   - the IBI stream becomes [Streams.rr], from which RecoveryScorer reconstructs Choop's OWN RMSSD;
  *   - the HR stream feeds resting-HR + strain;
  *   - the ring's open 0x5D HRV tag is recorded as an `OURA_HRV` diagnostic event carrying ITS RAW
  *     decoded fields (time_ms/b1/b2) ONLY, never a fabricated rmssd_ms (the int8 b1/b2 byte->ms
- *     scale is not Tier-A; NOOP's scoring RMSSD comes from `rr`, not this tag);
+ *     scale is not Tier-A; Choop's scoring RMSSD comes from `rr`, not this tag);
  *   - the open sleep-phase tags become `OURA_SLEEP_PHASE` events folded into a sleep session.
  *
  * Each event carries a ring-clock `ringTimestamp` (not wall-clock). To stay pure and avoid baking a
@@ -60,7 +60,7 @@ object OuraStreamMapping {
 
                 is OuraEvent.Hrv -> {
                     // The ring's OWN open HRV tag, recorded raw for diagnostics/parity. NOT Oura's
-                    // readiness score, and NOT used as NOOP's RMSSD (that comes from `rr`).
+                    // readiness score, and NOT used as Choop's RMSSD (that comes from `rr`).
                     val ts = anchor(ev.value.ringTimestamp) ?: continue
                     out.events.add(
                         WhoopEvent(

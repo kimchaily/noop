@@ -98,4 +98,4 @@ Toolchain, app identity, manifest, first-party code, and dependency set all matc
 published **NOOP v8.2.2 (261)** APK is built from this `android/` source; continuing
 development from here reproduces the shipped app. Produce a fresh APK from CI with the
 **Android Release APK** workflow (`.github/workflows/android-release.yml`, run via
-*Actions → Run workflow*), which uploads `NOOP-full.apk` as a build artifact.
+*Actions → Run workflow*), which uploads `Choop-v<version>.apk` as a build artifact.

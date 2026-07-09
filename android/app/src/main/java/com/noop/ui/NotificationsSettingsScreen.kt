@@ -102,7 +102,7 @@ internal enum class NotifCategory(
     Calendar("Calendar & Reminders", Icons.Filled.CalendarMonth, BuzzPattern.Double),
 }
 
-/** A notification-capable app NOOP can mirror to the wrist. `id` is the persistence key. */
+/** A notification-capable app Choop can mirror to the wrist. `id` is the persistence key. */
 internal data class NotifApp(
     val id: String,
     val name: String,
@@ -267,7 +267,7 @@ fun NotificationsSettingsScreen(vm: AppViewModel) {
         AlertSection(
             icon = Icons.Filled.NotificationsActive,
             title = "Wrist alerts",
-            blurb = "When on, NOOP taps your wrist for the apps you pick below, so you can leave " +
+            blurb = "When on, Choop taps your wrist for the apps you pick below, so you can leave " +
                 "your phone and still feel what matters.",
         ) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -391,7 +391,7 @@ fun NotificationsSettingsScreen(vm: AppViewModel) {
             FormToggleRow(
                 label = "All other apps",
                 help = "Also buzz for apps that aren't in the lists above (e.g. BeReal). Android " +
-                    "doesn't let NOOP see every installed app, so this is how you cover the rest. " +
+                    "doesn't let Choop see every installed app, so this is how you cover the rest. " +
                     "Can be chatty; quiet hours and \"only when worn\" still apply.",
                 checked = allOtherApps,
                 onChange = {
@@ -444,7 +444,7 @@ fun NotificationsSettingsScreen(vm: AppViewModel) {
             icon = Icons.Filled.NotificationsActive,
             title = "Daily reports",
             blurb = "Optional phone notifications, off by default. These arrive after your strap syncs " +
-                "and NOOP scores the data, so they land soon after, not the exact second you wake or " +
+                "and Choop scores the data, so they land soon after, not the exact second you wake or " +
                 "finish a workout. Everything is worked out on this phone.",
         ) {
             FormToggleRow(
@@ -461,7 +461,7 @@ fun NotificationsSettingsScreen(vm: AppViewModel) {
             FormToggleRow(
                 label = "Post-workout summary",
                 help = "When a new workout syncs in, a notification with its Effort, duration and average " +
-                    "heart rate. Shows up after the session reaches NOOP on the next sync.",
+                    "heart rate. Shows up after the session reaches Choop on the next sync.",
                 checked = postWorkoutReport,
                 onChange = {
                     postWorkoutReport = it
@@ -541,7 +541,7 @@ private fun CallsCard(
                 RowDivider()
                 FormToggleRow(
                     label = "Phone calls",
-                    help = "Needs Phone permission; NOOP never reads numbers or call logs.",
+                    help = "Needs Phone permission; Choop never reads numbers or call logs.",
                     checked = phoneCallsEnabled,
                     enabled = masterEnabled,
                     onChange = onPhoneCallsEnabled,
@@ -590,7 +590,7 @@ private fun DeliveryNote() {
                 modifier = Modifier.size(16.dp),
             )
             Text(
-                "Wrist delivery needs Notification Access so NOOP can read which apps notify " +
+                "Wrist delivery needs Notification Access so Choop can read which apps notify " +
                     "you. Nothing leaves this device. Your choices are saved now and apply " +
                     "automatically once access is granted.",
                 style = NoopType.footnote,

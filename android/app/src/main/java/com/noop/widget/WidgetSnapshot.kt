@@ -9,7 +9,7 @@ import androidx.glance.appwidget.updateAll
  * widget can render after a process restart (Glance recomposes from disk, not from app memory).
  */
 data class WidgetSnapshot(
-    /** Today's recovery / Charge 0–100, null until NOOP has scored enough nights (honest-blank). */
+    /** Today's recovery / Charge 0–100, null until Choop has scored enough nights (honest-blank). */
     val recoveryPct: Int? = null,
     /** Today's Rest 0–100 (the sleep_performance composite), null until last night is scored (#516). */
     val restPct: Int? = null,

@@ -88,7 +88,7 @@ import kotlinx.coroutines.delay
 // R-R stream when the HR field reads 0), then a uniform grid of the body's vital
 // signs (respiratory rate, blood O2, resting HR, HRV, skin temp) as fixed-height
 // StatTiles, each tinted and captioned with its in-range state. Re-skinned to the
-// locked NOOP component system: every surface is a NoopCard/StatTile, every chart
+// locked Choop component system: every surface is a NoopCard/StatTile, every chart
 // is a Canvas chart — no ad-hoc card heights or paddings.
 //
 // macOS parity note: live HR zone/%max reads the user's ProfileStore max heart rate,
@@ -537,7 +537,7 @@ private fun sleepHoursText(totalMin: Double): String {
     return "${t / 60}h ${t % 60}m"
 }
 
-/** One labelled contributor bar: a label + right-aligned read-out over the NOOP signature segmented
+/** One labelled contributor bar: a label + right-aligned read-out over the Choop signature segmented
  *  [PipBar] (metric-hue pips that cascade up to the strength on appear/change), mirroring
  *  HealthView.swift's `ContributorBar` / `PipBar(value:tint:)`. A null fraction renders an empty
  *  (calibrating) bar — no fabricated fill. */
@@ -1480,7 +1480,7 @@ private fun VitalsSection(
             Text(
                 text = "SpO₂, respiratory rate and skin temperature are sleep-window " +
                     "aggregates from your most recent imported day; resting HR and HRV update daily. " +
-                    "Once NOOP has 14 nights of history, in-range compares each vital to your own " +
+                    "Once Choop has 14 nights of history, in-range compares each vital to your own " +
                     "baseline (approximate, not medical advice); until then typical adult ranges apply.",
                 style = NoopType.footnote,
                 color = Palette.textTertiary,
@@ -1849,7 +1849,7 @@ fun VitalDetailScreen(vm: AppViewModel, key: String) {
         if (detail == null || detail.points.size < 2) {
             DataPendingNote(
                 title = "Not enough history yet",
-                body = "This vital needs at least two historical readings before NOOP can chart it.",
+                body = "This vital needs at least two historical readings before Choop can chart it.",
             )
             return@ScreenScaffold
         }

@@ -30,11 +30,11 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Re-broadcasts NOOP's LIVE heart rate back OUT as a standard Bluetooth Heart Rate peripheral, so a gym
- * treadmill, Zwift, Peloton, a bike computer, or any fitness app can read the WHOOP HR that NOOP is
+ * Re-broadcasts Choop's LIVE heart rate back OUT as a standard Bluetooth Heart Rate peripheral, so a gym
+ * treadmill, Zwift, Peloton, a bike computer, or any fitness app can read the WHOOP HR that Choop is
  * already receiving off the strap. It runs a [BluetoothGattServer] hosting the standard Heart Rate
  * Service (0x180D) with the Heart Rate Measurement characteristic (0x2A37), and a [BluetoothLeAdvertiser]
- * advertising 0x180D, notifying 0x2A37 with the SIG-spec flags + bpm encoding whenever NOOP has a fresh
+ * advertising 0x180D, notifying 0x2A37 with the SIG-spec flags + bpm encoding whenever Choop has a fresh
  * live HR sample.
  *
  * Faithful Kotlin twin of Strand/BLE/HrBroadcaster.swift.
@@ -42,7 +42,7 @@ import java.util.concurrent.ConcurrentHashMap
  * OFFLINE, OPT-IN, ADDITIVE
  * -------------------------
  * LOCAL Bluetooth only — nothing leaves the device to any cloud or server. It just re-shares the strap's
- * HR to nearby gym kit over a standard BLE profile, which fits NOOP's offline ethos. OFF by default; it
+ * HR to nearby gym kit over a standard BLE profile, which fits Choop's offline ethos. OFF by default; it
  * only runs while the user has the "Broadcast heart rate" toggle on (persisted by NoopPrefs).
  *
  * WHOOP-FIRST ISOLATION: this class runs its OWN advertiser + GATT server and never imports, calls, or
@@ -441,7 +441,7 @@ class HrBroadcaster(
          * Layout (the inverse of [StandardHeartRate.parse]): a flags byte then the HR value.
          *   - flags bit0 = 0 → HR is a single u8 byte (emitted for any bpm < 256);
          *   - flags bit0 = 1 → HR is u16 little-endian (only for an out-of-range bpm >= 256).
-         * Bit3 (Energy Expended) and bit4 (R-R) are never set — NOOP broadcasts a plain instantaneous HR.
+         * Bit3 (Energy Expended) and bit4 (R-R) are never set — Choop broadcasts a plain instantaneous HR.
          * The bpm is clamped to a non-negative 16-bit range so a stray value can't overflow the encoding.
          */
         fun measurement(bpm: Int): ByteArray {

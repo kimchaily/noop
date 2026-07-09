@@ -19,7 +19,7 @@ enum class ExperimentalBrand(val displayBrand: String, val canStreamLiveHR: Bool
      *  we can't do — the driver surfaces that honestly rather than faking it. */
     MI_BAND("Mi Band", true),
     /** Garmin watch. Live HR is the STANDARD broadcast-HR path (0x180D) when the user enables
-     *  "Broadcast Heart Rate" — there is no NOOP-proprietary Garmin protocol. */
+     *  "Broadcast Heart Rate" — there is no Choop-proprietary Garmin protocol. */
     GARMIN("Garmin", true),
     /** Oura ring. No open live health stream — proprietary, syncs to Oura's app. The driver makes the
      *  detection attempt, then points honestly at file import. */

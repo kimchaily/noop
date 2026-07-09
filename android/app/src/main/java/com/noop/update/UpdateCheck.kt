@@ -16,7 +16,7 @@ import java.net.URL
 object UpdateCheck {
 
     // This fork's releases. The original NoopApp/noop repo is gone, so the check reads THIS repo's
-    // "latest" GitHub Release. The Android Release APK workflow attaches NOOP-full.apk to a Release
+    // "latest" GitHub Release. The Android Release APK workflow attaches Choop-full.apk to a Release
     // on every version tag (v*), so tapping through to the release page lands on a downloadable APK.
     private const val ENDPOINT = "https://api.github.com/repos/kimchaily/noop/releases/latest"
 

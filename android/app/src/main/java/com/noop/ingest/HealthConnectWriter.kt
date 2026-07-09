@@ -28,14 +28,14 @@ import java.time.ZoneId
 import kotlin.reflect.KClass
 
 /**
- * OPT-IN writeback: pushes NOOP's on-device computed nightly metrics (resting HR, HRV RMSSD, sleep
+ * OPT-IN writeback: pushes Choop's on-device computed nightly metrics (resting HR, HRV RMSSD, sleep
  * SpO2, respiratory rate) INTO Health Connect, so other apps can see what the strap measured.
  * Inverse of [HealthConnectImporter]; default OFF (NoopPrefs.hcWriteback), toggled in Data Sources.
  *
  * Two deliberate scope limits:
  *  - **Computed days only** (`repo.days(computedDeviceId)`) — never imported ones. Echoing imported
  *    WHOOP-export or Health-Connect-sourced rows back into HC would duplicate another app's data
- *    (or loop our own import). What NOOP computed from the strap is genuinely ours to contribute.
+ *    (or loop our own import). What Choop computed from the strap is genuinely ours to contribute.
  *  - **Idempotent by clientRecordId** (`noop-<metric>-<day>`): Health Connect does NOT auto-dedupe
  *    on re-insert the way HealthKit does — without a client id every 15-min recompute would stack
  *    duplicates. With it, HC upserts: same id + higher [Metadata.clientRecordVersion] replaces, so
@@ -176,7 +176,7 @@ object HealthConnectWriter {
     }
 
     /**
-     * #528 — export NOOP's heart-rate samples (raw [deviceId], not computed) above the persisted
+     * #528 — export Choop's heart-rate samples (raw [deviceId], not computed) above the persisted
      * frontier. Inside workout/sleep windows the series is kept at full resolution; elsewhere it is
      * decimated to ~1 sample / 30 s so a continuous day doesn't flood Health Connect. The frontier
      * (a single epoch-second cursor in [NoopPrefs]) advances past every sample seen, so each 15-min

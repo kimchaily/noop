@@ -29,7 +29,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
-// MARK: - Time-of-Day Atmosphere (NOOP identity backdrop)
+// MARK: - Time-of-Day Atmosphere (Choop identity backdrop)
 //
 // Compose port of StrandDesign/TimeOfDayBackground.swift. A *whisper* behind content — never
 // decoration, never a gaudy starfield. Apple-Weather restraint dialled WAY down: every atmosphere

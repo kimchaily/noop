@@ -387,7 +387,7 @@ fun TodayScreen(
         // Read each pinned card from the SAME source its own detail screen reads, the proven path that
         // already shows real numbers there (and the resolution iOS's exploreSeries uses). Stress is derived
         // from the imported strap data (StressScreen reads "my-whoop"); Fitness age + Vitality are
-        // NOOP-COMPUTED weekly scores the IntelligenceEngine writes under the "-noop" source (HealthScreen
+        // Choop-COMPUTED weekly scores the IntelligenceEngine writes under the "-noop" source (HealthScreen
         // reads COMPUTED_SOURCE = "my-whoop-noop"). The earlier resolvedSeries("…","my-whoop") read resolved
         // empty in the demo because those two scores never live under the imported "my-whoop" source. Take
         // the latest value (series are day-ascending), null → the card shows a dash, never a fabricated number.
@@ -635,7 +635,7 @@ fun TodayScreen(
 
     // Steps for the selected day from imported Apple Health / Health Connect data, the Today Steps
     // tile's fallback when the strap itself didn't bank an on-device count. A WHOOP 4.0 DOES count
-    // steps (in the official WHOOP app), but NOOP can't yet read them off the strap over Bluetooth, so
+    // steps (in the official WHOOP app), but Choop can't yet read them off the strap over Bluetooth, so
     // on a 4.0 the tile shows your imported steps instead of "No Data". Reloads as the day selector
     // moves. On-device WHOOP 5/MG steps still take precedence. (#150)
     var importedStepsForDay by remember { mutableStateOf<Int?>(null) }
@@ -735,7 +735,7 @@ fun TodayScreen(
     // Provenance (COMPONENT 4): the REAL per-metric merge winner for the selected day's derived scores,
     // keyed by metric key ("recovery" / "sleep_performance"); each value is the RAW source id the resolver
     // returned (e.g. "my-whoop", "my-whoop-noop", "apple-health"). resolvedSeries applies the SAME
-    // imported-WHOOP > NOOP-computed > Apple-Health precedence the dashboard merge uses field-by-field
+    // imported-WHOOP > Choop-computed > Apple-Health precedence the dashboard merge uses field-by-field
     // (WhoopRepository.mergeDaily), so the badge under each ring names the source that ACTUALLY supplied
     // that day's number rather than a blanket day-level deviceId. Mirrors the Swift Today lane's
     // `provenanceByMetric` resolution exactly (the winner is the last resolved point on selectedDayKey).
@@ -1939,10 +1939,10 @@ private fun LiquidTodayHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            // (a) Support / donate heart — a filled heart in the charge-green tint (iOS chargeColor). NOOP is
+            // (a) Support / donate heart — a filled heart in the charge-green tint (iOS chargeColor). Choop is
             // free forever; donations are optional. Mirrors iOS `heart.fill` → showSupport.
             HeaderHeartButton(onSupport = onSupport)
-            // (b) Profile avatar (the photo set in Settings, or the NOOP loop mark) → Settings. Mirrors iOS.
+            // (b) Profile avatar (the photo set in Settings, or the Choop loop mark) → Settings. Mirrors iOS.
             Box(
                 modifier = Modifier
                     .size(34.dp)
@@ -1967,7 +1967,7 @@ private fun LiquidTodayHeader(
 }
 
 /** The header Support heart (iOS `heart.fill` → showSupport): a filled heart in the charge-green tint on a
- *  34dp tap target, with a soft shadow so it reads on the day-of-sky. NOOP is free forever; a tap opens the
+ *  34dp tap target, with a soft shadow so it reads on the day-of-sky. Choop is free forever; a tap opens the
  *  optional Support sheet. Mirrors the iOS liquid header heart. */
 @Composable
 private fun HeaderHeartButton(onSupport: () -> Unit) {
@@ -1983,7 +1983,7 @@ private fun HeaderHeartButton(onSupport: () -> Unit) {
             )
             .semantics {
                 contentDescription =
-                    "Support NOOP. It's free; donations are optional and help development."
+                    "Support Choop. It's free; donations are optional and help development."
             },
         contentAlignment = Alignment.Center,
     ) {
@@ -2067,7 +2067,7 @@ private fun LiquidBatteryRing(batteryPct: Double?, onClick: () -> Unit) {
     }
 }
 
-// MARK: - NOOP wordmark (iOS LiquidWordmark parity — centred, with a tap easter egg)
+// MARK: - Choop wordmark (iOS LiquidWordmark parity — centred, with a tap easter egg)
 //
 // The subtle "N O O P" wordmark that sits on the sky between the header and the hero. Built as a row of
 // letters (not one tracked string, which adds a trailing gap after the last glyph and pushes the word
@@ -2123,7 +2123,7 @@ private fun LiquidWordmark() {
         horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        "NOOP".forEach { ch ->
+        "Choop".forEach { ch ->
             Text(
                 ch.toString(),
                 style = NoopType.number(16f, weight = FontWeight.Bold)
@@ -2149,7 +2149,7 @@ private fun SupportRow(onSupport: () -> Unit) {
                 indication = null,
                 onClick = onSupport,
             )
-            .semantics { contentDescription = "Support NOOP: donate or get in touch" },
+            .semantics { contentDescription = "Support Choop: donate or get in touch" },
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -2165,7 +2165,7 @@ private fun SupportRow(onSupport: () -> Unit) {
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(Metrics.space4),
             ) {
-                Text("Support NOOP", style = NoopType.headline, color = Palette.textPrimary)
+                Text("Support Choop", style = NoopType.headline, color = Palette.textPrimary)
                 Text(
                     "Donate or get in touch. Totally optional.",
                     style = NoopType.subhead,
@@ -2219,7 +2219,7 @@ private fun ScoreHeroRow(
         val live = liveTodayStrain; val stored = day?.strain
         if (live != null && stored != null) maxOf(live, stored) else (live ?: stored)
     }
-    // Effort honours the 0–100 / WHOOP-0–21 toggle (#313). The stored strain is on NOOP's 0–100 Effort
+    // Effort honours the 0–100 / WHOOP-0–21 toggle (#313). The stored strain is on Choop's 0–100 Effort
     // axis; render it on the user's selected scale so the arc and centre number match the app's Effort.
     val effortOutOf = if (effortScale == EffortScale.WHOOP) 21.0 else 100.0
     val effortVal = strain?.let { UnitFormatter.effortValue(it, effortScale) } ?: 0.0
@@ -4067,8 +4067,8 @@ private fun RecordingStatusChip(state: RecordingState, onConnect: () -> Unit) {
 
 /**
  * The Today provenance label for the day's REAL merge winner, extends the existing By-Day badge
- * vocabulary consistently. NOOP-computed reads "On-device" (the spec's wording for the By-Day badge,
- * versus the FusedRecord screen's terser "NOOP"), an imported strap day reads "Whoop", and a phone
+ * vocabulary consistently. Choop-computed reads "On-device" (the spec's wording for the By-Day badge,
+ * versus the FusedRecord screen's terser "Choop"), an imported strap day reads "Whoop", and a phone
  * aggregate reads "Apple Health" / "Health Connect". Null when no source owns the day (nothing to
  * stamp). Mirrors the Swift `provenanceBadgeLabel`. */
 internal fun dayOwnerSource(deviceId: String?): com.noop.analytics.FusionSource? = when {
@@ -4095,7 +4095,7 @@ internal fun provenanceBadgeLabel(owner: com.noop.analytics.FusionSource?): Stri
 /**
  * PURE mapper (unit-tested), a RAW resolver source id (as returned by [WhoopRepository.resolvedSeries]'s
  * winning point, e.g. "my-whoop", "my-whoop-noop", "apple-health") onto the spec's provenance labels,
- * given the strap's real [deviceId]. The NOOP-computed strap sibling ("$deviceId-noop") reads "On-device"
+ * given the strap's real [deviceId]. The Choop-computed strap sibling ("$deviceId-noop") reads "On-device"
  * (scored on THIS device from the raw strap stream); the imported strap source ([deviceId], normally
  * "my-whoop") reads "Whoop"; the Apple-Health source reads "Apple Health". Any other real source (Health
  * Connect, Mi Band, nutrition) keeps its [com.noop.analytics.FusionSource.displayName], still the genuine
@@ -4819,7 +4819,7 @@ private suspend fun PointerInputScope.hrChartTransformGestures(
 // LineChart plots points by LIST INDEX (evenly spaced, no time axis), so each marker's wall-clock
 // time is mapped to a fractional list index by interpolating against the buckets' own timestamps, // markers then sit exactly on the rendered curve even when the strap history has gaps. Every layer
 // self-hides when its data is absent (no sleep, calibrating Charge, no workouts). Mirrors the macOS
-// OverviewHRChart (Packages/StrandDesign) in NOOP's own colour language. (PR #285)
+// OverviewHRChart (Packages/StrandDesign) in Choop's own colour language. (PR #285)
 
 @Composable
 private fun OverviewHRChart(
@@ -5187,7 +5187,7 @@ private fun TodaySourcesSection(
                 .clickable(
                     interactionSource = collapsedInteraction,
                     indication = null,
-                    onClickLabel = "Show what NOOP is synced from",
+                    onClickLabel = "Show what Choop is synced from",
                     onClick = onToggle,
                 ),
         ) {
@@ -5767,8 +5767,8 @@ internal fun latestWeightKg(apple: List<AppleDaily>, healthConnect: List<AppleDa
 /**
  * Steps for [dayKey] from the imported Apple Health / Health Connect daily aggregates, or null when
  * neither source carries a step total for that day. Backs the Today Steps-tile fallback for straps
- * NOOP can't read steps off over Bluetooth, notably the WHOOP 4.0, which DOES count steps (in the
- * official WHOOP app) but doesn't expose them to NOOP, so on a 4.0 the tile shows imported steps
+ * Choop can't read steps off over Bluetooth, notably the WHOOP 4.0, which DOES count steps (in the
+ * official WHOOP app) but doesn't expose them to Choop, so on a 4.0 the tile shows imported steps
  * rather than "No Data". On-device WHOOP 5/MG steps (DailyMetric.steps) still take precedence at the
  * call site. When both sources report the same day, the larger (most-complete) total wins so we never
  * sum and double-count. Mirrors the macOS TodayView, which already falls back to imported steps. (#150)

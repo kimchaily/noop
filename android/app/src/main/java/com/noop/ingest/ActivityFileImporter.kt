@@ -39,7 +39,7 @@ import kotlin.math.roundToInt
  * read and caps record/field counts. A malformed file yields an empty result, never a crash.
  *
  * Patterns conceptually adapted from CoreGPX (MIT) / ticofab android-gpx-parser (Apache) /
- * FitnessKit TcxDataProtocol+FitDataProtocol (MIT) / muktihari/fit (BSD); NOOP's own clean code.
+ * FitnessKit TcxDataProtocol+FitDataProtocol (MIT) / muktihari/fit (BSD); Choop's own clean code.
  */
 object ActivityFileImporter {
 

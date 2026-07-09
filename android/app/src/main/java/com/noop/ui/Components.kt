@@ -632,7 +632,7 @@ fun <T> SegmentedPillControl(
 // params (defaulted, so every existing call site is untouched) let the RecoveryRing brand
 // glyph diverge: [startDeg]/[spanDeg] override the arc (it uses −90° / ~288° = open ~80%
 // ring, clockwise), [coreDot] paints a SOLID gold core dot at the centre, and [wordmark]
-// stamps a micro ALL-CAPS "NOOP" above the number. Mirrors StrandDesign/BevelGauge.swift.
+// stamps a micro ALL-CAPS "Choop" above the number. Mirrors StrandDesign/BevelGauge.swift.
 
 @Composable
 fun BevelGauge(
@@ -777,7 +777,7 @@ fun BevelGauge(
                     // Brand glyph core: a small solid gold dot at the very centre — but ONLY in the
                     // glyph-only lock-up (logo / nav). When a number is shown the dot sits behind the
                     // digits and muddies them (community feedback at the v3 launch), so suppress it
-                    // whenever showsLabel — leaving a clean ring + number + micro-NOOP wordmark.
+                    // whenever showsLabel — leaving a clean ring + number + micro-Choop wordmark.
                     if (coreDot != null && !showsLabel) {
                         drawCircle(color = coreDot, radius = stroke * 0.40f, center = center)
                     }
@@ -788,7 +788,7 @@ fun BevelGauge(
             // Big bold number ≈ diameter * 0.30.
             val numberSp = diameter.value * 0.30f
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                // Micro ALL-CAPS NOOP wordmark above the number (RecoveryRing brand glyph).
+                // Micro ALL-CAPS Choop wordmark above the number (RecoveryRing brand glyph).
                 if (wordmark != null) {
                     Text(
                         text = wordmark.uppercase(),
@@ -853,7 +853,7 @@ fun BevelGauge(
 // so the Rest hero can show "Rest 87" while Charge keeps the bare number — same shape as
 // the macOS RecoveryRing.valueFormat. The state word + tip colour sample the recovery (gold)
 // ramp. Unlike the Bevel 240° gauge it draws the BRAND GLYPH: an open ~80% ring starting at
-// −90° (12 o'clock) clockwise, a solid gold centre core dot and a micro "NOOP" wordmark.
+// −90° (12 o'clock) clockwise, a solid gold centre core dot and a micro "Choop" wordmark.
 
 // MARK: - GlowRing — crisp WHOOP-style score ring (Compose parity with iOS StrandDesign.GlowRing, #23)
 //
@@ -983,11 +983,11 @@ fun RecoveryRing(
         lineWidth = lineWidth,
         showsLabel = showsLabel,
         // Brand-glyph geometry: open ~80% ring (288° of 360°), 12-o'clock start, clockwise,
-        // plus the solid gold core dot + micro NOOP wordmark that mark the recovery hero.
+        // plus the solid gold core dot + micro Choop wordmark that mark the recovery hero.
         startDeg = -90f,
         spanDeg = 288f,
         coreDot = Palette.gold,
-        wordmark = "NOOP",
+        wordmark = "Choop",
         modifier = modifier,
     )
 }

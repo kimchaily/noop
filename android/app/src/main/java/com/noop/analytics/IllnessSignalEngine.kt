@@ -6,7 +6,7 @@ package com.noop.analytics
 // INDEPENDENT implementation of the published multi-parameter pre-symptomatic signature documented across
 // the wearable literature (e.g. the Stanford/Snyder resting-HR-elevation work and successor studies):
 // resting HR ↑, skin temperature ↑, HRV (RMSSD) ↓ and respiration ↑ move TOGETHER, days before symptoms.
-// NOOP re-derives the PATTERN, transparently, against the user's OWN rolling baseline — never a population
+// Choop re-derives the PATTERN, transparently, against the user's OWN rolling baseline — never a population
 // cutoff. Replaces the blunt 2-of-4 threshold rule with a calibrated 0–100 score, a ≥2-signal
 // corroboration gate, and EXPLICIT confounder suppression cross-checked against the same-day journal tags.
 //

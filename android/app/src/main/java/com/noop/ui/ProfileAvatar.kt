@@ -35,7 +35,7 @@ import java.io.File
 
 // MARK: - Profile picture (optional, on-device avatar)
 //
-// An OPTIONAL profile photo, kept entirely on this phone — never uploaded (NOOP is offline). The
+// An OPTIONAL profile photo, kept entirely on this phone — never uploaded (Choop is offline). The
 // picked image's bytes are downscaled to ~256px, re-encoded as a small JPEG, and written to a single
 // file in the app-private filesDir; only the file path + an "is set" flag live in SharedPreferences.
 //
@@ -205,7 +205,7 @@ object ProfileAvatarStore {
 // A single [size] drives both the small header avatar (~28dp) and the large Settings avatar.
 
 /**
- * Renders the on-device profile photo, circle-cropped, or the NOOP loop-mark ([LoopMark]) fallback when
+ * Renders the on-device profile photo, circle-cropped, or the Choop loop-mark ([LoopMark]) fallback when
  * none is set. Reads [ProfileAvatarStore.bitmap] (snapshot state), so it updates live the instant
  * the photo is set/cleared. Token-only: a hairline rim ties it to the rest of the chrome. Decorative by
  * default — pass a [contentDescription] (e.g. on the tappable header avatar) when it needs a spoken label.
@@ -236,7 +236,7 @@ fun ProfileAvatar(
                 modifier = Modifier.size(size).clip(CircleShape),
             )
         } else {
-            // No photo: the NOOP loop mark (open green ring + white core) — the brand glyph, matching the
+            // No photo: the Choop loop mark (open green ring + white core) — the brand glyph, matching the
             // iOS default avatar. The user's chosen photo path is untouched; this is only the fallback.
             LoopMark(modifier = Modifier.fillMaxSize())
         }
@@ -244,7 +244,7 @@ fun ProfileAvatar(
 }
 
 /**
- * The NOOP loop mark drawn as a fallback avatar: an OPEN ~80% recovery ring (round caps, starting at 12
+ * The Choop loop mark drawn as a fallback avatar: an OPEN ~80% recovery ring (round caps, starting at 12
  * o'clock, clockwise) in the recovery green with a solid WHITE centre core dot. Matches the iOS BrandMark
  * shape but in the Apple-Fitness green + white core. CLEAN/flat — no glow, no halo. Decorative.
  */

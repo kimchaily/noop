@@ -76,7 +76,7 @@ import kotlin.math.sqrt
 //
 // "Your own logbook." A private place to KEEP the numbers you already get from your
 // doctor or pharmacy — bloods, BP, body measurements — and SEE them next to your
-// wearable signals, entirely on this phone. NOOP never tests you, never reads a result,
+// wearable signals, entirely on this phone. Choop never tests you, never reads a result,
 // and never tells you what a number means medically.
 // (Spec: docs/superpowers/specs/2026-06-19-v5-health-records-design.md.)
 //
@@ -197,7 +197,7 @@ fun LabBookScreen(vm: AppViewModel) {
                     }
                 }
                 Text(
-                    "It's a notebook, not a lab. NOOP lines up the numbers you enter. It doesn't test, " +
+                    "It's a notebook, not a lab. Choop lines up the numbers you enter. It doesn't test, " +
                         "read, or judge them. Not medical advice.",
                     style = NoopType.subhead,
                     color = Palette.textSecondary,
@@ -287,7 +287,7 @@ fun LabBookScreen(vm: AppViewModel) {
         item {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                "Lab Book is a private notebook, not a medical service. NOOP stores and lines up the numbers " +
+                "Lab Book is a private notebook, not a medical service. Choop stores and lines up the numbers " +
                     "you enter. It doesn't test, read, diagnose, or advise. Your records never leave this phone; " +
                     "there's no account or cloud, so it isn't \"HIPAA-covered.\" Always rely on your doctor or " +
                     "pharmacist to interpret results.",
@@ -471,7 +471,7 @@ private fun MarkerDetailSheet(
             }
 
             Text(
-                "These are your own numbers shown back to you. NOOP doesn't decide whether any value is " +
+                "These are your own numbers shown back to you. Choop doesn't decide whether any value is " +
                     "normal, high or low.",
                 style = NoopType.footnote,
                 color = Palette.textTertiary,
@@ -493,7 +493,7 @@ private fun CorrelationResult(
     when {
         signal == null -> Text(
             "Pick a wearable signal (resting HR, HRV, sleep, Charge, weight…) to line it up against this " +
-                "marker. NOOP averages the signal over the ${window.phrase} before each reading.",
+                "marker. Choop averages the signal over the ${window.phrase} before each reading.",
             style = NoopType.subhead,
             color = Palette.textTertiary,
         )
@@ -504,7 +504,7 @@ private fun CorrelationResult(
                     "(and keep wearing your strap)."
             } else {
                 "$n reading${if (n == 1) "" else "s"} line up so far, not enough to read a trend yet " +
-                    "(NOOP waits for $LAB_FLOOR)."
+                    "(Choop waits for $LAB_FLOOR)."
             },
             style = NoopType.subhead,
             color = Palette.textTertiary,
@@ -605,10 +605,10 @@ private fun LabBookDisclaimerSheet(onDismiss: () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("About Lab Book", style = NoopType.title2, color = Palette.textPrimary)
             Text("A private notebook, not a medical service.", style = NoopType.subhead, color = Palette.textSecondary)
-            DisclaimerBullet("NOOP stores and lines up the numbers you enter yourself. It does not test you, read your results, give medical advice, or diagnose anything.")
+            DisclaimerBullet("Choop stores and lines up the numbers you enter yourself. It does not test you, read your results, give medical advice, or diagnose anything.")
             DisclaimerBullet("Anything you see here (including any side-by-side trend) is your own information shown back to you. It's an association, never a cause, and never a medical finding.")
-            DisclaimerBullet("NOOP never decides whether a value is \"normal,\" \"high,\" or \"low.\" Any reference range shown is exactly what you typed from your own report.")
-            DisclaimerBullet("Your records never leave this phone. There's no account, no cloud, no NOOP server. Because NOOP is an independent app you run yourself (not a healthcare provider), it isn't \"HIPAA-covered,\" and that protection doesn't apply here; the safety comes from the data being local-only and yours.")
+            DisclaimerBullet("Choop never decides whether a value is \"normal,\" \"high,\" or \"low.\" Any reference range shown is exactly what you typed from your own report.")
+            DisclaimerBullet("Your records never leave this phone. There's no account, no cloud, no Choop server. Because Choop is an independent app you run yourself (not a healthcare provider), it isn't \"HIPAA-covered,\" and that protection doesn't apply here; the safety comes from the data being local-only and yours.")
             DisclaimerBullet("Always rely on your doctor, pharmacist, or a qualified professional to interpret results and make decisions. If a number worries you, talk to them, not to an app.")
             PrimaryActionButton("Got it", Icons.Filled.Check, onClick = onDismiss)
         }

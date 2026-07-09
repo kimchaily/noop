@@ -18,7 +18,7 @@ enum class TrustTier {
 
 /**
  * The Oura inner-event-record tag. `raw` == the `type` byte (>= 0x41 per OURA_PROTOCOL.md s2.3).
- * Only the tags NOOP actually decodes are enumerated; an unknown byte decodes to null (honest).
+ * Only the tags Choop actually decodes are enumerated; an unknown byte decodes to null (honest).
  */
 enum class OuraEventTag(val raw: Int) {
     // --- Lifecycle / state (Tier A) ---

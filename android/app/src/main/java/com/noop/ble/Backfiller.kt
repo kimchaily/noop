@@ -160,7 +160,7 @@ class Backfiller(
 
     /**
      * Per-session persistence tally — the success-side observability flagged as the forensics blind spot
-     * (#150): NOOP logged FAILURES (decoded-to-0) but never SUCCESSES, so a strap log couldn't tell a
+     * (#150): Choop logged FAILURES (decoded-to-0) but never SUCCESSES, so a strap log couldn't tell a
      * banking strap from a broken one. Reset in [begin]; read by [WhoopBleClient] at session end to emit
      * "persisted N rows (M with motion) across K night(s)". Nights are day-keys (ts / 86400). Mirrors the
      * Swift Backfiller.
@@ -304,7 +304,7 @@ class Backfiller(
         // #773: corrupt future-RTC detection. A HISTORY_END carries the strap's own clock; a genuine offload
         // is always PAST-dated (it's banked history), so an end dated days into the future can only be a
         // corrupt strap RTC. Surface it ONCE per session with a recovery hint so the cause (the strap clock,
-        // not a NOOP bug) is named and the fix (charge + reconnect re-syncs the RTC) is given. Observability
+        // not a Choop bug) is named and the fix (charge + reconnect re-syncs the RTC) is given. Observability
         // only - the ack still proceeds and the #547 ingest gate already keeps the bad-dated rows out of the
         // DB. The 0xFFFFFFFF sentinel above is a different state (it isn't a real date), so skip it here.
         if (trim != 0xFFFFFFFFL && !loggedFutureRtc) {
@@ -379,7 +379,7 @@ class Backfiller(
             // #547: the strap is emitting records with implausible timestamps (a bad clock/flash —
             // far-past, a year-2027 spike, or future-dated `unix`). The ingest gate dropped them so they
             // can't pollute the day-windowed analytics; surface it ONCE per session so a bad-clock strap
-            // is visible in a shared log (the strap clock is genuinely bad — this is NOOP being robust).
+            // is visible in a shared log (the strap clock is genuinely bad — this is Choop being robust).
             sessionDroppedImplausible += decoded.droppedImplausibleTs
             if (decoded.droppedImplausibleTs > 0 && !loggedImplausibleClock) {
                 loggedImplausibleClock = true
@@ -588,13 +588,13 @@ class Backfiller(
 
         /**
          * #773: the recovery-hint line for a corrupt future-dated strap RTC. Names the cause plainly (the
-         * strap's clock, not a NOOP bug) and gives the fix (charge + reconnect re-syncs the RTC). Byte-
+         * strap's clock, not a Choop bug) and gives the fix (charge + reconnect re-syncs the RTC). Byte-
          * identical to the Swift `Backfiller.futureRtcLine`. No em-dash (project rule).
          */
         fun futureRtcLine(endUnix: Long, wallNowUnix: Long): String {
             val aheadDays = maxOf(0L, endUnix - wallNowUnix) / 86_400L
             return "Backfill: the strap reported a record dated about $aheadDays day(s) in the FUTURE - " +
-                "its clock (RTC) is corrupt, not a NOOP problem. Those records can't be filed onto the " +
+                "its clock (RTC) is corrupt, not a Choop problem. Those records can't be filed onto the " +
                 "right day. Fully charge the strap to 100% and reconnect so it re-syncs its clock; if it " +
                 "persists, forget and re-pair the strap."
         }

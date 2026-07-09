@@ -49,7 +49,7 @@ import kotlinx.coroutines.delay
 /**
  * True when the user has disabled system animations (Settings → Accessibility → "Remove
  * animations", or Developer options → Animator duration scale = Off). The closest Android
- * analogue to iOS `accessibilityReduceMotion`: when on, every NOOP motion helper degrades to
+ * analogue to iOS `accessibilityReduceMotion`: when on, every Choop motion helper degrades to
  * its final frame instantly.
  *
  * Read once per composition from `Settings.Global.ANIMATOR_DURATION_SCALE`; previews

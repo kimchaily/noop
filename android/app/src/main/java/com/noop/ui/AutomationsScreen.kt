@@ -371,13 +371,13 @@ private fun NapDetectionSection(viewModel: AppViewModel) {
         icon = Icons.Filled.Bedtime,
         title = "Nap detection",
         blurb = "Spots a likely daytime nap from the strap's motion and heart rate on each history sync, " +
-            "then asks you to confirm it. Inferred and approximate: NOOP never adds a nap to your sleep " +
+            "then asks you to confirm it. Inferred and approximate: Choop never adds a nap to your sleep " +
             "without your OK.",
         active = enabled,
     ) {
         ToggleRow(
             label = "Detect short naps",
-            help = "When a sync shows a quiet, settled stretch in the day, NOOP offers it here for you to keep or skip.",
+            help = "When a sync shows a quiet, settled stretch in the day, Choop offers it here for you to keep or skip.",
             checked = enabled,
             onChange = {
                 viewModel.setNapDetectionEnabled(it)

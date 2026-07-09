@@ -36,7 +36,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
-// MARK: - HowNoopWorksScreen ("How NOOP works" primer)
+// MARK: - HowNoopWorksScreen ("How Choop works" primer)
 //
 // COMPONENT 5 of the sleep-guidance / explainability layer
 // (docs/superpowers/specs/2026-06-20-sleep-guidance-explainability.md): a short,
@@ -50,7 +50,7 @@ import androidx.compose.ui.unit.dp
 // "Got it" footer. The four section bodies are the single approved source of truth,
 // shared VERBATIM across macOS / iOS / Android — do not paraphrase or re-wrap the
 // wording; keep it identical to the Swift HowNoopWorks primer. Honest per the
-// explainability spec: nothing here promises a number NOOP won't show. No em-dashes.
+// explainability spec: nothing here promises a number Choop won't show. No em-dashes.
 
 /**
  * The four primer sections, in render order. Each carries its own glyph + accent so a
@@ -65,7 +65,7 @@ private enum class PrimerSection(
 ) {
     SLEEP(
         title = "How your sleep is sorted",
-        body = "NOOP picks your main sleep as your longest real block, and (once it has " +
+        body = "Choop picks your main sleep as your longest real block, and (once it has " +
             "learned your usual hours) the one nearest your normal sleep time. Everything " +
             "else that day is a nap. You can always edit bed and wake times.",
         icon = Icons.Filled.Bedtime,
@@ -77,7 +77,7 @@ private enum class PrimerSection(
             "counted as nights of 4 on the ring), and keeps sharpening over your first couple of weeks. " +
             "On a WHOOP 5 or MG the strap banks little history, so that count can sit at 0 of 4 until you " +
             "have worn it across a few nights. That's the strap's sync limit, not a fault. " +
-            "Before there's a number, NOOP shows what it can without faking one.",
+            "Before there's a number, Choop shows what it can without faking one.",
         icon = Icons.Filled.Insights,
     ),
     SCORE_RECIPE(
@@ -94,13 +94,13 @@ private enum class PrimerSection(
     ),
     RECORDING(
         title = "What \"recording\" means",
-        body = "When your strap is connected NOOP is saving data live. \"Last synced\" tells " +
+        body = "When your strap is connected Choop is saving data live. \"Last synced\" tells " +
             "you how fresh it is. If it says \"Not recording\", reconnect.",
         icon = Icons.Filled.Sensors,
     ),
     PROVENANCE(
         title = "Where your numbers come from",
-        body = "A badge shows whether a number was scored on-device by NOOP, or imported " +
+        body = "A badge shows whether a number was scored on-device by Choop, or imported " +
             "from Whoop or Apple Health.",
         icon = Icons.Filled.Verified,
     );
@@ -117,7 +117,7 @@ private enum class PrimerSection(
 }
 
 /**
- * The "How NOOP works" primer sheet. [onClose] dismisses. Pure presentation — it reads
+ * The "How Choop works" primer sheet. [onClose] dismisses. Pure presentation — it reads
  * nothing and writes nothing; every line is static approved copy.
  */
 @Composable
@@ -159,7 +159,7 @@ fun HowNoopWorksScreen(onClose: () -> Unit) {
     }
 }
 
-// MARK: - Header ("How NOOP works" + tagline + close X)
+// MARK: - Header ("How Choop works" + tagline + close X)
 
 @Composable
 private fun Header(onClose: () -> Unit) {
@@ -175,7 +175,7 @@ private fun Header(onClose: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Overline("The basics", color = Palette.textTertiary)
-            Text("How NOOP works", style = NoopType.display(26f), color = Palette.textPrimary)
+            Text("How Choop works", style = NoopType.display(26f), color = Palette.textPrimary)
             Text(
                 "Sleep · scores · recording · where your numbers come from",
                 style = NoopType.caption,
@@ -201,7 +201,7 @@ private fun IntroCard() {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Overline("The one rule")
             Text(
-                "NOOP never shows you a number it had to make up. If a score isn't ready, " +
+                "Choop never shows you a number it had to make up. If a score isn't ready, " +
                     "it tells you why and what to do next. Everything here runs on your " +
                     "device, from your strap.",
                 style = NoopType.subhead,
@@ -257,7 +257,7 @@ private fun PrimerCard(section: PrimerSection) {
 @Composable
 private fun FooterNote() {
     Text(
-        "NOOP never makes up a number. When it can't compute one honestly it tells you " +
+        "Choop never makes up a number. When it can't compute one honestly it tells you " +
             "what's missing and what to do, rather than showing a fake value.",
         style = NoopType.footnote,
         color = Palette.textTertiary,

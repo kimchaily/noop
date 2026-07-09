@@ -17,7 +17,7 @@ class AndroidDiagnosticsTest {
         for (vendor in listOf("Xiaomi", "OPPO", "vivo", "HUAWEI", "OnePlus", "realme", "Meizu")) {
             val text = AndroidDiagnostics.oemKillHeuristic(vendor)
             assertTrue("$vendor should flag as aggressive", text.startsWith("aggressive vendor"))
-            assertTrue("$vendor heuristic should advise whitelisting", text.contains("whitelist NOOP"))
+            assertTrue("$vendor heuristic should advise whitelisting", text.contains("whitelist Choop"))
         }
     }
 

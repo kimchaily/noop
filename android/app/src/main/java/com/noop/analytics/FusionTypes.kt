@@ -20,8 +20,8 @@ enum class FusionSource(val id: String, val displayName: String) {
     /** Imported WHOOP record (CSV/zip export under the strap's deviceId, e.g. "my-whoop"). */
     WHOOP_IMPORT("my-whoop", "WHOOP"),
 
-    /** NOOP-computed score derived on-device from raw strap streams (the "$deviceId-noop" sibling). */
-    NOOP_COMPUTED("my-whoop-noop", "NOOP"),
+    /** Choop-computed score derived on-device from raw strap streams (the "$deviceId-noop" sibling). */
+    NOOP_COMPUTED("my-whoop-noop", "Choop"),
 
     /** Apple Health aggregate of a declared-compatible quantity. */
     APPLE_HEALTH("apple-health", "Apple Health"),

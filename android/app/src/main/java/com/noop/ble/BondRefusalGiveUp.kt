@@ -66,14 +66,14 @@ class BondRefusalGiveUp(
             "Bond epitaph: the strap [$opaqueId] refused the encrypted bond ${refusals}x in a row with no " +
                 "successful bond - giving up auto-reconnect to stop hammering it. It is almost certainly " +
                 "held by the official WHOOP app or a stale phone pairing. Free it (close the WHOOP app, put " +
-                "the strap in pairing mode, forget it in Bluetooth settings) then reconnect in NOOP."
+                "the strap in pairing mode, forget it in Bluetooth settings) then reconnect in Choop."
 
         /**
          * #747: the honest user-facing hint shown when auto-reconnect pauses. Tells them WHY it stopped and
          * how to get going again. Pure; no em-dash. Byte-identical to the Swift `BondRefusalGiveUp.pausedHint`.
          */
         fun pausedHint(): String =
-            "NOOP stopped retrying because your strap keeps refusing to pair. It is likely still held by the " +
+            "Choop stopped retrying because your strap keeps refusing to pair. It is likely still held by the " +
                 "official WHOOP app, or your phone is holding an old pairing. Close the WHOOP app, put the " +
                 "strap in pairing mode (tap until the LEDs flash blue), and if it is listed in your Bluetooth " +
                 "settings choose Forget This Device. Then tap Connect to try again."

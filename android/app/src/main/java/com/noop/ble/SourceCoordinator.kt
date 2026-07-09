@@ -139,7 +139,7 @@ class SourceCoordinator(
     /** The lazily-created EXPERIMENTAL Oura ring source (gen3 / gen4 / gen5). null until the first switch
      *  to an "oura" device. Like the others it's a non-WHOOP live source sharing the same strap edge:
      *  exactly one of the non-WHOOP sources is ever live at a time. Owns its OWN scanner/GATT and never
-     *  touches the WHOOP BLE client; surfaces only the ring's OWN raw signals + open event tags (NOOP
+     *  touches the WHOOP BLE client; surfaces only the ring's OWN raw signals + open event tags (Choop
      *  computes its own Charge/Rest), never Oura's encrypted readiness/sleep scores. */
     private var ouraSource: OuraLiveSource? = null
     /** The deviceId the active non-WHOOP source ([standardSource]/[ftmsSource]/[huamiSource]/[ouraSource])
@@ -386,7 +386,7 @@ class SourceCoordinator(
             // with allowKeyInstall wired from it).
             if (OuraInstallKeyStore.consumePendingAdopt(ctx, id)) {
                 source.setAdoptIntent(true)
-                straplog("Oura: adopt consent granted - this session may install NOOP's key")
+                straplog("Oura: adopt consent granted - this session may install Choop's key")
             }
             // Mirror this source's live adopt outcome + honest needs-pairing message so the wizard can leave
             // its Adopting step on a confirmed streaming (success) or an honest Failed. Reset on teardown.

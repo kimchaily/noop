@@ -1372,7 +1372,7 @@ private fun WorkoutDetailSheet(vm: AppViewModel, row: WorkoutRow, onDismiss: () 
 
 /**
  * #796 - the workout detail's per-session Effort contribution card. The Effort-amber tinted [NoopCard]
- * carries a "This session" overline, the captured strain as a big count-up value (the NOOP signature),
+ * carries a "This session" overline, the captured strain as a big count-up value (the Choop signature),
  * its scale caption (Effort 0–100 or strain 0–21), and a one-line explainer. Mirrors the iOS
  * WorkoutDetailView.effortCard: same colour world, same count-up, same copy. [strain] is the stored
  * 0–100 Effort value; [effortScale] only changes how it is DISPLAYED, never the stored number.
@@ -1649,7 +1649,7 @@ private fun ManualWorkoutDialog(
 /**
  * Sport field for the manual add/edit dialog — a searchable PICKER over the shared catalogue
  * ([WorkoutSport.all], the SAME list the live "Start a workout" sheet uses) with a free-text
- * FALLBACK so an unusual sport NOOP doesn't enumerate still saves exactly as typed (#519). The text
+ * FALLBACK so an unusual sport Choop doesn't enumerate still saves exactly as typed (#519). The text
  * field IS the value: typing filters the catalogue beneath it; tapping a match fills the field; not
  * tapping anything keeps whatever was typed. The list only shows while the typed text is a partial
  * match (an exact catalogue hit, or a free-typed sport, collapses it).

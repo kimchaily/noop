@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.dp
 // MARK: - WhatsNewSheet (ported from Strand/Screens/WhatsNewView.swift)
 //
 // A proper in-app changelog, shown automatically after an update and reachable any time
-// from Settings. It also restates, up top, what NOOP is and what to expect, so people who
+// from Settings. It also restates, up top, what Choop is and what to expect, so people who
 // never open GitHub still understand the experimental footing and the WHOOP 5/MG status.
 //
 // macOS parity notes:
@@ -79,7 +79,7 @@ fun WhatsNewSheet(onClose: () -> Unit) {
     }
 }
 
-// MARK: - Header ("What's new" + "NOOP <version>" + close X)
+// MARK: - Header ("What's new" + "Choop <version>" + close X)
 
 @Composable
 private fun Header(onClose: () -> Unit) {
@@ -95,7 +95,7 @@ private fun Header(onClose: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Overline("What's new", color = Palette.textTertiary)
-            Text("NOOP ${AppChangelog.CURRENT_VERSION}", style = NoopType.display(26f), color = Palette.textPrimary)
+            Text("Choop ${AppChangelog.CURRENT_VERSION}", style = NoopType.display(26f), color = Palette.textPrimary)
             Text("Release notes", style = NoopType.caption, color = Palette.textSecondary)
         }
         IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {

@@ -22,7 +22,7 @@ import java.time.ZoneOffset
  *
  * Three header shapes are recognised explicitly (after [HeaderNorm] normalization):
  *
- *   1. NOOP native      — `date, calories_in, protein_g, carbs_g, fat_g, weight`
+ *   1. Choop native      — `date, calories_in, protein_g, carbs_g, fat_g, weight`
  *   2. MyFitnessPal     — `Date, Meal, Calories, Protein (g), Carbohydrates (g), Fat (g)`
  *                          (per-meal rows; intake values are SUMMED per day)
  *   3. Cronometer daily — `Date, Completed, Energy (kcal), Protein (g), Carbs (g), Fat (g)`

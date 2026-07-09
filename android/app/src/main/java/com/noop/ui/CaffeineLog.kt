@@ -46,7 +46,7 @@ import kotlin.math.roundToInt
 // MARK: - Caffeine window (#526) — pure persistence helpers + the Insights logging card.
 //
 // Faithful Kotlin twin of Strand/Screens/CaffeineLogCard.swift + the CaffeineLogStore persistence.
-// OPT-IN, manual-first: the user logs a caffeine intake (time + OPTIONAL mg) and NOOP shows a rough,
+// OPT-IN, manual-first: the user logs a caffeine intake (time + OPTIONAL mg) and Choop shows a rough,
 // on-device "still active" hint from a ~5–6 h half-life decay. Nothing leaves the device. The decay math
 // + honesty rules live in com.noop.analytics.CaffeineDecay (cross-platform parity). Reuses the journal's
 // SharedPreferences + showToast (Toast) patterns.
@@ -161,7 +161,7 @@ fun CaffeineLogCard() {
         NoopCard {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "Log a coffee, tea, or energy drink and NOOP shows a rough estimate of how much may " +
+                    "Log a coffee, tea, or energy drink and Choop shows a rough estimate of how much may " +
                         "still be active. It's a guide based on a typical 5 to 6 hour half-life, not a measurement.",
                     style = NoopType.footnote,
                     color = Palette.textTertiary,
