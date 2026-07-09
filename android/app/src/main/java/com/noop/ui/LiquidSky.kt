@@ -145,8 +145,23 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.renderLiquidSky(
     now: Double,
     settle: Color,
     animate: Boolean,
+    tint: Color? = null,
+    tintStrength: Float = 0f,
 ) {
-    val s = liquidSkyAt(hour)
+    val base = liquidSkyAt(hour)
+    // Theme sky-tint: pull the day-cycle gradient a touch toward the active theme's hue so the
+    // atmosphere reads as PART of the theme (warm under Ember, cool-green under Verdant, …) rather than
+    // a bolted-on blue sky, while keeping the realistic dawn→day→dusk→night motion. null tint (Signal)
+    // leaves the sky byte-identical to the untinted original.
+    val s = if (tint != null && tintStrength > 0f) {
+        LiquidSkyResolved(
+            top = lerpColor(base.top, tint, tintStrength.toDouble()),
+            mid = lerpColor(base.mid, tint, tintStrength.toDouble()),
+            hor = lerpColor(base.hor, tint, (tintStrength * 0.75f).toDouble()),
+            stars = base.stars,
+            warm = base.warm,
+        )
+    } else base
     val w = size.width
     val h = size.height
 
@@ -256,11 +271,13 @@ private val liquidSettleColor: Color
 fun LiquidSky(hour: Double? = null, modifier: Modifier = Modifier) {
     val reduced = rememberReduceMotion()
     val settle = liquidSettleColor
+    val tint = ThemePrefs.family.skyTint
+    val tintStrength = ThemePrefs.family.skyTintStrength
     val h = hour ?: liquidLiveHour()
 
     if (reduced) {
         // No frame loop under Reduce Motion — pose the static picture once.
-        Canvas(modifier = modifier) { renderLiquidSky(hour = h, now = 0.0, settle = settle, animate = false) }
+        Canvas(modifier = modifier) { renderLiquidSky(hour = h, now = 0.0, settle = settle, animate = false, tint = tint, tintStrength = tintStrength) }
         return
     }
 
@@ -278,7 +295,7 @@ fun LiquidSky(hour: Double? = null, modifier: Modifier = Modifier) {
     }
 
     Canvas(modifier = modifier) {
-        renderLiquidSky(hour = h, now = seconds, settle = settle, animate = true)
+        renderLiquidSky(hour = h, now = seconds, settle = settle, animate = true, tint = tint, tintStrength = tintStrength)
     }
 }
 
@@ -295,9 +312,11 @@ fun LiquidSky(hour: Double? = null, modifier: Modifier = Modifier) {
 @Composable
 fun LiquidSkyStatic(hour: Double? = null, modifier: Modifier = Modifier) {
     val settle = liquidSettleColor
+    val tint = ThemePrefs.family.skyTint
+    val tintStrength = ThemePrefs.family.skyTintStrength
     val h = hour ?: liquidLiveHour()
     Canvas(modifier = modifier) {
-        renderLiquidSky(hour = h, now = 0.0, settle = settle, animate = false)
+        renderLiquidSky(hour = h, now = 0.0, settle = settle, animate = false, tint = tint, tintStrength = tintStrength)
     }
 }
 

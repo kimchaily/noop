@@ -46,8 +46,12 @@ object Palette {
     // The active scheme's tokens — snapshot state, so a flip re-resolves every read below (in
     // composables AND Canvas DrawScopes) with no call-site changes. Set by NoopTheme.
     internal var active by mutableStateOf(DarkTokens)
+    // Whether the ACTIVE scheme is the light variant. Now that a theme family carries its OWN light
+    // tokens (Aurora.light ≠ the Signal LightTokens), light-ness can't be an identity check against one
+    // constant — NoopTheme sets this flag alongside `active`. Snapshot state so `isLight` reads re-resolve.
+    internal var activeIsLight by mutableStateOf(false)
     /** True when the light scheme is active (surface code uses this for the per-scheme idiom). */
-    val isLight: Boolean get() = active === LightTokens
+    val isLight: Boolean get() = activeIsLight
 
     // Chart style — when CLASSIC, the DATA accessors below return the throwback red→green ramps
     // (light/dark tuned). Reads ChartStylePrefs.style (snapshot state) so a flip re-colours live.
@@ -418,10 +422,16 @@ object Metrics {
 // values don't reflow; Monospace is reserved for the `mono` raw/log style only.
 
 object NoopType {
-    // Helvetica Neue family — falls back to the platform grotesque (SansSerif) when
-    // no res/font/helvetica_neue asset is bundled, per the v3 type spec.
-    private val sans = FontFamily.SansSerif
-    private val monoFamily = FontFamily.Monospace
+    // The active theme's typeface. A snapshot state (set by NoopTheme from the selected AppTheme) so a
+    // family switch re-resolves EVERY style getter below live, with no call-site changes across the
+    // ~1,400 `NoopType.*` references — the same idiom as `Palette.active`. Defaults to the platform
+    // grotesque; Serif/Monospace families arrive when a theme selects them.
+    internal var activeFont by mutableStateOf<FontFamily>(FontFamily.SansSerif)
+
+    // The house sans is now the ACTIVE theme font; `mono` stays a true monospace (raw/log semantics —
+    // font-independent). Both are getters so the styles below re-resolve on a theme flip.
+    private val sans: FontFamily get() = activeFont
+    private val monoFamily: FontFamily get() = FontFamily.Monospace
 
     /** Display 64–80 / Bold — the recovery ring number. Tight tracking (≈ -0.04em),
      *  tabular figures so a changing value never reflows. Mirrors StrandFont.display. */
@@ -434,22 +444,22 @@ object NoopType {
      *  display(); exposed to mirror StrandFont.displayTracking. */
     fun displayTracking(size: Float = 72f): Float = -size * 0.04f
 
-    val title1 = TextStyle(fontFamily = sans, fontWeight = FontWeight.Bold, fontSize = 28.sp)
-    val title2 = TextStyle(fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 22.sp)
-    val headline = TextStyle(fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
-    val body = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 15.sp)
-    val subhead = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 13.sp)
-    val caption = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 12.sp)
-    val footnote = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 11.sp)
+    val title1 get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Bold, fontSize = 28.sp)
+    val title2 get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 22.sp)
+    val headline get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+    val body get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 15.sp)
+    val subhead get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 13.sp)
+    val caption get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 12.sp)
+    val footnote get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 11.sp)
 
     /** Overline 11 / Bold, +1.4 tracking, ALL-CAPS at use site. */
-    val overline = TextStyle(
+    val overline get() = TextStyle(
         fontFamily = sans, fontWeight = FontWeight.Bold, fontSize = 11.sp,
         letterSpacing = 1.4.sp,
     )
 
     /** Mono 13 — raw / log views. */
-    val mono = TextStyle(fontFamily = monoFamily, fontWeight = FontWeight.Normal, fontSize = 13.sp)
+    val mono get() = TextStyle(fontFamily = monoFamily, fontWeight = FontWeight.Normal, fontSize = 13.sp)
 
     /** A numeric style at an arbitrary size — the house sans with TABULAR figures
      *  ('tnum') so live values don't reflow. Mirrors StrandFont.number. */
@@ -461,13 +471,13 @@ object NoopType {
         fontFamily = monoFamily, fontWeight = weight, fontSize = size.sp,
     )
 
-    val bodyNumber = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 15.sp, fontFeatureSettings = "tnum")
-    val captionNumber = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 12.sp, fontFeatureSettings = "tnum")
-    val metricInline = number(15f)
-    val chartValue = number(18f)
-    val chartValueLarge = number(22f)
-    val tileValue = number(24f)
-    val tileValueLarge = number(26f)
+    val bodyNumber get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 15.sp, fontFeatureSettings = "tnum")
+    val captionNumber get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 12.sp, fontFeatureSettings = "tnum")
+    val metricInline get() = number(15f)
+    val chartValue get() = number(18f)
+    val chartValueLarge get() = number(22f)
+    val tileValue get() = number(24f)
+    val tileValueLarge get() = number(26f)
 
     const val overlineTracking = 1.4f
 }
@@ -499,7 +509,10 @@ private fun noopColorScheme(t: PaletteTokens, dark: Boolean): ColorScheme {
     )
 }
 
-private val NoopMaterialTypography = Typography(
+/** Build the Material typography from the CURRENT [NoopType] styles. A function (not a top-level val)
+ *  so it re-reads the active theme font each time NoopTheme composes — a family flip re-typesets the
+ *  Material components (text fields, menus, …) too, not just the Choop surfaces. */
+private fun noopMaterialTypography() = Typography(
     displayLarge = NoopType.display(72f),
     titleLarge = NoopType.title1,
     titleMedium = NoopType.title2,
@@ -521,10 +534,11 @@ private val NoopShapes = Shapes(
 )
 
 /**
- * NoopTheme — instrument-grade, now System / Light / Dark. The chosen mode (default System) drives
- * both `Palette.active` (so every `Palette.*` read re-resolves) and the Material scheme. The write to
- * `Palette.active` is guarded + idempotent, and happens before children compose, so there's no flash
- * and no recomposition loop (NoopTheme itself never reads `active`).
+ * NoopTheme — instrument-grade, now Theme family × (System / Light / Dark). The selected [AppTheme]
+ * family (default Signal) and the chosen mode drive `Palette.active` (so every `Palette.*` read
+ * re-resolves), the app typeface (`NoopType.activeFont`, so every `NoopType.*` style re-resolves) and
+ * the Material scheme. All three writes are guarded + idempotent and happen before children compose, so
+ * there's no flash and no recomposition loop (NoopTheme itself never reads `active`/`activeFont`).
  */
 @Composable
 fun NoopTheme(content: @Composable () -> Unit) {
@@ -533,8 +547,11 @@ fun NoopTheme(content: @Composable () -> Unit) {
         AppearanceMode.DARK -> true
         AppearanceMode.SYSTEM -> isSystemInDarkTheme()
     }
-    val tokens = if (dark) DarkTokens else LightTokens
+    val family = ThemePrefs.family
+    val tokens = family.tokens(dark)
     if (Palette.active !== tokens) Palette.active = tokens
+    if (Palette.activeIsLight != !dark) Palette.activeIsLight = !dark
+    if (NoopType.activeFont != family.fontFamily) NoopType.activeFont = family.fontFamily
 
     // Status-/nav-bar icon appearance: light icons on the dark theme, dark icons on the warm-paper
     // light theme (otherwise the icons are invisible). Edge-to-edge keeps the bars transparent.
@@ -551,7 +568,7 @@ fun NoopTheme(content: @Composable () -> Unit) {
 
     MaterialTheme(
         colorScheme = noopColorScheme(tokens, dark),
-        typography = NoopMaterialTypography,
+        typography = noopMaterialTypography(),
         shapes = NoopShapes,
         content = content,
     )

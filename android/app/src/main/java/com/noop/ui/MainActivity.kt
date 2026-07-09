@@ -85,8 +85,9 @@ class MainActivity : ComponentActivity() {
             runCatching { BackupSync.catchUpIfDue(applicationContext) }
         }
 
-        // Load the Light/Dark/System + chart-colour preferences before first composition so the theme
-        // and chart ramps are correct from the very first frame (no flash).
+        // Load the theme family + Light/Dark/System + chart-colour preferences before first composition
+        // so the palette, typeface and chart ramps are all correct from the very first frame (no flash).
+        ThemePrefs.load(this)
         AppearancePrefs.load(this)
         ChartStylePrefs.load(this)
         // Decode the optional on-device profile photo (if set) before first composition so the Today
