@@ -77,6 +77,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
@@ -453,6 +457,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     // enables exactly one launcher alias via PackageManager (see setAppIcon below).
     var appIconNavy by remember { mutableStateOf(NoopPrefs.appIconNavy(context)) }
 
+    // Theme family (Signal / Aurora / Ember / …) — the selectable colour world; ThemePrefs mirrors it live.
+    var themeFamily by remember { mutableStateOf(ThemePrefs.family) }
     // Theme (System / Light / Dark) — drives NoopTheme; AppearancePrefs mirrors it in snapshot state.
     var themeMode by remember { mutableStateOf(AppearancePrefs.mode) }
     // Chart colours (Titanium / Classic) — re-colours gauges + charts; ChartStylePrefs mirrors it live.
@@ -883,9 +889,21 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         SettingsSection(
             icon = Icons.Filled.Brightness6,
             title = "Appearance",
-            blurb = "Choose Light, Dark, or follow your system. Dark is the signature near-black; Light keeps the same clean look on a bright canvas.",
+            blurb = "Pick a theme, then choose Light, Dark, or follow your system. Every theme ships both a light and a dark scheme, and the day-cycle background flows seamlessly into whichever you choose.",
         ) {
-            FormRow(label = "Theme") {
+            // Theme gallery — the selectable colour worlds, each with its own palette, sky and typeface.
+            // Each swatch previews in its OWN dark tokens so you can see the design before you pick it.
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Theme", style = NoopType.body, color = Palette.textPrimary)
+                ThemeGallery(
+                    selection = themeFamily,
+                    onSelect = { family ->
+                        themeFamily = family
+                        ThemePrefs.set(context, family)
+                    },
+                )
+            }
+            FormRow(label = "Appearance") {
                 SegmentedPillControl(
                     items = listOf(AppearanceMode.SYSTEM, AppearanceMode.LIGHT, AppearanceMode.DARK),
                     selection = themeMode,
@@ -2589,6 +2607,127 @@ private fun SettingsSection(
             Text(blurb, style = NoopType.subhead, color = Palette.textSecondary)
             content()
         }
+    }
+}
+
+// MARK: - Theme gallery — the selectable colour-world picker
+//
+// A horizontally-scrolling row of preview cards, one per [AppTheme]. Each card renders in that theme's
+// OWN dark tokens — a day-cycle sky band with its four domain "colour worlds" as beads, an "Aa" in the
+// theme's typeface and the accent chrome — so the design is visible BEFORE it's picked. The selected
+// card carries the accent border + a check. Selecting flips the whole app live (ThemePrefs snapshot).
+
+@Composable
+private fun ThemeGallery(
+    selection: AppTheme,
+    onSelect: (AppTheme) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        AppTheme.entries.forEach { theme ->
+            ThemeSwatchCard(
+                theme = theme,
+                selected = theme == selection,
+                onClick = { onSelect(theme) },
+            )
+        }
+    }
+}
+
+/** One theme preview card, painted in the theme's own tokens for the CURRENT light/dark scheme so the
+ *  swatch matches what selecting it will look like right now. */
+@Composable
+private fun ThemeSwatchCard(
+    theme: AppTheme,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val t = if (Palette.isLight) theme.light else theme.dark
+    val cardShape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = Modifier
+            .width(160.dp)
+            .clip(cardShape)
+            .background(t.surfaceRaised, cardShape)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) t.accent else t.hairline,
+                shape = cardShape,
+            )
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        // Preview band: the day-cycle sky (scenic gradient) with the four domain beads + a font sample.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(t.scenicCenter, t.surfaceBase),
+                    ),
+                ),
+        ) {
+            // "Aa" in the theme typeface — previews the font choice.
+            Text(
+                text = "Aa",
+                style = NoopType.title1.copy(fontFamily = theme.fontFamily),
+                color = t.textPrimary,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 10.dp, top = 6.dp),
+            )
+            // The four domain "colour worlds" as beads (charge / effort / rest / stress) + accent.
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 10.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                listOf(t.accent, t.chargeColor, t.effortColor, t.restColor, t.stressColor).forEach { c ->
+                    Box(
+                        modifier = Modifier
+                            .size(11.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(c),
+                    )
+                }
+            }
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(20.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(t.accent),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = "Selected",
+                        tint = t.surfaceBase,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+        }
+        Text(
+            theme.label,
+            style = NoopType.headline.copy(fontFamily = theme.fontFamily),
+            color = t.textPrimary,
+        )
+        Text(
+            theme.blurb,
+            style = NoopType.footnote,
+            color = t.textTertiary,
+        )
     }
 }
 
