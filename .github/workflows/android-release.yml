@@ -241,10 +241,14 @@ jobs:
             echo "apksigner not found; skipping certificate print"
           fi
 
+      # Name the artifact after the APK itself so the download is `<APK_NAME>.zip`
+      # (e.g. Choop-v8.2.5.apk.zip, or Choop-v8.2.4-preview-<sha>.apk.zip) instead of the generic
+      # noop-android-apk.zip. GitHub always wraps artifacts in a zip named after the artifact; the
+      # .apk inside keeps the same base name. APK_NAME is exported by the Stage APKs step above.
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: noop-android-apk
+          name: ${{ env.APK_NAME }}
           path: dist/*.apk
           if-no-files-found: error
 
