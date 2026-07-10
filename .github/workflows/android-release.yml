@@ -14,22 +14,43 @@
 #       ANDROID_KEY_PASSWORD      – key password
 #
 # Triggers:
-#   • workflow_dispatch – build on demand (optionally also the sample-data demo flavour, and
-#     optionally create a Release at a given tag via the release_tag input).
+#   • workflow_dispatch – build on demand. Pick a `mode`:
+#       preview        – build an installable APK and hand it back as an artifact ONLY. Nothing in
+#                        the repo changes, no tag, no Release. Use this to try a branch. (default)
+#       release-auto   – increment the version for you (from the current build.gradle versionName)
+#                        by the chosen `bump` (patch/minor/major), commit the bump, tag it and cut a
+#                        GitHub Release with the APK. No need to look up the last version yourself.
+#       release-manual – release at the exact `version` you type (blank = keep the current version).
 #   • push of a version tag (v* / android-v*) – build and attach the versioned Choop APK to that Release.
 name: Android Release APK
 
 on:
   workflow_dispatch:
     inputs:
-      build_demo:
-        description: 'Also build the sample-data demo flavour (Choop demo APK)'
-        type: boolean
-        default: false
-      release_tag:
-        description: 'Create a GitHub Release at this tag and attach the APK (e.g. v8.2.3). Blank = artifact only.'
+      mode:
+        description: 'preview = APK artifact only. release-auto = bump version from build.gradle. release-manual = use the version field.'
+        type: choice
+        default: preview
+        options:
+          - preview
+          - release-auto
+          - release-manual
+      bump:
+        description: 'release-auto only — which part of the version to increment.'
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      version:
+        description: 'release-manual only — numeric-only version like 8.3.0 (no leading "v"). Blank = keep current.'
         type: string
         default: ''
+      build_demo:
+        description: 'Also build the sample-data demo flavour (Choop demo APK).'
+        type: boolean
+        default: false
   push:
     tags:
       - 'v*'
@@ -40,7 +61,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write  # needed only to attach the APK to a Release on tag builds
+  contents: write  # push the version-bump commit + create the tag/Release (release modes only)
 
 jobs:
   release-apk:
@@ -67,6 +88,100 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      # Decide the version + whether this run tags & publishes a Release. `preview` (the default) leaves
+      # the repo untouched and only exports a filename suffix so a preview APK is distinguishable from a
+      # real release. `release-auto` increments the current build.gradle versionName by the chosen bump;
+      # `release-manual` uses the typed version. A pushed tag keeps the old behaviour (build current, no
+      # bump, attach to that tag). Nothing here mutates the repo — the bump is a separate, gated step.
+      - name: Resolve version
+        id: ver
+        env:
+          MODE: ${{ inputs.mode }}
+          BUMP: ${{ inputs.bump }}
+          MANUAL: ${{ inputs.version }}
+          EVENT: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # Default to `preview` when no mode was submitted. GitHub renders the dispatch FORM from the
+          # workflow on the default branch, so a run on a branch whose form predates these inputs sends
+          # an empty mode — treat that as the safe artifact-only path rather than erroring.
+          MODE="${MODE:-preview}"
+          CUR=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
+          CURCODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts | head -1)
+          echo "Current: versionName=$CUR versionCode=$CURCODE"
+
+          if [ "$EVENT" = "push" ]; then
+            # Tag push: build the current source and attach to the pushed tag. No bump.
+            NEW="$CUR"; NEWCODE="$CURCODE"; DO_RELEASE=true; DO_BUMP=false; TAG="$REF_NAME"; SUFFIX=""
+          else
+            case "$MODE" in
+              preview)
+                # Artifact only — nothing tagged, nothing committed. Suffix marks it as a preview build.
+                NEW="$CUR"; NEWCODE="$CURCODE"; DO_RELEASE=false; DO_BUMP=false; TAG=""; SUFFIX="-preview-${GITHUB_SHA::7}"
+                ;;
+              release-auto)
+                IFS=. read -r MA MI PA <<< "$CUR"
+                MA=${MA:-0}; MI=${MI:-0}; PA=${PA:-0}
+                case "$BUMP" in
+                  major) MA=$((MA+1)); MI=0; PA=0 ;;
+                  minor) MI=$((MI+1)); PA=0 ;;
+                  *)     PA=$((PA+1)) ;;
+                esac
+                NEW="${MA}.${MI}.${PA}"; NEWCODE=$((CURCODE+1)); DO_RELEASE=true; DO_BUMP=true; TAG="v${NEW}"; SUFFIX=""
+                ;;
+              release-manual)
+                NEW="${MANUAL:-$CUR}"
+                # versionName must stay numeric-only — UpdateCheck.isNewer parses digits.
+                if ! printf '%s' "$NEW" | grep -qE '^[0-9]+(\.[0-9]+)*$'; then
+                  echo "::error::version must be numeric-only like 8.3.0 (no leading 'v'). Got: '$NEW'"; exit 1
+                fi
+                if [ "$NEW" != "$CUR" ]; then NEWCODE=$((CURCODE+1)); DO_BUMP=true; else NEWCODE="$CURCODE"; DO_BUMP=false; fi
+                DO_RELEASE=true; TAG="v${NEW}"; SUFFIX=""
+                ;;
+              *)
+                echo "::error::unknown mode '$MODE'"; exit 1 ;;
+            esac
+          fi
+
+          echo "Resolved: version=$NEW code=$NEWCODE release=$DO_RELEASE bump=$DO_BUMP tag=${TAG:-<none>} suffix=${SUFFIX:-<none>}"
+          {
+            echo "new_version=$NEW"
+            echo "new_code=$NEWCODE"
+            echo "do_release=$DO_RELEASE"
+            echo "do_bump=$DO_BUMP"
+            echo "tag=$TAG"
+            echo "suffix=$SUFFIX"
+          } >> "$GITHUB_OUTPUT"
+          # A short human summary in the run's Summary tab.
+          {
+            echo "### Android build"
+            echo "- Mode: \`${MODE:-tag-push}\`"
+            echo "- Version: \`$NEW\` (versionCode \`$NEWCODE\`)"
+            echo "- Release: \`$DO_RELEASE\`${TAG:+ → tag \`$TAG\`}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Only for a real release: write the new versionName/versionCode into build.gradle.kts and commit
+      # the bump back to the branch you dispatched, so the tag, the Release and the APK's OWN version all
+      # agree. Skipped entirely for `preview` (and for tag pushes), so design-iteration builds never
+      # mutate the repo. Pushes use GITHUB_TOKEN, which does not re-trigger workflows (no build loop).
+      - name: Bump version in source
+        if: ${{ steps.ver.outputs.do_bump == 'true' }}
+        env:
+          NEW: ${{ steps.ver.outputs.new_version }}
+          NEWCODE: ${{ steps.ver.outputs.new_code }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          sed -i -E "s/(versionName[[:space:]]*=[[:space:]]*\")[^\"]+\"/\1${NEW}\"/" app/build.gradle.kts
+          sed -i -E "s/(versionCode[[:space:]]*=[[:space:]]*)[0-9]+/\1${NEWCODE}/" app/build.gradle.kts
+          echo "After bump:"; grep -nE 'versionName|versionCode' app/build.gradle.kts | head -3
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Android: release v${NEW} (versionCode ${NEWCODE})" app/build.gradle.kts
+          git push origin "HEAD:${BRANCH}"
+          echo "BUMP_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       # Optional real signing. When the secrets are absent (forks, no-secret runs) this step is a
       # no-op and the build transparently falls back to the debug key — the APK still installs.
@@ -97,13 +212,15 @@ jobs:
       # matching the upstream "NOOP-vX.Y.Z.apk" convention. The exact name is exported as APK_NAME
       # for the later cert-print and Release-upload steps.
       - name: Stage APKs
+        env:
+          VERSION: ${{ steps.ver.outputs.new_version }}
+          SUFFIX: ${{ steps.ver.outputs.suffix }}
         run: |
-          VERSION=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
-          APK="Choop-v${VERSION}.apk"
+          APK="Choop-v${VERSION}${SUFFIX}.apk"
           mkdir -p ../dist
           cp app/build/outputs/apk/full/release/app-full-release.apk "../dist/$APK"
           if [ -f app/build/outputs/apk/demo/release/app-demo-release.apk ]; then
-            cp app/build/outputs/apk/demo/release/app-demo-release.apk "../dist/Choop-v${VERSION}-demo.apk"
+            cp app/build/outputs/apk/demo/release/app-demo-release.apk "../dist/Choop-v${VERSION}${SUFFIX}-demo.apk"
           fi
           echo "APK_NAME=$APK" >> "$GITHUB_ENV"
           ls -l ../dist
@@ -131,22 +248,22 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
-      # Publish (or update) a GitHub Release and attach the APK. Fires on a pushed version tag OR
-      # a manual run with a `release_tag` input. A tag/Release is created if missing (a pushed tag
-      # is not a Release on its own, and CI creates the tag when dispatched) — this is what makes it
-      # show up under /releases/latest, which the in-app "Check for updates" reads.
+      # Publish (or update) a GitHub Release and attach the APK. Runs only when the resolved mode is a
+      # release (release-auto / release-manual) or a version tag was pushed — never for `preview`. The
+      # tag/Release is created if missing (CI creates the tag when dispatched) so it shows up under
+      # /releases/latest, which the in-app "Check for updates" reads. Targets the bump commit when there
+      # was one, else the checked-out SHA.
       - name: Publish APK to Release
-        if: ${{ startsWith(github.ref, 'refs/tags/') || inputs.release_tag != '' }}
+        if: ${{ steps.ver.outputs.do_release == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-          DISPATCH_TAG: ${{ inputs.release_tag }}
+          TAG: ${{ steps.ver.outputs.tag }}
+          TARGET_SHA: ${{ env.BUMP_SHA || github.sha }}
         run: |
-          if [ -n "$DISPATCH_TAG" ]; then TAG="$DISPATCH_TAG"; else TAG="$GITHUB_REF_NAME"; fi
-          echo "Publishing release $TAG at $SHA"
+          echo "Publishing release $TAG at $TARGET_SHA"
           if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            gh release create "$TAG" --repo "$REPO" --target "$SHA" --title "$TAG" \
+            gh release create "$TAG" --repo "$REPO" --target "$TARGET_SHA" --title "$TAG" \
               --notes "Automated Choop release build. Install $APK_NAME (updates in place over an existing Choop install signed with the same key)."
           fi
           gh release upload "$TAG" "../dist/$APK_NAME" --clobber --repo "$REPO"
