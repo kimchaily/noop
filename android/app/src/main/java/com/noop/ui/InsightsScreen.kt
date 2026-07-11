@@ -393,6 +393,9 @@ fun InsightsScreen(vm: AppViewModel, onOpenInsightsHub: () -> Unit = {}) {
             onSetKind = { q, kind -> applyCatalog(setJournalItemKind(catalogItems, q, kind)) },
             onRemoveQuestion = { q -> applyCatalog(removeJournalItem(catalogItems, q)) },
             onRestoreQuestion = { q -> applyCatalog(restoreJournalItem(catalogItems, q)) },
+            onMoveQuestion = { q, resolvedGroup, delta ->
+                applyCatalog(moveJournalItem(catalogItems, resolvedGroup, q, delta))
+            },
         )
         }
 

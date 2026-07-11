@@ -140,6 +140,43 @@ class JournalCatalogTest {
         assertFalse("a starter never flips to numeric from the inferred set", stress.kind.isNumeric)
     }
 
+    @Test
+    fun reorderWithinGroupMovesAndPreservesInferredKind() {
+        // A restored group: A is a saved yes/no, B is an inferred-numeric question the user hasn't
+        // touched (present only in the resolved display list, NOT in the saved catalog), C inferred
+        // yes/no. Moving B up must land it first AND keep its numeric kind — materialising from the
+        // resolved value, not the Bool default — and it must persist an explicit order.
+        val a = JournalCatalogItem("A", kind = JournalKind.Bool, group = JournalGroup.Other, sortIndex = 0)
+        val b = JournalCatalogItem("Morning Meditation in mins", kind = JournalKind.Numeric(null),
+            group = JournalGroup.Other, sortIndex = 1)
+        val c = JournalCatalogItem("C", kind = JournalKind.Bool, group = JournalGroup.Other, sortIndex = 2)
+        val resolvedGroup = listOf(a, b, c)
+        val saved = listOf(a)   // only A materialised in the catalog
+
+        val moved = moveJournalItem(saved, resolvedGroup, b.canonical, -1)
+        val byKey = moved.associateBy { it.canonical }
+        assertTrue("inferred numeric kind survives the move", byKey[b.canonical]!!.kind.isNumeric)
+        assertEquals("moved item takes the top slot", 0, byKey[b.canonical]!!.sortIndex)
+        assertEquals(1, byKey["A"]!!.sortIndex)
+        assertEquals(2, byKey["C"]!!.sortIndex)
+
+        // Re-resolving with the persisted catalog, sorted the way the group block renders it (by
+        // sortIndex, display), yields B, A, C in that order with the numeric kind preserved.
+        val resolved = resolveJournalItems(
+            imported = listOf("A", b.canonical, "C"), savedItems = moved,
+            numericQuestions = hashSetOf(normJournalKey(b.canonical)),
+        ).filter { it.group == JournalGroup.Other }
+            .sortedWith(compareBy({ it.sortIndex }, { it.display }))
+        assertEquals(listOf(b.canonical, "A", "C"), resolved.map { it.canonical })
+        assertTrue(resolved.first { it.canonical == b.canonical }.kind.isNumeric)
+
+        // Boundary: moving the top item up, or the bottom down, is a no-op.
+        assertEquals(moved, moveJournalItem(moved, listOf(byKey[b.canonical]!!, byKey["A"]!!, byKey["C"]!!),
+            b.canonical, -1))
+        assertEquals(moved, moveJournalItem(moved, listOf(byKey[b.canonical]!!, byKey["A"]!!, byKey["C"]!!),
+            "C", 1))
+    }
+
     // MARK: - JSON round-trip (persistence)
 
     @Test

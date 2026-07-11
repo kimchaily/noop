@@ -267,6 +267,32 @@ final class JournalCatalogStore: ObservableObject {
         edit(canonical) { $0.sortIndex = sortIndex }
     }
 
+    /// Reorder within a group: move `canonical` by `delta` (-1 up / +1 down) among `resolvedGroup` (the
+    /// group's items in current display order), then persist an explicit sortIndex = position for every
+    /// item in that order. An item the user hadn't touched yet is materialised FROM its resolved value,
+    /// so a starter's default group / an inferred numeric kind (a restored question) survives the move
+    /// instead of collapsing to the `.bool` default. A no-op if the move would fall off either end.
+    /// Reorder is display + ordering only; the `canonical` engine keys are NEVER touched, so
+    /// logged/imported history stays joined.
+    func move(_ canonical: String, within resolvedGroup: [JournalCatalogItem], by delta: Int) {
+        var order = resolvedGroup
+        let key = Self.norm(canonical)
+        guard let idx = order.firstIndex(where: { Self.norm($0.canonical) == key }) else { return }
+        let target = idx + delta
+        guard target >= 0, target < order.count else { return }
+        order.insert(order.remove(at: idx), at: target)
+        for (i, it) in order.enumerated() {
+            let k = Self.norm(it.canonical)
+            if let sidx = items.firstIndex(where: { Self.norm($0.canonical) == k }) {
+                items[sidx].sortIndex = i                       // saved item: keep its fields, restamp order
+            } else {
+                var fresh = it                                  // inferred/synthesised: preserve kind/group/name
+                fresh.sortIndex = i
+                items.append(fresh)
+            }
+        }
+    }
+
     // MARK: - Custom add / remove / restore (v1 API preserved)
 
     /// The display label for a canonical key: the user's rename, or the verbatim canonical.

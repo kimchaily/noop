@@ -231,6 +231,8 @@ struct JournalLogCard: View {
             if item.hidden {
                 pillButton("Restore", selected: false) { catalog.restore(item.canonical) }
             } else {
+                moveButton(item, symbol: "chevron.up", delta: -1)
+                moveButton(item, symbol: "chevron.down", delta: 1)
                 Menu {
                     Button("Rename…") { startRename(item) }
                     Menu("Group") {
@@ -255,6 +257,24 @@ struct JournalLogCard: View {
                 removeButton(item)
             }
         }
+    }
+
+    /// Edit-mode control: nudge an item up/down within its group. Disabled (and dimmed) at the end it
+    /// can't move past, so the arrows read their own bounds. Reorder keeps the canonical key intact.
+    private func moveButton(_ item: JournalCatalogItem, symbol: String, delta: Int) -> some View {
+        let order = items(in: item.group)
+        let idx = order.firstIndex { $0.canonical == item.canonical } ?? -1
+        let disabled = idx < 0 || idx + delta < 0 || idx + delta >= order.count
+        return Button {
+            catalog.move(item.canonical, within: order, by: delta)
+        } label: {
+            Image(systemName: "\(symbol).circle")
+                .font(StrandFont.body)
+                .foregroundStyle(disabled ? StrandPalette.textTertiary : StrandPalette.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .accessibilityLabel(delta < 0 ? "Move \(item.display) up" : "Move \(item.display) down")
     }
 
     /// Edit-mode control: delete a custom question / hide a built-in one. Tinted red to read as removal.

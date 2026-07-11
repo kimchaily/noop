@@ -180,6 +180,8 @@ fun JournalLogCard(
     onSetKind: (String, JournalKind) -> Unit = { _, _ -> },
     onRemoveQuestion: (String) -> Unit = {},
     onRestoreQuestion: (String) -> Unit = {},
+    // Reorder within a group: (canonical, the group's items in display order, delta -1/+1).
+    onMoveQuestion: (String, List<JournalCatalogItem>, Int) -> Unit = { _, _, _ -> },
 ) {
     var editing by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<JournalCatalogItem?>(null) }
@@ -250,6 +252,7 @@ fun JournalLogCard(
                             onSetKind = onSetKind,
                             onRemoveQuestion = onRemoveQuestion,
                             onRestoreQuestion = onRestoreQuestion,
+                            onMoveQuestion = onMoveQuestion,
                         )
                     }
                 }
@@ -284,6 +287,7 @@ private fun JournalGroupBlock(
     onSetKind: (String, JournalKind) -> Unit,
     onRemoveQuestion: (String) -> Unit,
     onRestoreQuestion: (String) -> Unit,
+    onMoveQuestion: (String, List<JournalCatalogItem>, Int) -> Unit,
 ) {
     var collapsed by remember(group) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -298,7 +302,7 @@ private fun JournalGroupBlock(
             Text(if (collapsed) "▸" else "▾", style = NoopType.caption, color = Palette.textTertiary)
         }
         if (!collapsed) {
-            items.forEach { item ->
+            items.forEachIndexed { index, item ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -313,6 +317,9 @@ private fun JournalGroupBlock(
                         item.hidden -> JournalChip("Restore", selected = false) { onRestoreQuestion(item.canonical) }
                         editing -> JournalItemEditControls(
                             item = item,
+                            canMoveUp = index > 0,
+                            canMoveDown = index < items.size - 1,
+                            onMove = { delta -> onMoveQuestion(item.canonical, items, delta) },
                             onStartRename = { onStartRename(item) },
                             onSetGroup = { onSetGroup(item.canonical, it) },
                             onSetKind = { onSetKind(item.canonical, it) },
@@ -381,10 +388,15 @@ private fun JournalNumericField(
 private fun formatNumeric(v: Double): String =
     if (v == Math.floor(v) && !v.isInfinite()) v.toInt().toString() else String.format("%.1f", v)
 
-/** Edit-mode per-item controls: rename, change group, convert type, remove. */
+/** Edit-mode per-item controls: reorder (up/down within the group), rename, change group, convert
+ *  type, remove. Arrow reorder rather than drag, so it behaves the same on every device (the same
+ *  pattern the Today card/tile editors use). */
 @Composable
 private fun JournalItemEditControls(
     item: JournalCatalogItem,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onMove: (Int) -> Unit,
     onStartRename: () -> Unit,
     onSetGroup: (JournalGroup) -> Unit,
     onSetKind: (JournalKind) -> Unit,
@@ -393,6 +405,17 @@ private fun JournalItemEditControls(
     var menuOpen by remember { mutableStateOf(false) }
     var groupMenuOpen by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
+        // Reorder arrows: dimmed + inert at the end an item can't move past, so they read their bounds.
+        Text("▲", style = NoopType.body,
+            color = if (canMoveUp) Palette.textSecondary else Palette.textTertiary.copy(alpha = 0.4f),
+            modifier = Modifier
+                .clickable(enabled = canMoveUp) { onMove(-1) }
+                .padding(horizontal = 4.dp))
+        Text("▼", style = NoopType.body,
+            color = if (canMoveDown) Palette.textSecondary else Palette.textTertiary.copy(alpha = 0.4f),
+            modifier = Modifier
+                .clickable(enabled = canMoveDown) { onMove(1) }
+                .padding(horizontal = 4.dp))
         Box {
             Text("⋯", style = NoopType.body, color = Palette.textSecondary,
                 modifier = Modifier.clickable { menuOpen = true }.padding(horizontal = 8.dp))

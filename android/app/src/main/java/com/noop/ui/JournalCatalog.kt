@@ -196,6 +196,40 @@ fun setJournalItemKind(items: List<JournalCatalogItem>, canonical: String, kind:
 fun setJournalItemSortIndex(items: List<JournalCatalogItem>, canonical: String, sortIndex: Int): List<JournalCatalogItem> =
     editJournalItem(items, canonical) { it.copy(sortIndex = sortIndex) }
 
+/**
+ * Reorder within a group: move [canonical] by [delta] (-1 up / +1 down) among [resolvedGroup] (the
+ * group's items in current display order), then persist an explicit sortIndex = position for every
+ * item in that order. An item the user hadn't touched yet is materialised FROM its resolved value, so
+ * a starter's default group / an inferred numeric kind (a restored question) survives the move instead
+ * of collapsing to the Bool default. A no-op if the move would fall off either end. Reorder is display
+ * + ordering only; the [canonical] engine keys are NEVER touched, so logged/imported history stays
+ * joined. Mirrors macOS `JournalCatalogStore.move`.
+ */
+fun moveJournalItem(
+    items: List<JournalCatalogItem>,
+    resolvedGroup: List<JournalCatalogItem>,
+    canonical: String,
+    delta: Int,
+): List<JournalCatalogItem> {
+    val order = resolvedGroup.toMutableList()
+    val key = normJournalKey(canonical)
+    val idx = order.indexOfFirst { normJournalKey(it.canonical) == key }
+    val target = idx + delta
+    if (idx < 0 || target < 0 || target >= order.size) return items
+    order.add(target, order.removeAt(idx))
+    var next = items
+    order.forEachIndexed { i, it ->
+        val k = normJournalKey(it.canonical)
+        val existing = next.indexOfFirst { e -> normJournalKey(e.canonical) == k }
+        next = if (existing >= 0) {
+            next.toMutableList().also { l -> l[existing] = l[existing].copy(sortIndex = i) }
+        } else {
+            next + it.copy(sortIndex = i)   // inferred/synthesised: preserve kind/group/displayName
+        }
+    }
+    return next
+}
+
 /** Add a custom item of the given type + group. No-op if the canonical already exists. */
 fun addCustomJournalItem(
     items: List<JournalCatalogItem>,
