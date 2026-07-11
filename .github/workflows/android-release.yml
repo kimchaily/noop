@@ -15,8 +15,9 @@
 #
 # Triggers:
 #   • workflow_dispatch – build on demand. Pick a `mode`:
-#       preview        – build an installable APK and hand it back as an artifact ONLY. Nothing in
+#       apk-only       – build an installable APK and hand it back as an artifact ONLY. Nothing in
 #                        the repo changes, no tag, no Release. Use this to try a branch. (default)
+#                        (Renamed from `preview` — that word now means the preview CHANNEL below.)
 #       release-auto   – increment the version for you (from the current build.gradle versionName)
 #                        by the chosen `bump` (patch/minor/major), commit the bump, tag it and cut a
 #                        GitHub Release with the APK. No need to look up the last version yourself.
@@ -34,11 +35,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: 'preview = APK artifact only. release-auto = bump version from build.gradle. release-manual = use the version field.'
+        description: 'apk-only = APK artifact only (no tag/Release). release-auto = bump version from build.gradle. release-manual = use the version field.'
         type: choice
-        default: preview
+        default: apk-only
         options:
-          - preview
+          - apk-only
           - release-auto
           - release-manual
       bump:
@@ -102,8 +103,8 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # Decide the version + whether this run tags & publishes a Release. `preview` (the default) leaves
-      # the repo untouched and only exports a filename suffix so a preview APK is distinguishable from a
+      # Decide the version + whether this run tags & publishes a Release. `apk-only` (the default) leaves
+      # the repo untouched and only exports a filename suffix so a one-off APK is distinguishable from a
       # real release. `release-auto` increments the current build.gradle versionName by the chosen bump;
       # `release-manual` uses the typed version. A pushed tag keeps the old behaviour (build current, no
       # bump, attach to that tag). Nothing here mutates the repo — the bump is a separate, gated step.
@@ -121,7 +122,7 @@ jobs:
           # Default to `preview` when no mode was submitted. GitHub renders the dispatch FORM from the
           # workflow on the default branch, so a run on a branch whose form predates these inputs sends
           # an empty mode — treat that as the safe artifact-only path rather than erroring.
-          MODE="${MODE:-preview}"
+          MODE="${MODE:-apk-only}"
           # Channel: the dispatch input, or inferred from a pushed tag ("-pre" ⇒ preview channel).
           CHANNEL="${CHANNEL_IN:-stable}"
           if [ "$EVENT" = "push" ] && printf '%s' "$REF_NAME" | grep -q -- '-pre'; then CHANNEL=preview; fi
@@ -134,9 +135,11 @@ jobs:
             NEW="$CUR"; NEWCODE="$CURCODE"; DO_RELEASE=true; DO_BUMP=false; TAG="$REF_NAME"; SUFFIX=""
           else
             case "$MODE" in
-              preview)
-                # Artifact only — nothing tagged, nothing committed. Suffix marks it as a preview build.
-                NEW="$CUR"; NEWCODE="$CURCODE"; DO_RELEASE=false; DO_BUMP=false; TAG=""; SUFFIX="-preview-${GITHUB_SHA::7}"
+              apk-only|preview)
+                # Artifact only — nothing tagged, nothing committed. (`preview` accepted as a legacy
+                # alias from stale dispatch forms; it does NOT select the preview channel — use the
+                # `channel` input for that.) Suffix marks the APK as a one-off branch build.
+                NEW="$CUR"; NEWCODE="$CURCODE"; DO_RELEASE=false; DO_BUMP=false; TAG=""; SUFFIX="-${GITHUB_SHA::7}"
                 ;;
               release-auto)
                 IFS=. read -r MA MI PA <<< "$CUR"
@@ -189,7 +192,7 @@ jobs:
 
       # Only for a real release: write the new versionName/versionCode into build.gradle.kts and commit
       # the bump back to the branch you dispatched, so the tag, the Release and the APK's OWN version all
-      # agree. Skipped entirely for `preview` (and for tag pushes), so design-iteration builds never
+      # agree. Skipped entirely for `apk-only` (and for tag pushes), so design-iteration builds never
       # mutate the repo. Pushes use GITHUB_TOKEN, which does not re-trigger workflows (no build loop).
       - name: Bump version in source
         if: ${{ steps.ver.outputs.do_bump == 'true' }}
@@ -279,7 +282,7 @@ jobs:
           fi
 
       # Name the artifact after the APK itself so the download is `<APK_NAME>.zip`
-      # (e.g. Choop-v8.2.5.apk.zip, or Choop-v8.2.4-preview-<sha>.apk.zip) instead of the generic
+      # (e.g. Choop-v8.2.5.apk.zip, or Choop-v8.2.5-<sha>.apk.zip) instead of the generic
       # noop-android-apk.zip. GitHub always wraps artifacts in a zip named after the artifact; the
       # .apk inside keeps the same base name. APK_NAME is exported by the Stage APKs step above.
       - name: Upload APK artifact
@@ -290,7 +293,7 @@ jobs:
           if-no-files-found: error
 
       # Publish (or update) a GitHub Release and attach the APK. Runs only when the resolved mode is a
-      # release (release-auto / release-manual) or a version tag was pushed — never for `preview`. The
+      # release (release-auto / release-manual) or a version tag was pushed — never for `apk-only`. The
       # tag/Release is created if missing (CI creates the tag when dispatched) so it shows up under
       # /releases/latest, which the in-app "Check for updates" reads. Targets the bump commit when there
       # was one, else the checked-out SHA.
