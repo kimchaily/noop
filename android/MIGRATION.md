@@ -148,6 +148,28 @@ For an ongoing off-device safety net, turn on **Settings → "Backup & Sync"**: 
 `.noopbak` written into a folder you choose (point it at a Drive/Dropbox sync folder). Nothing leaves
 the phone except the file your own sync client uploads.
 
+## The Preview channel (stable + preview side-by-side)
+
+Edge-Canary style: next to stable **Choop** you can install **"Choop Preview"**
+(`com.kimchai.choop.preview`, the `preview` product flavor) to try features ahead of a stable
+release. Both are signed with the **same key** (no second keystore/secret — the separate
+`applicationId` is what keeps them apart), and each has its **own sandbox**: separate database,
+settings and permissions, so nothing can mix.
+
+- **Cutting a preview release:** Actions → *Android Release APK* → mode `release-auto` (or
+  `release-manual`) + **channel `preview`**. CI bumps the version, builds
+  `Choop-Preview-v<version>.apk`, tags it `v<version>-pre` and publishes it as a GitHub
+  **pre-release**. (A pushed tag containing `-pre` does the same.)
+- **Update isolation:** stable's "Check for updates" reads `/releases/latest`, which GitHub keeps
+  free of pre-releases — stable never sees a preview build. Choop Preview reads the full release
+  list (including pre-releases) and updates onto the next preview cut.
+- **The strap stays with STABLE.** History offload is consume-on-read and a 5.0/MG bonds to one app
+  (see above) — if Preview drains the strap, stable can never get that slice. Feed Preview with a
+  `.noopbak` **import** from stable instead; that covers UI/feature testing. Pair Preview only to
+  deliberately test BLE changes, knowing that window's history lands in Preview.
+- Don't enable **Health Connect writeback** in both apps at once, or each will import the other's
+  contributed rows as an external source.
+
 ## Why "Choop" and not "com.noop.whoop"
 The `applicationId` is just an install identifier — it is not a claim of authorship, and nothing
 verifies the reverse-DNS name for a sideloaded APK. This fork uses `com.kimchai.choop` so it's

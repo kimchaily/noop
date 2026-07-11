@@ -2,6 +2,7 @@ package com.noop.update
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -16,9 +17,16 @@ import java.net.URL
 object UpdateCheck {
 
     // This fork's releases. The original NoopApp/noop repo is gone, so the check reads THIS repo's
-    // "latest" GitHub Release. The Android Release APK workflow attaches Choop-full.apk to a Release
-    // on every version tag (v*), so tapping through to the release page lands on a downloadable APK.
-    private const val ENDPOINT = "https://api.github.com/repos/kimchaily/noop/releases/latest"
+    // GitHub Releases. The Android Release APK workflow attaches the versioned Choop APK to a
+    // Release on every cut, so tapping through to the release page lands on a downloadable APK.
+    //
+    // Two channels (BuildConfig.CHANNEL, see the `preview` product flavor):
+    //   stable  → /releases/latest — GitHub EXCLUDES pre-releases here, so the stable app is never
+    //             offered a preview build.
+    //   preview → /releases?per_page=… — the full list INCLUDING pre-releases; the newest
+    //             non-draft version wins, so "Choop Preview" updates onto the next preview cut.
+    private const val LATEST_ENDPOINT = "https://api.github.com/repos/kimchaily/noop/releases/latest"
+    private const val LIST_ENDPOINT = "https://api.github.com/repos/kimchaily/noop/releases?per_page=20"
 
     sealed interface Result {
         data class UpToDate(val version: String) : Result
@@ -26,28 +34,66 @@ object UpdateCheck {
         object Failed : Result
     }
 
-    /** Fetch the latest release and classify it against [currentVersion]. Never throws — any error
-     *  (offline, rate-limited, malformed) resolves to [Result.Failed] so the caller shows a calm
-     *  "try again" rather than crashing. */
-    suspend fun check(currentVersion: String): Result = withContext(Dispatchers.IO) {
-        runCatching {
-            val conn = (URL(ENDPOINT).openConnection() as HttpURLConnection).apply {
-                connectTimeout = 12_000
-                readTimeout = 12_000
-                setRequestProperty("Accept", "application/vnd.github+json")
+    /** Fetch the latest release for the channel and classify it against [currentVersion]. Pass
+     *  [includePrereleases] = true on the preview channel (`BuildConfig.CHANNEL == "preview"`).
+     *  Never throws — any error (offline, rate-limited, malformed) resolves to [Result.Failed] so
+     *  the caller shows a calm "try again" rather than crashing. */
+    suspend fun check(currentVersion: String, includePrereleases: Boolean = false): Result =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                if (includePrereleases) checkList(currentVersion) else checkLatest(currentVersion)
+            }.getOrDefault(Result.Failed)
+        }
+
+    /** Stable channel: GitHub's `/releases/latest` (pre-releases are excluded by GitHub itself). */
+    private fun checkLatest(currentVersion: String): Result {
+        val body = fetch(LATEST_ENDPOINT) ?: return Result.Failed
+        val json = JSONObject(body)
+        val latest = json.getString("tag_name").removePrefix("v")
+        val url = json.getString("html_url")
+        val notes = cleanNotes(json.optString("body", ""))
+        return if (isNewer(latest, currentVersion)) Result.Available(latest, url, notes)
+        else Result.UpToDate(latest)
+    }
+
+    /** Preview channel: the release LIST (which includes pre-releases); the newest non-draft
+     *  version wins, compared with the same numeric [isNewer] the stable path uses. */
+    private fun checkList(currentVersion: String): Result {
+        val body = fetch(LIST_ENDPOINT) ?: return Result.Failed
+        val arr = JSONArray(body)
+        var best: JSONObject? = null
+        var bestTag = ""
+        for (i in 0 until arr.length()) {
+            val rel = arr.optJSONObject(i) ?: continue
+            if (rel.optBoolean("draft", false)) continue
+            val tag = rel.optString("tag_name", "").removePrefix("v")
+            if (tag.isEmpty()) continue
+            if (best == null || isNewer(tag, bestTag)) {
+                best = rel
+                bestTag = tag
             }
-            try {
-                if (conn.responseCode != 200) return@runCatching Result.Failed
-                val json = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
-                val latest = json.getString("tag_name").removePrefix("v")
-                val url = json.getString("html_url")
-                val notes = cleanNotes(json.optString("body", ""))
-                if (isNewer(latest, currentVersion)) Result.Available(latest, url, notes)
-                else Result.UpToDate(latest)
-            } finally {
-                conn.disconnect()
-            }
-        }.getOrDefault(Result.Failed)
+        }
+        val found = best ?: return Result.Failed
+        return if (isNewer(bestTag, currentVersion)) {
+            Result.Available(bestTag, found.getString("html_url"), cleanNotes(found.optString("body", "")))
+        } else {
+            Result.UpToDate(bestTag)
+        }
+    }
+
+    /** One GET against the GitHub API; null on any non-200 / transport problem. */
+    private fun fetch(endpoint: String): String? {
+        val conn = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 12_000
+            readTimeout = 12_000
+            setRequestProperty("Accept", "application/vnd.github+json")
+        }
+        return try {
+            if (conn.responseCode != 200) null
+            else conn.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            conn.disconnect()
+        }
     }
 
     /**

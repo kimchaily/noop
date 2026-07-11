@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Preview-channel build label; installs alongside stable Choop (com.kimchai.choop.preview). -->
+    <string name="app_name">Choop Preview</string>
+</resources>
