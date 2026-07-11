@@ -180,9 +180,11 @@ final class JournalCatalogStore: ObservableObject {
     /// This is the display-side twin of `mergeCatalog(imported:custom:hidden:)`: same fold + dedupe,
     /// but returning the typed items instead of bare strings. `canonical` is always the verbatim key
     /// the engine joins on; `displayName ?? canonical` is what the UI renders (rename is display-only).
-    func resolvedItems(imported: [String], includeHidden: Bool = false) -> [JournalCatalogItem] {
+    func resolvedItems(imported: [String], includeHidden: Bool = false,
+                       numericQuestions: Set<String> = []) -> [JournalCatalogItem] {
         var byKey: [String: JournalCatalogItem] = [:]
         for it in items { byKey[Self.norm(it.canonical)] = it }
+        let starterKeys = Set(Self.starterQuestions.map(Self.norm))
 
         var out: [JournalCatalogItem] = []
         var seen = Set<String>()
@@ -194,7 +196,15 @@ final class JournalCatalogStore: ObservableObject {
             if let saved = byKey[key] {
                 out.append(saved)
             } else {
-                out.append(JournalCatalogItem(canonical: t, displayName: nil, kind: .bool,
+                // A data-backed question with no saved catalog item: synthesise its default. This is
+                // what surfaces a custom question that arrived via a full backup restore — the restore
+                // carries the journal ROWS but NOT this device's UserDefaults catalog, so without this
+                // the question (and its data) stays invisible. Infer a numeric kind when the question's
+                // rows carry a numericValue, so a restored "… in mins" / "… rounds" question renders
+                // its stepper + value instead of a stray yes/no toggle. Starters stay .bool.
+                let kind: JournalKind = (numericQuestions.contains(key) && !starterKeys.contains(key))
+                    ? .numeric(unitLabel: nil) : .bool
+                out.append(JournalCatalogItem(canonical: t, displayName: nil, kind: kind,
                                               group: Self.starterGroups[t] ?? .other,
                                               sortIndex: fallbackIndex, hidden: false, custom: false))
                 fallbackIndex += 1
@@ -255,6 +265,32 @@ final class JournalCatalogStore: ObservableObject {
     /// Set an item's sort index within its group (drag-reorder).
     func setSortIndex(_ canonical: String, to sortIndex: Int) {
         edit(canonical) { $0.sortIndex = sortIndex }
+    }
+
+    /// Reorder within a group: move `canonical` by `delta` (-1 up / +1 down) among `resolvedGroup` (the
+    /// group's items in current display order), then persist an explicit sortIndex = position for every
+    /// item in that order. An item the user hadn't touched yet is materialised FROM its resolved value,
+    /// so a starter's default group / an inferred numeric kind (a restored question) survives the move
+    /// instead of collapsing to the `.bool` default. A no-op if the move would fall off either end.
+    /// Reorder is display + ordering only; the `canonical` engine keys are NEVER touched, so
+    /// logged/imported history stays joined.
+    func move(_ canonical: String, within resolvedGroup: [JournalCatalogItem], by delta: Int) {
+        var order = resolvedGroup
+        let key = Self.norm(canonical)
+        guard let idx = order.firstIndex(where: { Self.norm($0.canonical) == key }) else { return }
+        let target = idx + delta
+        guard target >= 0, target < order.count else { return }
+        order.insert(order.remove(at: idx), at: target)
+        for (i, it) in order.enumerated() {
+            let k = Self.norm(it.canonical)
+            if let sidx = items.firstIndex(where: { Self.norm($0.canonical) == k }) {
+                items[sidx].sortIndex = i                       // saved item: keep its fields, restamp order
+            } else {
+                var fresh = it                                  // inferred/synthesised: preserve kind/group/name
+                fresh.sortIndex = i
+                items.append(fresh)
+            }
+        }
     }
 
     // MARK: - Custom add / remove / restore (v1 API preserved)

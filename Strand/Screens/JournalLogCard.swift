@@ -19,9 +19,13 @@ struct JournalLogCard: View {
     /// needs no app-level injection.
     @StateObject private var catalog = JournalCatalogStore()
 
-    /// Distinct imported question strings (from InsightsView's load), adopted into the catalog so
-    /// logged answers and imported history group under the same behaviour.
+    /// Every data-backed question string (imported ∪ native, from InsightsView's load), adopted into
+    /// the catalog so logged answers and imported history group under the same behaviour — and so a
+    /// custom question restored from a backup (journal rows present, catalog absent) still surfaces.
     let importedQuestions: [String]
+    /// Norm-keys of questions whose rows carry a numericValue, so a restored numeric question with no
+    /// saved catalog item resolves to a numeric field rather than a yes/no toggle.
+    let numericQuestions: Set<String>
     /// question → answeredYes for the selected day, native rows only (drives the chip state).
     let answers: [String: Bool]
     /// question → numeric value for the selected day, native rows only (drives the numeric fields).
@@ -29,10 +33,11 @@ struct JournalLogCard: View {
     @Binding var dayOffset: Int            // -1 = tomorrow, 0 = today, 1 = yesterday
     let onChanged: () -> Void              // parent re-runs load() after a write
 
-    init(importedQuestions: [String], answers: [String: Bool],
-         numericAnswers: [String: Double] = [:], dayOffset: Binding<Int>,
-         onChanged: @escaping () -> Void) {
+    init(importedQuestions: [String], numericQuestions: Set<String> = [],
+         answers: [String: Bool], numericAnswers: [String: Double] = [:],
+         dayOffset: Binding<Int>, onChanged: @escaping () -> Void) {
         self.importedQuestions = importedQuestions
+        self.numericQuestions = numericQuestions
         self.answers = answers
         self.numericAnswers = numericAnswers
         self._dayOffset = dayOffset
@@ -58,7 +63,8 @@ struct JournalLogCard: View {
     /// The resolved, grouped catalog for the current imported set. Hidden items included only while
     /// editing (so they can be restored in place).
     private var resolved: [JournalCatalogItem] {
-        catalog.resolvedItems(imported: importedQuestions, includeHidden: editing)
+        catalog.resolvedItems(imported: importedQuestions, includeHidden: editing,
+                              numericQuestions: numericQuestions)
     }
 
     /// Items grouped by their group, each group ordered by sortIndex then display.
@@ -225,6 +231,8 @@ struct JournalLogCard: View {
             if item.hidden {
                 pillButton("Restore", selected: false) { catalog.restore(item.canonical) }
             } else {
+                moveButton(item, symbol: "chevron.up", delta: -1)
+                moveButton(item, symbol: "chevron.down", delta: 1)
                 Menu {
                     Button("Rename…") { startRename(item) }
                     Menu("Group") {
@@ -249,6 +257,24 @@ struct JournalLogCard: View {
                 removeButton(item)
             }
         }
+    }
+
+    /// Edit-mode control: nudge an item up/down within its group. Disabled (and dimmed) at the end it
+    /// can't move past, so the arrows read their own bounds. Reorder keeps the canonical key intact.
+    private func moveButton(_ item: JournalCatalogItem, symbol: String, delta: Int) -> some View {
+        let order = items(in: item.group)
+        let idx = order.firstIndex { $0.canonical == item.canonical } ?? -1
+        let disabled = idx < 0 || idx + delta < 0 || idx + delta >= order.count
+        return Button {
+            catalog.move(item.canonical, within: order, by: delta)
+        } label: {
+            Image(systemName: "\(symbol).circle")
+                .font(StrandFont.body)
+                .foregroundStyle(disabled ? StrandPalette.textTertiary : StrandPalette.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .accessibilityLabel(delta < 0 ? "Move \(item.display) up" : "Move \(item.display) down")
     }
 
     /// Edit-mode control: delete a custom question / hide a built-in one. Tinted red to read as removal.

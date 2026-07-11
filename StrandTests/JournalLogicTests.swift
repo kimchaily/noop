@@ -135,6 +135,45 @@ final class JournalLogicTests: XCTestCase {
     }
 
     @MainActor
+    func testReorderWithinGroupMovesAndPreservesInferredKind() {
+        // Restore surfaces a group whose numeric question (meditation) is inferred, not yet saved.
+        // Moving it up must climb one slot per move AND keep its numeric kind (materialised from the
+        // resolved value, not the .bool default), persisting an order the re-resolve honours.
+        let store = JournalCatalogStore()
+        store.items = []
+        let med = "Morning Meditation in mins"
+        let numeric: Set<String> = [JournalCatalogStore.norm(med)]
+        // Custom yes/no questions so the whole group lives in .other (no starter interleave).
+        store.addCustom("A cold shower?")
+        store.addCustom("C cold plunge?")
+
+        // The group as the UI renders it: resolvedItems returns import/add order, the group block
+        // sorts by (sortIndex, display) — mirror that here to read true display order.
+        func otherGroup() -> [JournalCatalogItem] {
+            store.resolvedItems(imported: [med], includeHidden: false, numericQuestions: numeric)
+                .filter { $0.group == .other }
+                .sorted { ($0.sortIndex, $0.display) < ($1.sortIndex, $1.display) }
+        }
+
+        let before = otherGroup()
+        XCTAssertEqual(before.map(\.canonical), ["A cold shower?", "C cold plunge?", med])
+        XCTAssertTrue(before.last?.kind.isNumeric ?? false, "meditation is inferred numeric before the move")
+
+        store.move(med, within: before, by: -1)                     // climbs to the middle
+        XCTAssertEqual(otherGroup().map(\.canonical), ["A cold shower?", med, "C cold plunge?"])
+
+        store.move(med, within: otherGroup(), by: -1)               // climbs to the top
+        let top = otherGroup()
+        XCTAssertEqual(top.map(\.canonical), [med, "A cold shower?", "C cold plunge?"])
+        XCTAssertTrue(top.first?.kind.isNumeric ?? false, "numeric kind survives the moves")
+        XCTAssertEqual(top.first?.canonical, med, "canonical (the engine key) is untouched")
+
+        // Boundary: moving the top item up again is a no-op (order unchanged).
+        store.move(med, within: top, by: -1)
+        XCTAssertEqual(otherGroup().map(\.canonical), top.map(\.canonical))
+    }
+
+    @MainActor
     func testSetGroupAndKindPreserveCanonical() {
         let store = JournalCatalogStore()
         store.items = []
