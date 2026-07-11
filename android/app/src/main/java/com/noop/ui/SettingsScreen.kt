@@ -2050,7 +2050,11 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                                     updChecking = true
                                     updResult = null
                                     scope.launch {
-                                        updResult = UpdateCheck.check(BuildConfig.VERSION_NAME)
+                                        // Preview channel reads pre-releases; stable only real releases.
+                                        updResult = UpdateCheck.check(
+                                            BuildConfig.VERSION_NAME,
+                                            includePrereleases = BuildConfig.CHANNEL == "preview",
+                                        )
                                         updChecking = false
                                     }
                                 }

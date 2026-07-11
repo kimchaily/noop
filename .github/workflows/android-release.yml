@@ -21,7 +21,13 @@
 #                        by the chosen `bump` (patch/minor/major), commit the bump, tag it and cut a
 #                        GitHub Release with the APK. No need to look up the last version yourself.
 #       release-manual – release at the exact `version` you type (blank = keep the current version).
-#   • push of a version tag (v* / android-v*) – build and attach the versioned Choop APK to that Release.
+#     And a `channel`:
+#       stable  – the real Choop app (com.kimchai.choop); releases land under /releases/latest.
+#       preview – the side-by-side "Choop Preview" app (com.kimchai.choop.preview); its releases are
+#                 tagged v<version>-pre and marked PRE-RELEASE, so stable installs never see them and
+#                 only the preview app's update check picks them up.
+#   • push of a version tag (v* / android-v*) – build and attach the versioned Choop APK to that
+#     Release. A tag containing "-pre" builds + publishes the preview channel.
 name: Android Release APK
 
 on:
@@ -47,6 +53,13 @@ on:
         description: 'release-manual only — numeric-only version like 8.3.0 (no leading "v"). Blank = keep current.'
         type: string
         default: ''
+      channel:
+        description: 'stable = the real Choop (com.kimchai.choop). preview = the side-by-side "Choop Preview" app (com.kimchai.choop.preview); its releases are marked pre-release so stable installs never see them.'
+        type: choice
+        default: stable
+        options:
+          - stable
+          - preview
       build_demo:
         description: 'Also build the sample-data demo flavour (Choop demo APK).'
         type: boolean
@@ -100,6 +113,7 @@ jobs:
           MODE: ${{ inputs.mode }}
           BUMP: ${{ inputs.bump }}
           MANUAL: ${{ inputs.version }}
+          CHANNEL_IN: ${{ inputs.channel }}
           EVENT: ${{ github.event_name }}
           REF_NAME: ${{ github.ref_name }}
         run: |
@@ -108,9 +122,12 @@ jobs:
           # workflow on the default branch, so a run on a branch whose form predates these inputs sends
           # an empty mode — treat that as the safe artifact-only path rather than erroring.
           MODE="${MODE:-preview}"
+          # Channel: the dispatch input, or inferred from a pushed tag ("-pre" ⇒ preview channel).
+          CHANNEL="${CHANNEL_IN:-stable}"
+          if [ "$EVENT" = "push" ] && printf '%s' "$REF_NAME" | grep -q -- '-pre'; then CHANNEL=preview; fi
           CUR=$(grep -oP 'versionName\s*=\s*"\K[^"]+' app/build.gradle.kts | head -1)
           CURCODE=$(grep -oP 'versionCode\s*=\s*\K[0-9]+' app/build.gradle.kts | head -1)
-          echo "Current: versionName=$CUR versionCode=$CURCODE"
+          echo "Current: versionName=$CUR versionCode=$CURCODE channel=$CHANNEL"
 
           if [ "$EVENT" = "push" ]; then
             # Tag push: build the current source and attach to the pushed tag. No bump.
@@ -145,7 +162,14 @@ jobs:
             esac
           fi
 
-          echo "Resolved: version=$NEW code=$NEWCODE release=$DO_RELEASE bump=$DO_BUMP tag=${TAG:-<none>} suffix=${SUFFIX:-<none>}"
+          # Preview-channel releases get a "-pre" tag so a later STABLE release of the same version
+          # (e.g. v8.3.0) never collides with its preview cut (v8.3.0-pre), and so the tag itself
+          # signals the channel. Dispatched releases bump the version first, so the tag stays unique.
+          if [ "$CHANNEL" = "preview" ] && [ "$EVENT" != "push" ] && [ -n "$TAG" ]; then
+            TAG="${TAG}-pre"
+          fi
+
+          echo "Resolved: version=$NEW code=$NEWCODE channel=$CHANNEL release=$DO_RELEASE bump=$DO_BUMP tag=${TAG:-<none>} suffix=${SUFFIX:-<none>}"
           {
             echo "new_version=$NEW"
             echo "new_code=$NEWCODE"
@@ -153,11 +177,12 @@ jobs:
             echo "do_bump=$DO_BUMP"
             echo "tag=$TAG"
             echo "suffix=$SUFFIX"
+            echo "channel=$CHANNEL"
           } >> "$GITHUB_OUTPUT"
           # A short human summary in the run's Summary tab.
           {
             echo "### Android build"
-            echo "- Mode: \`${MODE:-tag-push}\`"
+            echo "- Mode: \`${MODE:-tag-push}\` · Channel: \`$CHANNEL\`"
             echo "- Version: \`$NEW\` (versionCode \`$NEWCODE\`)"
             echo "- Release: \`$DO_RELEASE\`${TAG:+ → tag \`$TAG\`}"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -201,24 +226,36 @@ jobs:
           keyPassword=$ANDROID_KEY_PASSWORD
           EOF
 
-      - name: Build full release APK
-        run: ./gradlew assembleFullRelease
+      # stable → the `full` flavor (com.kimchai.choop); preview → the `preview` flavor
+      # (com.kimchai.choop.preview, label "Choop Preview"), which installs side-by-side.
+      - name: Build release APK
+        env:
+          CHANNEL: ${{ steps.ver.outputs.channel }}
+        run: |
+          if [ "$CHANNEL" = "preview" ]; then ./gradlew assemblePreviewRelease; else ./gradlew assembleFullRelease; fi
 
       - name: Build demo release APK
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_demo }}
         run: ./gradlew assembleDemoRelease
 
-      # Collect the outputs under a versioned, published-asset name (Choop-v<versionName>.apk),
-      # matching the upstream "NOOP-vX.Y.Z.apk" convention. The exact name is exported as APK_NAME
-      # for the later cert-print and Release-upload steps.
+      # Collect the outputs under a versioned, published-asset name (Choop-v<versionName>.apk /
+      # Choop-Preview-v<versionName>.apk), matching the upstream "NOOP-vX.Y.Z.apk" convention. The
+      # exact name is exported as APK_NAME for the later cert-print and Release-upload steps.
       - name: Stage APKs
         env:
           VERSION: ${{ steps.ver.outputs.new_version }}
           SUFFIX: ${{ steps.ver.outputs.suffix }}
+          CHANNEL: ${{ steps.ver.outputs.channel }}
         run: |
-          APK="Choop-v${VERSION}${SUFFIX}.apk"
+          if [ "$CHANNEL" = "preview" ]; then
+            APK="Choop-Preview-v${VERSION}${SUFFIX}.apk"
+            SRC="app/build/outputs/apk/preview/release/app-preview-release.apk"
+          else
+            APK="Choop-v${VERSION}${SUFFIX}.apk"
+            SRC="app/build/outputs/apk/full/release/app-full-release.apk"
+          fi
           mkdir -p ../dist
-          cp app/build/outputs/apk/full/release/app-full-release.apk "../dist/$APK"
+          cp "$SRC" "../dist/$APK"
           if [ -f app/build/outputs/apk/demo/release/app-demo-release.apk ]; then
             cp app/build/outputs/apk/demo/release/app-demo-release.apk "../dist/Choop-v${VERSION}${SUFFIX}-demo.apk"
           fi
@@ -263,11 +300,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TAG: ${{ steps.ver.outputs.tag }}
+          CHANNEL: ${{ steps.ver.outputs.channel }}
           TARGET_SHA: ${{ env.BUMP_SHA || github.sha }}
         run: |
-          echo "Publishing release $TAG at $TARGET_SHA"
+          echo "Publishing release $TAG at $TARGET_SHA (channel: $CHANNEL)"
+          # Preview releases are marked PRE-RELEASE: GitHub's /releases/latest then excludes them,
+          # so the stable app's update check never offers a preview build; the preview app reads the
+          # full release list and picks them up.
+          EXTRA=""
+          NOTES="Automated Choop release build. Install $APK_NAME (updates in place over an existing Choop install signed with the same key)."
+          if [ "$CHANNEL" = "preview" ]; then
+            EXTRA="--prerelease"
+            NOTES="Choop PREVIEW channel build — installs side-by-side with stable Choop as \"Choop Preview\". Install $APK_NAME. Keep your strap paired to stable Choop; feed Preview via a .noopbak import (see android/MIGRATION.md)."
+          fi
           if ! gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-            gh release create "$TAG" --repo "$REPO" --target "$TARGET_SHA" --title "$TAG" \
-              --notes "Automated Choop release build. Install $APK_NAME (updates in place over an existing Choop install signed with the same key)."
+            gh release create "$TAG" --repo "$REPO" --target "$TARGET_SHA" --title "$TAG" $EXTRA \
+              --notes "$NOTES"
           fi
           gh release upload "$TAG" "../dist/$APK_NAME" --clobber --repo "$REPO"
