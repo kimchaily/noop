@@ -619,12 +619,23 @@ private struct FloatingTabBar: View {
 private extension View {
     /// Real iOS 26 Liquid Glass where available; `.ultraThinMaterial` on iOS 17–25 — a clean
     /// blended degrade so the bar stays modern on new OSes without breaking older ones.
+    ///
+    /// The `#available` check is a RUNTIME gate; `glassEffect` still has to exist in the SDK the app
+    /// is compiled against, and it only ships in the iOS 26 SDK (Xcode 26 / Swift 6.2). An older
+    /// toolchain (e.g. the `macos-15` CI runner's Xcode 16) can't resolve the symbol at all, so wrap
+    /// the reference in a COMPILE-time `#if compiler(>=6.2)` gate too: newer toolchains build the real
+    /// Liquid Glass path (with the runtime fallback intact), older ones build only the Material
+    /// degrade. No behaviour change for shipping builds, which use Xcode 26.
     @ViewBuilder func liquidGlass(in shape: some Shape) -> some View {
+        #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             self.glassEffect(.regular, in: shape)
         } else {
             self.background(.ultraThinMaterial, in: shape)
         }
+        #else
+        self.background(.ultraThinMaterial, in: shape)
+        #endif
     }
 }
 #endif
