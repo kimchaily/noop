@@ -132,10 +132,12 @@ fun resolveJournalItems(
     imported: List<String>,
     savedItems: List<JournalCatalogItem>,
     includeHidden: Boolean = false,
+    numericQuestions: Set<String> = emptySet(),
     starter: List<String> = STARTER_JOURNAL_QUESTIONS,
 ): List<JournalCatalogItem> {
     val byKey = HashMap<String, JournalCatalogItem>()
     for (it in savedItems) byKey[normJournalKey(it.canonical)] = it
+    val starterKeys = starter.mapTo(HashSet()) { normJournalKey(it) }
 
     val out = ArrayList<JournalCatalogItem>()
     val seen = HashSet<String>()
@@ -148,7 +150,18 @@ fun resolveJournalItems(
         if (saved != null) {
             out.add(saved)
         } else {
-            out.add(JournalCatalogItem(canonical = t, kind = JournalKind.Bool,
+            // A data-backed question with no saved catalog item: synthesise its default item. This is
+            // what surfaces a custom question that arrived via a full backup restore — the restore
+            // carries the journal ROWS but NOT this device's SharedPreferences catalog, so without
+            // this the question (and its data) stays invisible. Infer a numeric kind when the
+            // question's rows carry a numericValue, so a restored "… in mins" / "… rounds" question
+            // renders its stepper + value instead of a stray yes/no toggle. Starters stay Bool.
+            val kind = if (key in numericQuestions && key !in starterKeys) {
+                JournalKind.Numeric(null)
+            } else {
+                JournalKind.Bool
+            }
+            out.add(JournalCatalogItem(canonical = t, kind = kind,
                 group = STARTER_JOURNAL_GROUPS[t] ?: JournalGroup.Other,
                 sortIndex = fallbackIndex, hidden = false, custom = false))
             fallbackIndex++

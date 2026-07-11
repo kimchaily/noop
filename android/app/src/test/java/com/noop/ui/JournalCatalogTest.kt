@@ -114,6 +114,32 @@ class JournalCatalogTest {
         assertEquals(items.size, again.size)
     }
 
+    @Test
+    fun restoredCustomQuestionSurfacesFromDataWithNumericKindInferred() {
+        // A full backup restore lands the journal ROWS but NOT this device's catalog. The load loop
+        // feeds resolveJournalItems the distinct data-backed questions (imported ∪ native) plus the
+        // norm-keys of those carrying a numericValue. With an EMPTY saved catalog, the restored
+        // customs must still surface — numeric ones as numeric, yes/no ones as Bool.
+        val meditation = "Morning Meditation in mins"
+        val stressed = "Did you feel stressed?"           // starter, has a native row too
+        val custom = "Cold shower?"                        // custom yes/no
+        val resolved = resolveJournalItems(
+            imported = listOf(meditation, custom, stressed),
+            savedItems = emptyList(),
+            numericQuestions = hashSetOf(
+                normJournalKey(meditation),
+                normJournalKey(stressed),   // even if the set names a starter, a starter stays Bool
+            ),
+        )
+        val med = resolved.first { it.canonical == meditation }
+        assertTrue("a data-backed question with numeric rows resolves numeric", med.kind.isNumeric)
+        assertEquals("no display rename yet, renders the canonical", meditation, med.display)
+        val cold = resolved.first { it.canonical == custom }
+        assertFalse("a data-backed yes/no question stays Bool", cold.kind.isNumeric)
+        val stress = resolved.first { it.canonical == stressed }
+        assertFalse("a starter never flips to numeric from the inferred set", stress.kind.isNumeric)
+    }
+
     // MARK: - JSON round-trip (persistence)
 
     @Test

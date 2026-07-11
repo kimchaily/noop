@@ -185,7 +185,9 @@ struct InsightsView: View {
     /// activity days and daily Charge; empty when nothing clears the engine's minSessions gate.
     @State private var activityCosts: [ActivityCost] = []
 
-    /// Distinct imported question strings, so the card adopts the export's exact wording.
+    /// Every question with a journal row (imported ∪ native), so the card + experiment picker surface
+    /// the user's own customs — including ones a full backup restore brought over (journal rows land,
+    /// but this device's catalog does not).
     @State private var importedQuestions: [String] = []
     /// The selected day's native answers (question → answeredYes), drives the chip state.
     @State private var dayAnswers: [String: Bool] = [:]
@@ -223,6 +225,11 @@ struct InsightsView: View {
                     whatMovesYouLink
                     // Native logging, always reachable: the account-free way into Insights.
                     JournalLogCard(importedQuestions: importedQuestions,
+                                   // Norm-keys of every question with numeric history, so a restored
+                                   // numeric question (no saved catalog item yet) resolves to a
+                                   // numeric field rather than a yes/no toggle.
+                                   numericQuestions: Set(numericJournalByKey.keys
+                                       .map { JournalCatalogStore.norm($0) }),
                                    answers: dayAnswers,
                                    numericAnswers: dayNumeric,
                                    dayOffset: $journalDayOffset,
@@ -354,11 +361,12 @@ struct InsightsView: View {
             if let v = e.numericValue { numericByBehaviour[e.question, default: [:]][e.day] = v }
         }
 
-        // The logging card's inputs: the export's exact question strings (so logged days join
-        // imported history) and the selected day's native chip state, a targeted read, since the
-        // merged list carries no deviceId to filter on.
-        let imported = await repo.importedJournalEntries()
-        let importedQs = NSOrderedSet(array: imported.map(\.question)).array as? [String] ?? []
+        // The logging card's inputs: every question that has ANY journal row (imported ∪ native, from
+        // `entries`), so the card surfaces the user's own custom questions too — including ones that
+        // arrived via a full backup restore, which carries the journal rows but not this device's
+        // catalog. Was imported-source only, which left a restored custom question invisible despite
+        // its data being present. The selected day's native chip state is a targeted read below.
+        let importedQs = NSOrderedSet(array: entries.map(\.question)).array as? [String] ?? []
         let selectedDayKey = Repository.localDayKey(
             Calendar.current.date(byAdding: .day, value: -journalDayOffset, to: Date()) ?? Date())
         let nativeAnswers = await repo.nativeJournalAnswers(day: selectedDayKey)

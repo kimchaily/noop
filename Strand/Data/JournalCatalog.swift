@@ -180,9 +180,11 @@ final class JournalCatalogStore: ObservableObject {
     /// This is the display-side twin of `mergeCatalog(imported:custom:hidden:)`: same fold + dedupe,
     /// but returning the typed items instead of bare strings. `canonical` is always the verbatim key
     /// the engine joins on; `displayName ?? canonical` is what the UI renders (rename is display-only).
-    func resolvedItems(imported: [String], includeHidden: Bool = false) -> [JournalCatalogItem] {
+    func resolvedItems(imported: [String], includeHidden: Bool = false,
+                       numericQuestions: Set<String> = []) -> [JournalCatalogItem] {
         var byKey: [String: JournalCatalogItem] = [:]
         for it in items { byKey[Self.norm(it.canonical)] = it }
+        let starterKeys = Set(Self.starterQuestions.map(Self.norm))
 
         var out: [JournalCatalogItem] = []
         var seen = Set<String>()
@@ -194,7 +196,15 @@ final class JournalCatalogStore: ObservableObject {
             if let saved = byKey[key] {
                 out.append(saved)
             } else {
-                out.append(JournalCatalogItem(canonical: t, displayName: nil, kind: .bool,
+                // A data-backed question with no saved catalog item: synthesise its default. This is
+                // what surfaces a custom question that arrived via a full backup restore — the restore
+                // carries the journal ROWS but NOT this device's UserDefaults catalog, so without this
+                // the question (and its data) stays invisible. Infer a numeric kind when the question's
+                // rows carry a numericValue, so a restored "… in mins" / "… rounds" question renders
+                // its stepper + value instead of a stray yes/no toggle. Starters stay .bool.
+                let kind: JournalKind = (numericQuestions.contains(key) && !starterKeys.contains(key))
+                    ? .numeric(unitLabel: nil) : .bool
+                out.append(JournalCatalogItem(canonical: t, displayName: nil, kind: kind,
                                               group: Self.starterGroups[t] ?? .other,
                                               sortIndex: fallbackIndex, hidden: false, custom: false))
                 fallbackIndex += 1

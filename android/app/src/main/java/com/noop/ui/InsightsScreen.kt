@@ -189,7 +189,13 @@ fun InsightsScreen(vm: AppViewModel, onOpenInsightsHub: () -> Unit = {}) {
     var journalLoaded by remember { mutableStateOf(false) }
     var journalSeq by remember { mutableStateOf(0) }
     var dayOffset by remember { mutableStateOf(0L) }
+    // Every question that has a journal row (imported ∪ native), so the logging card + experiment
+    // picker surface the user's own customs — including ones a full backup restore brought over
+    // (the restore carries journal rows but not this device's SharedPreferences catalog).
     var importedQuestions by remember { mutableStateOf<List<String>>(emptyList()) }
+    // Norm-keys of questions whose rows carry a numericValue; drives numeric-kind inference for a
+    // restored question that has no saved catalog item yet.
+    var numericQuestionKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var dayAnswers by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     // #322: the selected day's native numeric values (question -> value), drives the numeric fields.
     var dayNumeric by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
@@ -235,7 +241,14 @@ fun InsightsScreen(vm: AppViewModel, onOpenInsightsHub: () -> Unit = {}) {
         }
         behaviours = byBehaviour.mapValues { it.value.toSet() }
         numericJournalSeries = numericByBehaviour.mapValues { it.value.toMap() }
-        importedQuestions = imported.map { it.question }.distinct()
+        // Every question that has ANY journal row (imported ∪ native), so the logging card surfaces
+        // the user's own custom questions too — including ones that arrived via a full backup restore,
+        // which carries the journal rows but not this device's catalog. Previously imported-source
+        // only, which left a restored custom question invisible despite its data being present.
+        importedQuestions = entries.map { it.question }.distinct()
+        // Norm-keys of questions whose rows carry a numericValue, so a restored numeric question
+        // (meditation minutes, breathwork rounds) resolves to a numeric field, not a yes/no toggle.
+        numericQuestionKeys = numericByBehaviour.keys.mapTo(HashSet()) { normJournalKey(it) }
         val key = journalDayKey(dayOffset)
         var answers = native.filter { it.day == key }.associate { it.question to it.answeredYes }
         // #322: the selected day's numeric values (native-only; imported WHOOP rows carry none).
@@ -343,7 +356,8 @@ fun InsightsScreen(vm: AppViewModel, onOpenInsightsHub: () -> Unit = {}) {
             catalogItems = next
         }
         JournalLogCard(
-            items = resolveJournalItems(importedQuestions, catalogItems, includeHidden = false),
+            items = resolveJournalItems(importedQuestions, catalogItems, includeHidden = false,
+                numericQuestions = numericQuestionKeys),
             answers = dayAnswers,
             numericAnswers = dayNumeric,
             dayOffset = dayOffset,
