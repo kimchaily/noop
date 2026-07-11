@@ -160,6 +160,17 @@ settings and permissions, so nothing can mix.
   `release-manual`) + **channel `preview`**. CI bumps the version, builds
   `Choop-Preview-v<version>.apk`, tags it `v<version>-pre` and publishes it as a GitHub
   **pre-release**. (A pushed tag containing `-pre` does the same.)
+- **Testing a BRANCH before merging** (the everyday case): Actions → *Android Release APK* →
+  **pick the feature branch** in the "Use workflow from" dropdown → mode **`apk-only`** + channel
+  **`preview`**. That builds `Choop-Preview-v<version>-<sha>.apk` as a downloadable **artifact**
+  (no tag, no Release, nothing committed) which installs over your existing Choop Preview.
+  Two things make this work:
+  - Preview-channel CI builds carry `versionCode = 1000 + run#` — strictly increasing across all
+    runs and branches — so a branch build always installs *over* any older Choop Preview, even
+    when the branch's own version lags main (Android would otherwise refuse it as a downgrade).
+  - The branch must **contain the preview-channel work** (this section's commits). For a branch
+    cut before that, merge/rebase `main` into it first — a dispatch runs the *branch's* copy of
+    the workflow, so an old branch would silently build the stable app instead.
 - **Update isolation:** stable's "Check for updates" reads `/releases/latest`, which GitHub keeps
   free of pre-releases — stable never sees a preview build. Choop Preview reads the full release
   list (including pre-releases) and updates onto the next preview cut.

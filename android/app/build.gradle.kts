@@ -41,6 +41,19 @@ android {
         }
     }
 
+    // CI-only version override, used by the release workflow for PREVIEW-CHANNEL builds: it passes
+    // -PchoopVersionCodeOverride=1000+<run#> so every newer CI preview build carries a strictly
+    // higher versionCode than any earlier one — REGARDLESS of which branch it was built from. That
+    // is what lets you install a preview APK cut from a feature branch over an installed "Choop
+    // Preview" without Android's downgrade block, even when the branch's own versionName/-Code lag
+    // behind main. Local builds and the stable channel never set these properties and are untouched.
+    (project.findProperty("choopVersionCodeOverride") as String?)?.toIntOrNull()?.let {
+        defaultConfig.versionCode = it
+    }
+    (project.findProperty("choopVersionNameOverride") as String?)?.let {
+        defaultConfig.versionName = it
+    }
+
     signingConfigs {
         create("release") {
             if (keystorePropsFile.exists()) {
