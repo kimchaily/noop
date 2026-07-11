@@ -1,6 +1,6 @@
 package com.noop.analytics
 
-import com.noop.ble.WhoopModel
+import com.noop.ble.whoopSkinTempFamily
 import com.noop.data.DeviceRegistry
 import com.noop.data.DeviceStatus
 import com.noop.data.SourceKind
@@ -46,13 +46,14 @@ class RegistryDayOwnerSource(private val registry: DeviceRegistry) : Intelligenc
     // when they diverge, the #814/#799 spine symptom).
     override suspend fun activeWriteId(): String? = registry.activeDeviceId()
 
-    // #938: resolve the strap family that wrote [deviceId]'s rows from its registry model. A device whose
-    // model is "WHOOP 4.0" maps to WHOOP4 (raw-ADC skin-temp scale); everything else — a 5/MG, a non-WHOOP
-    // import whose skin temp is already °C, or an id absent from the registry — falls back to WHOOP5 (the
-    // prior /100 behaviour). Mirrors the Swift IntelligenceEngine.skinTempFamily(forOwner:devices:).
+    // #938: resolve the strap family that wrote [deviceId]'s rows from its registry model. A WHOOP 4.0 maps
+    // to WHOOP4 (raw-ADC skin-temp scale); everything else — a 5/MG, a non-WHOOP import whose skin temp is
+    // already °C, or an id absent from the registry — falls back to WHOOP5 (the prior /100 behaviour). The
+    // Android wizard stores the WHOOP model as the short "4.0"/"5.0 MG" label (never the "WHOOP 4.0"
+    // displayName), so [whoopSkinTempFamily] matches on the labels actually persisted (and still on the
+    // Swift-parity "WHOOP 4.0"). Mirrors the Swift IntelligenceEngine.skinTempFamily(forOwner:devices:).
     override suspend fun skinTempFamily(deviceId: String): DeviceFamily {
         val model = registry.all().firstOrNull { it.id == deviceId }?.model
-        return if (WhoopModel.entries.firstOrNull { it.displayName == model } == WhoopModel.WHOOP4)
-            DeviceFamily.WHOOP4 else DeviceFamily.WHOOP5
+        return whoopSkinTempFamily(model)
     }
 }

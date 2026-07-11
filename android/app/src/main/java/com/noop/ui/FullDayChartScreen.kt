@@ -26,8 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.noop.analytics.HrvAnalyzer
-import com.noop.ble.WhoopModel
-import com.noop.protocol.DeviceFamily
+import com.noop.ble.whoopSkinTempFamily
 import com.noop.protocol.skinTempCelsius
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -337,11 +336,12 @@ private suspend fun readTimeline(
         TimelineMetric.SkinTemp -> {
             // #938: family-aware raw→°C — 5/MG centidegrees (raw/100, #156), a WHOOP 4.0 v24 raw ADC map.
             // Resolve the strap family from [deviceId]'s registry model; a positively-identified 4.0 → WHOOP4,
-            // everything else → WHOOP5 (the prior /100 behaviour). Mirrors Swift Repository.timelineRawMetric.
+            // everything else → WHOOP5 (the prior /100 behaviour). [whoopSkinTempFamily] matches the short
+            // "4.0" label the Android wizard persists (the exact-"WHOOP 4.0" check silently read every 4.0 as
+            // WHOOP5, #938). Mirrors Swift Repository.timelineRawMetric.
             val model = runCatching { vm.pairedDevices() }.getOrDefault(emptyList())
                 .firstOrNull { it.id == deviceId }?.model
-            val family = if (WhoopModel.entries.firstOrNull { it.displayName == model } == WhoopModel.WHOOP4)
-                DeviceFamily.WHOOP4 else DeviceFamily.WHOOP5
+            val family = whoopSkinTempFamily(model)
             runCatching { repo.skinTempSamples(deviceId, from, to, 200_000) }.getOrDefault(emptyList())
                 .map { TimelinePoint(it.ts, skinTempCelsius(it.raw, family)) }
         }

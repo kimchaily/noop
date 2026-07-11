@@ -6,6 +6,7 @@ import com.noop.data.DeviceRegistryDao
 import com.noop.data.DeviceStatus
 import com.noop.data.PairedDeviceRow
 import com.noop.data.SourceKind
+import com.noop.protocol.DeviceFamily
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -136,6 +137,47 @@ class RegistryDayOwnerSourceTest {
         // Even though the active strap has data, the locked override pins the day to the import.
         val owner = resolveWith(src, "2026-06-15", mapOf("my-whoop" to true, "oura" to true))
         assertEquals("oura", owner)
+    }
+
+    /** A paired device with an explicit `model` (the [device] helper forces model == brand). */
+    private fun deviceWithModel(id: String, brand: String, model: String, kind: SourceKind) =
+        PairedDeviceRow(
+            id = id, brand = brand, model = model, nickname = null,
+            sourceKind = kind.name, capabilities = "hr,hrv,skinTemp",
+            status = DeviceStatus.paired.name, addedAt = 100, lastSeenAt = 100,
+        )
+
+    /**
+     * #938 regression: a WHOOP 4.0 is stored by the Android pairing wizard with the SHORT model label
+     * "4.0" (never the "WHOOP 4.0" displayName). skinTempFamily must still resolve it to WHOOP4 so the
+     * raw-ADC skin-temp scale is applied — the old exact-"WHOOP 4.0" match read every 4.0 as WHOOP5,
+     * divided its raw ADC by 100 (~8 °C), and dropped every night below the 28 °C worn gate → skin temp
+     * (and the illness signal) went permanently empty.
+     */
+    @Test
+    fun skinTempFamilyResolvesWhoop4FromItsStoredLabels() = runBlocking {
+        val dao = FakeDao().apply {
+            devices["whoop-aa"] = deviceWithModel("whoop-aa", "WHOOP", "4.0", SourceKind.liveBLE)
+            devices["whoop-parity"] = deviceWithModel("whoop-parity", "WHOOP", "WHOOP 4.0", SourceKind.liveBLE)
+            devices["whoop-bb"] = deviceWithModel("whoop-bb", "WHOOP", "5.0 MG", SourceKind.liveBLE)
+            devices["whoop-full5"] = deviceWithModel("whoop-full5", "WHOOP", "WHOOP 5.0 / MG", SourceKind.liveBLE)
+            // The seeded single-WHOOP row is family-ambiguous ("WHOOP"); it must not be mis-scaled as a 4.0.
+            devices["my-whoop"] = deviceWithModel("my-whoop", "WHOOP", "WHOOP", SourceKind.liveBLE)
+            // An Oura Ring 4 has a "4" but NOT "4.0", so it must stay on the /100 centidegree scale.
+            devices["oura4"] = deviceWithModel("oura4", "Oura", "Oura Ring 4", SourceKind.cloudImport)
+        }
+        val src = RegistryDayOwnerSource(registry(dao))
+
+        // The Android short label AND the Swift-parity full label both resolve to WHOOP4.
+        assertEquals(DeviceFamily.WHOOP4, src.skinTempFamily("whoop-aa"))
+        assertEquals(DeviceFamily.WHOOP4, src.skinTempFamily("whoop-parity"))
+        // Everything without a "4.0" marker keeps the /100 default: 5/MG (both label forms), the
+        // ambiguous seed, an Oura Ring 4, and an id absent from the registry.
+        assertEquals(DeviceFamily.WHOOP5, src.skinTempFamily("whoop-bb"))
+        assertEquals(DeviceFamily.WHOOP5, src.skinTempFamily("whoop-full5"))
+        assertEquals(DeviceFamily.WHOOP5, src.skinTempFamily("my-whoop"))
+        assertEquals(DeviceFamily.WHOOP5, src.skinTempFamily("oura4"))
+        assertEquals(DeviceFamily.WHOOP5, src.skinTempFamily("not-in-registry"))
     }
 
     @Test
