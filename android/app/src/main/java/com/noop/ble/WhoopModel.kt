@@ -31,8 +31,16 @@ enum class WhoopModel(val displayName: String, val service: UUID) {
 
 /**
  * Resolve the skin-temp raw→°C [DeviceFamily] (#938) from a paired device's persisted registry `model`
- * string. Only a WHOOP 4.0 banks skin temp as a raw ADC that needs the 4.0 transfer map; every 5/MG and
- * every non-WHOOP source is read on the /100 centidegree default ([DeviceFamily.WHOOP5]).
+ * string, when the string CONFIDENTLY names one. Only a WHOOP 4.0 banks skin temp as a raw ADC that
+ * needs the 4.0 transfer map; a 5/MG banks the /100 centidegree register ([DeviceFamily.WHOOP5]).
+ *
+ * Returns null — a real "I don't know", not a default — when [model] doesn't confidently name either
+ * family: a bare seeded "WHOOP" (the classic single-device install; genuinely ambiguous, and NEVER
+ * updated with the real hardware generation, live or via a `.noopbak` restore), an unrecognized/blank
+ * model, or a non-WHOOP source. Callers that need a concrete family must supply their OWN fallback —
+ * see [com.noop.analytics.AnalyticsEngine.inferSkinTempFamily] for a data-driven one that classifies the
+ * device's OWN raw skin-temp samples when this registry signal comes back null, which is what actually
+ * resolves the ambiguous-model case above (the registry alone never can).
  *
  * The match must accept EVERY label the store actually holds for a WHOOP 4.0, and those diverged across
  * write paths:
@@ -45,13 +53,16 @@ enum class WhoopModel(val displayName: String, val service: UUID) {
  * illness signal it feeds) vanished. That is issue #938 reintroduced through a model-string mismatch, and
  * it also carries into an imported/migrated DB verbatim (a `.noopbak` is a whole-DB restore).
  *
- * We key STRICTLY off the "4.0" marker that BOTH real 4.0 labels share, rather than "not a 5": a WHOOP
- * 5.0 / MG ("5.0 MG", "WHOOP 5.0 / MG"), an Oura ("Oura Ring 4" — note NO ".0"), a bare seeded "WHOOP"
- * (genuinely family-ambiguous — resolved on connect, not here), a non-WHOOP import, or an absent model
- * all lack "4.0" and keep the /100 WHOOP5 default, so a stray/unknown label can never be mis-scaled as a
- * 4.0. Kept in lockstep with the Swift `IntelligenceEngine.skinTempFamily(forOwner:devices:)`.
+ * We key STRICTLY off the "4.0" / "5.0" markers rather than "not a 5" / "not a 4": an Oura ("Oura Ring
+ * 4" — note NO ".0") stays null, so a stray/unknown label can never be mis-scaled as either family.
+ * Kept in lockstep with the Swift `IntelligenceEngine.skinTempFamily(forOwner:devices:)`, which still
+ * defaults ambiguous cases to WHOOP5 on that platform.
  */
-fun whoopSkinTempFamily(model: String?): DeviceFamily {
-    val m = model?.trim()?.lowercase() ?: return DeviceFamily.WHOOP5
-    return if (m.contains("4.0")) DeviceFamily.WHOOP4 else DeviceFamily.WHOOP5
+fun whoopSkinTempFamily(model: String?): DeviceFamily? {
+    val m = model?.trim()?.lowercase() ?: return null
+    return when {
+        m.contains("4.0") -> DeviceFamily.WHOOP4
+        m.contains("5.0") -> DeviceFamily.WHOOP5
+        else -> null
+    }
 }

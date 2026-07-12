@@ -46,13 +46,18 @@ class RegistryDayOwnerSource(private val registry: DeviceRegistry) : Intelligenc
     // when they diverge, the #814/#799 spine symptom).
     override suspend fun activeWriteId(): String? = registry.activeDeviceId()
 
-    // #938: resolve the strap family that wrote [deviceId]'s rows from its registry model. A WHOOP 4.0 maps
-    // to WHOOP4 (raw-ADC skin-temp scale); everything else — a 5/MG, a non-WHOOP import whose skin temp is
-    // already °C, or an id absent from the registry — falls back to WHOOP5 (the prior /100 behaviour). The
+    // #938: resolve the strap family that wrote [deviceId]'s rows from its registry model, WHEN the model
+    // confidently names one. A WHOOP 4.0 maps to WHOOP4 (raw-ADC skin-temp scale), a 5/MG to WHOOP5. Null
+    // — NOT a WHOOP5 default — for a bare seeded "WHOOP" (the classic single-device install; genuinely
+    // ambiguous, never updated with the real generation), a non-WHOOP import, or an id absent from the
+    // registry: [IntelligenceEngine.analyzeRecent] is the one that owns the final fallback, trying the
+    // device's own raw skin-temp magnitude ([AnalyticsEngine.inferSkinTempFamily]) before defaulting, so
+    // this method must surface "don't know" honestly rather than pre-empting that with a guess. The
     // Android wizard stores the WHOOP model as the short "4.0"/"5.0 MG" label (never the "WHOOP 4.0"
     // displayName), so [whoopSkinTempFamily] matches on the labels actually persisted (and still on the
-    // Swift-parity "WHOOP 4.0"). Mirrors the Swift IntelligenceEngine.skinTempFamily(forOwner:devices:).
-    override suspend fun skinTempFamily(deviceId: String): DeviceFamily {
+    // Swift-parity "WHOOP 4.0"/"WHOOP 5.0 / MG"). Mirrors the Swift
+    // IntelligenceEngine.skinTempFamily(forOwner:devices:), which still defaults ambiguous to WHOOP5.
+    override suspend fun skinTempFamily(deviceId: String): DeviceFamily? {
         val model = registry.all().firstOrNull { it.id == deviceId }?.model
         return whoopSkinTempFamily(model)
     }

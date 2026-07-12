@@ -653,6 +653,46 @@ object AnalyticsEngine {
             droppedOutOfRange = outOfRange, kept = kept, minSamples = minSamples, mean = mean,
         )
     }
+
+    // ── Data-driven skin-temp family inference (follow-up to #938) ─────────────────────────────────
+
+    /** Below this raw magnitude, a night's samples read as a WHOOP 4.0 raw ADC (known worn range
+     *  ~500-900, no-contact floor ~500-520 — see SkinTempConversionTest). */
+    private const val RAW_ADC_MAX_MEDIAN = 1200.0
+
+    /** Above this raw magnitude, a night's samples read as a WHOOP 5/MG raw centidegree register
+     *  (known range ~2200-3400+ across worn + off-wrist — see SkinTempConversionTest). Between the two
+     *  thresholds is a deliberate dead zone: neither family's known range ever lands there, so a median
+     *  in it means the sample is too sparse/noisy to trust, not that a family should be guessed. */
+    private const val RAW_CENTI_MIN_MEDIAN = 1800.0
+
+    /**
+     * Infer the writing strap's skin-temp [DeviceFamily] directly from the MAGNITUDE of its own raw
+     * register values, rather than the paired-device registry `model` string. The registry string is
+     * frequently unusable: the classic single-WHOOP install seeds `model = "WHOOP"` and NEVER updates it
+     * with the real hardware generation (neither on a live (re)connect nor on a `.noopbak` restore), so
+     * [com.noop.ble.whoopSkinTempFamily] has nothing to key off for the single most common install shape
+     * — exactly the case that kept skin temp empty even after the #938 model-string fix landed.
+     *
+     * WHOOP4's raw ADC register and WHOOP5's raw centidegree register occupy CLEANLY SEPARATED magnitude
+     * bands (proven worn/off-wrist values, [SkinTempConversionTest]): a 4.0 reads roughly 500-900, a
+     * 5/MG roughly 2200-3400+. Classifying the MEDIAN of a representative sample set by which band it
+     * falls in — rather than any single value — is robust to the handful of off-wrist/ambient outliers a
+     * real night carries. Returns null (not a guess) when the sample is empty or its median lands in the
+     * dead zone between the two known bands, so a caller can keep trying on a later, more legible night
+     * rather than memoizing a wrong answer.
+     */
+    fun inferSkinTempFamily(samples: List<SkinTempSample>): DeviceFamily? {
+        if (samples.isEmpty()) return null
+        val raws = samples.map { it.raw.toDouble() }.sorted()
+        val n = raws.size
+        val median = if (n % 2 == 1) raws[n / 2] else (raws[n / 2 - 1] + raws[n / 2]) / 2.0
+        return when {
+            median <= RAW_ADC_MAX_MEDIAN -> DeviceFamily.WHOOP4
+            median >= RAW_CENTI_MIN_MEDIAN -> DeviceFamily.WHOOP5
+            else -> null
+        }
+    }
 }
 
 /*

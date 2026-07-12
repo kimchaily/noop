@@ -78,10 +78,15 @@ object IntelligenceEngine {
         suspend fun activeWriteId(): String? = null
 
         /** The strap family that wrote [deviceId]'s rows (#938), so the nightly skin-temp funnel converts
-         *  the raw register on the right scale (5/MG centidegrees vs a WHOOP 4.0 v24 raw ADC). The default
-         *  returns WHOOP5 (the prior /100 behaviour), so legacy/test sources are byte-identical;
-         *  [RegistryDayOwnerSource] resolves a positively-identified 4.0 to WHOOP4. */
-        suspend fun skinTempFamily(deviceId: String): DeviceFamily = DeviceFamily.WHOOP5
+         *  the raw register on the right scale (5/MG centidegrees vs a WHOOP 4.0 v24 raw ADC). Null means
+         *  "the registry doesn't confidently know" (a bare seeded "WHOOP" model, unrecognized, or absent)
+         *  — NOT "assume WHOOP5"; the caller in [analyzeRecent] falls back to
+         *  [AnalyticsEngine.inferSkinTempFamily] on the device's own raw samples before finally defaulting
+         *  to WHOOP5, so a family the registry can never see (the common ambiguous single-WHOOP install)
+         *  can still be resolved from the data itself. The default returns null (byte-identical to the
+         *  prior always-WHOOP5 default once combined with that same final fallback), so legacy/test
+         *  sources are unaffected; [RegistryDayOwnerSource] resolves a positively-identified 4.0/5.0. */
+        suspend fun skinTempFamily(deviceId: String): DeviceFamily? = null
     }
 
     /** Minimum HR samples in a day's window before it is worth scoring. */
@@ -438,14 +443,28 @@ object IntelligenceEngine {
             val grav = repo.gravitySamples(owner, from, to, STREAM_LIMIT)
             val steps = repo.stepSamples(owner, from, to, STREAM_LIMIT)
             val skin = repo.skinTempSamples(owner, from, to, STREAM_LIMIT)
-            // #938: the strap family that WROTE this owner's skin-temp rows, so analyzeDay converts the raw
-            // register on the right scale (5/MG banks centidegrees, a WHOOP 4.0 v24 banks a raw ADC). The
-            // owner source resolves it from the registry; unknown/non-WHOOP owners fall back to WHOOP5 (the
-            // prior /100 behaviour), so only a device positively identified as a 4.0 changes scale.
-            // Resolved once per DISTINCT owner via [skinFamilyByOwner] (#970 read efficiency, see above).
-            val skinFamily = skinFamilyByOwner.getOrPut(owner) {
-                ownerSource?.skinTempFamily(owner) ?: DeviceFamily.WHOOP5
-            }
+            // #938 (+ follow-up): the strap family that WROTE this owner's skin-temp rows, so analyzeDay
+            // converts the raw register on the right scale (5/MG banks centidegrees, a WHOOP 4.0 v24 banks
+            // a raw ADC). Two signals, tried in order, and cached in [skinFamilyByOwner] ONLY once one of
+            // them gives a CONFIDENT answer — never memoize a guess, so a later, more legible night can
+            // still resolve it:
+            //   1) the registry `model` string, when it confidently names a family (an explicit user
+            //      choice: the multi-device pairing wizard, or a Swift/.noopbak "WHOOP 4.0"/"WHOOP 5.0 / MG"
+            //      label).
+            //   2) failing that, the DATA ITSELF via [AnalyticsEngine.inferSkinTempFamily]: WHOOP4's raw ADC
+            //      and WHOOP5's raw centidegree register occupy cleanly separated magnitude bands, so this
+            //      night's OWN raw samples classify it directly. This is what actually resolves the common
+            //      case the registry alone never can: the classic seeded single-WHOOP "my-whoop" row is
+            //      stored with the family-ambiguous model "WHOOP" and is never updated with the real
+            //      hardware generation — neither on a live (re)connect nor on a `.noopbak` restore — so a
+            //      4.0 owner's skin temp silently defaulted to the WHOOP5 /100 scale and fell out of the
+            //      worn gate forever, even after the #938 model-string fix landed.
+            // Neither signal fires (registry ambiguous AND this night's sample too sparse/mixed to classify)
+            // → a provisional WHOOP5 default for JUST this day, NOT cached, so tomorrow's night retries.
+            val skinFamily = skinFamilyByOwner[owner] ?: run {
+                val resolved = ownerSource?.skinTempFamily(owner) ?: AnalyticsEngine.inferSkinTempFamily(skin)
+                resolved?.also { skinFamilyByOwner[owner] = it }
+            } ?: DeviceFamily.WHOOP5
             // Wrist-wear events in the night window, paired into off-wrist [start, end) intervals for the
             // off-wrist sleep backstop (#500). The HR-gap proxy in the stager is the always-on guard;
             // these explicit intervals sharpen it under the FRACTIONAL rule (#504) , a session is dropped
