@@ -231,11 +231,21 @@ jobs:
 
       # stable → the `full` flavor (com.kimchai.choop); preview → the `preview` flavor
       # (com.kimchai.choop.preview, label "Choop Preview"), which installs side-by-side.
+      #
+      # Preview builds override versionCode with 1000+<run#> (strictly increasing across ALL runs
+      # and branches). That is what makes BRANCH previews installable: a feature branch usually
+      # lags main's versionCode, and without the override Android would refuse the APK as a
+      # downgrade over an already-installed Choop Preview. Stable never uses the override, so its
+      # versionCode stays the deliberate build.gradle number.
       - name: Build release APK
         env:
           CHANNEL: ${{ steps.ver.outputs.channel }}
         run: |
-          if [ "$CHANNEL" = "preview" ]; then ./gradlew assemblePreviewRelease; else ./gradlew assembleFullRelease; fi
+          if [ "$CHANNEL" = "preview" ]; then
+            ./gradlew assemblePreviewRelease -PchoopVersionCodeOverride=$((1000 + GITHUB_RUN_NUMBER))
+          else
+            ./gradlew assembleFullRelease
+          fi
 
       - name: Build demo release APK
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_demo }}
