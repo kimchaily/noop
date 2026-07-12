@@ -240,11 +240,15 @@ jobs:
       - name: Build release APK
         env:
           CHANNEL: ${{ steps.ver.outputs.channel }}
+          BRANCH: ${{ github.ref_name }}
         run: |
+          # Git provenance for the in-app build stamp (BuildConfig.GIT_SHA/GIT_BRANCH — shown in the
+          # preview app's Today header so a screenshot answers "which build is this?").
+          GITPROPS="-PchoopGitSha=${GITHUB_SHA::7} -PchoopGitBranch=${BRANCH}"
           if [ "$CHANNEL" = "preview" ]; then
-            ./gradlew assemblePreviewRelease -PchoopVersionCodeOverride=$((1000 + GITHUB_RUN_NUMBER))
+            ./gradlew assemblePreviewRelease -PchoopVersionCodeOverride=$((1000 + GITHUB_RUN_NUMBER)) $GITPROPS
           else
-            ./gradlew assembleFullRelease
+            ./gradlew assembleFullRelease $GITPROPS
           fi
 
       - name: Build demo release APK

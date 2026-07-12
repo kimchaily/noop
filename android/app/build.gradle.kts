@@ -39,6 +39,14 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // Build provenance for the Today-header stamp (see ui/BuildStamp.kt). CI injects the short
+        // sha + branch via -PchoopGitSha/-PchoopGitBranch; local builds leave them blank and the UI
+        // omits the segment. Kept in defaultConfig so every flavor carries the fields.
+        val gitSha = (project.findProperty("choopGitSha") as String?) ?: ""
+        val gitBranch = (project.findProperty("choopGitBranch") as String?) ?: ""
+        buildConfigField("String", "GIT_SHA", "\"$gitSha\"")
+        buildConfigField("String", "GIT_BRANCH", "\"$gitBranch\"")
     }
 
     // CI-only version override, used by the release workflow for PREVIEW-CHANNEL builds: it passes
