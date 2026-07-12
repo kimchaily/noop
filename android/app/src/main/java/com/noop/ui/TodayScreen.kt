@@ -109,7 +109,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import android.app.DatePickerDialog
 import android.view.HapticFeedbackConstants
+import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.noop.BuildConfig
 import com.noop.analytics.BaselineState
 import com.noop.analytics.Baselines
 import com.noop.analytics.BatteryEstimator
@@ -987,7 +989,32 @@ fun TodayScreen(
             val keyDate = runCatching { LocalDate.parse(selectedDayKey) }.getOrNull() ?: selectedDay
             keyDate.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.US))
         }
-        Box(modifier = Modifier.fillMaxWidth().staggeredAppear(0)) {
+        Column(modifier = Modifier.fillMaxWidth().staggeredAppear(0)) {
+            // BRAND ROW — the CHOOP wordmark leads the page (moved up from its old slot between
+            // header and hero; caps + top-of-page placement is deliberate, home screen only), with
+            // the tiny channel-aware build stamp right beneath it (see ui/BuildStamp.kt): stable
+            // shows just "v8.2.6"; preview adds build number and branch@sha so a screenshot
+            // identifies the exact build. The wordmark keeps its tap easter egg.
+            LiquidWordmark()
+            Text(
+                buildStamp(
+                    channel = BuildConfig.CHANNEL,
+                    versionName = BuildConfig.VERSION_NAME,
+                    versionCode = BuildConfig.VERSION_CODE,
+                    branch = BuildConfig.GIT_BRANCH,
+                    sha = BuildConfig.GIT_SHA,
+                ),
+                style = NoopType.number(9.5f)
+                    .copy(shadow = Shadow(color = Color.Black.copy(alpha = 0.3f), offset = Offset(0f, 1f), blurRadius = 6f)),
+                color = Color.White.copy(alpha = 0.45f),
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp)
+                    .semantics { contentDescription = "App version" },
+            )
+            Spacer(Modifier.height(10.dp))
             LiquidTodayHeader(
                 dayTitle = dayTitle,
                 humanDate = humanDate,
@@ -1000,15 +1027,6 @@ fun TodayScreen(
                 onOpenDevices = onOpenDevices,
             )
         }
-        }
-
-        // WORDMARK, a subtle centred "N O O P" on the sky between the header and the hero (iOS LiquidWordmark
-        // parity). White @ ~50% opacity, letter-spaced, perfectly centred; a tap plays a small random wiggle
-        // easter egg. The old Android Today had NO wordmark; this adds it. Staggered in just after the header.
-        item {
-            Box(modifier = Modifier.fillMaxWidth().staggeredAppear(0)) {
-                LiquidWordmark()
-            }
         }
 
         // A "workout in progress" indicator whenever a manual workout is active (iOS parity: the Today
@@ -2069,7 +2087,8 @@ private fun LiquidBatteryRing(batteryPct: Double?, onClick: () -> Unit) {
 
 // MARK: - Choop wordmark (iOS LiquidWordmark parity — centred, with a tap easter egg)
 //
-// The subtle "N O O P" wordmark that sits on the sky between the header and the hero. Built as a row of
+// The subtle "C H O O P" wordmark that leads the Today page (all-caps, top of the home screen only,
+// with the tiny build stamp rendered right beneath it by the caller). Built as a row of
 // letters (not one tracked string, which adds a trailing gap after the last glyph and pushes the word
 // off-centre), so it sits DEAD centre, white @ ~50% opacity. A tap plays one of several random one-shot
 // animations — wiggle / shake / flip / spin / bounce / jelly squash. Mirrors iOS LiquidWordmark.
@@ -2123,7 +2142,7 @@ private fun LiquidWordmark() {
         horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        "Choop".forEach { ch ->
+        "CHOOP".forEach { ch ->
             Text(
                 ch.toString(),
                 style = NoopType.number(16f, weight = FontWeight.Bold)

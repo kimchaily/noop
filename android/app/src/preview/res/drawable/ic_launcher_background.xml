@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PREVIEW-channel launcher background (flavor res override of main's dark tile): the same dark
+     machined tile pulled toward the Choop green, so "Choop Preview" reads as its own icon at a
+     glance while staying unmistakably Choop. Applies to the classic (default) icon; the navy
+     variant keeps its blued-metal tile and is distinguished by the inverted foreground instead. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient android:type="linear" android:startX="0" android:startY="0" android:endX="0" android:endY="108"
+                android:startColor="#14332A" android:endColor="#0B1512"/>
+        </aapt:attr>
+    </path>
+</vector>
