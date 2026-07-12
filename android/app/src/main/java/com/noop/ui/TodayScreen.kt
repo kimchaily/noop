@@ -1008,7 +1008,12 @@ fun TodayScreen(
                     .copy(shadow = Shadow(color = Color.Black.copy(alpha = 0.3f), offset = Offset(0f, 1f), blurRadius = 6f)),
                 color = Color.White.copy(alpha = 0.45f),
                 textAlign = TextAlign.Center,
-                maxLines = 1,
+                // Two lines, not one: a branch preview's stamp ("… · <branch>@<sha>") easily
+                // outgrows one line and maxLines=1 was silently CLIPPING the branch off (leaving a
+                // dangling "·"). The " · " separators are natural wrap points, so the source lands
+                // on its own centred second line; Ellipsis only for pathological lengths.
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 2.dp)
