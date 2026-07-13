@@ -223,6 +223,49 @@ class SkinTempAnalyticsTest {
         assertFalse(w4.isAbsent)
     }
 
+    // ── data-driven family inference (follow-up to #938) ────────────────────
+
+    /** A night of real WHOOP 4.0 worn raw-ADC values (500-900 band) infers WHOOP4 from magnitude alone —
+     *  no registry model string involved. This is what actually fixes skin temp for the classic seeded
+     *  single-WHOOP install (`model` = bare "WHOOP", never updated with the real hardware generation). */
+    @Test
+    fun inferWhoop4FromWornRawAdcMagnitude() {
+        val start = 14_000_000L
+        val temps = listOf(826, 830, 845, 859, 865).map { skin(start + it, it) }
+        assertEquals(DeviceFamily.WHOOP4, AnalyticsEngine.inferSkinTempFamily(temps))
+    }
+
+    /** A night of real 5/MG centidegree values (worn + off-wrist) infers WHOOP5 from magnitude alone. */
+    @Test
+    fun inferWhoop5FromCentidegreeMagnitude() {
+        val start = 15_000_000L
+        val temps = listOf(3057, 2247, 3400).map { skin(start + it, it) }
+        assertEquals(DeviceFamily.WHOOP5, AnalyticsEngine.inferSkinTempFamily(temps))
+    }
+
+    /** A 4.0's no-contact floor (~506-520) is STILL well under the WHOOP4 band ceiling, so a night that's
+     *  mostly off-wrist doesn't flip the inferred family. */
+    @Test
+    fun inferWhoop4HoldsAcrossTheNoContactFloor() {
+        val start = 16_000_000L
+        val temps = (listOf(826, 830, 845) + listOf(506, 514, 520)).mapIndexed { i, raw -> skin(start + i, raw) }
+        assertEquals(DeviceFamily.WHOOP4, AnalyticsEngine.inferSkinTempFamily(temps))
+    }
+
+    /** A median landing in the dead zone between the two known bands (neither family's real range ever
+     *  lands there) is inconclusive — null, not a guess. */
+    @Test
+    fun inferReturnsNullInTheDeadZoneBetweenBands() {
+        val start = 17_000_000L
+        val temps = listOf(1400, 1500, 1600).map { skin(start + it, it) }
+        assertNull(AnalyticsEngine.inferSkinTempFamily(temps))
+    }
+
+    @Test
+    fun inferReturnsNullOnEmptySamples() {
+        assertNull(AnalyticsEngine.inferSkinTempFamily(emptyList()))
+    }
+
     // ── seed → deviation (skin_temp baseline) ───────────────────────────────
 
     private val skinCfg = Baselines.metricCfg.getValue("skin_temp")
