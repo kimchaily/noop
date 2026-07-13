@@ -639,6 +639,20 @@ object NoopPrefs {
         of(context).edit().putBoolean(KEY_EFFORT_RESCORE_DONE, true).apply()
     }
 
+    /** Whether the one-shot skin-temp family rescore (#938 follow-up) has run. The family fix changes
+     *  only the INTERPRETATION of already-stored raw skin-temp rows — no HR row moves — so the #836
+     *  fingerprint gate would skip the rescore forever on an unchanged DB (exactly the static-.noopbak
+     *  preview install the fix targets). When unset, startup clears the analyze watermark once so the
+     *  next tick re-scores the 21-day window under the corrected family, then sets this flag. */
+    const val KEY_SKIN_FAMILY_RESCORE_DONE = "noop.skinFamilyRescore.v938.done"
+
+    fun skinFamilyRescoreDone(context: Context): Boolean =
+        of(context).getBoolean(KEY_SKIN_FAMILY_RESCORE_DONE, false)
+
+    fun setSkinFamilyRescoreDone(context: Context) {
+        of(context).edit().putBoolean(KEY_SKIN_FAMILY_RESCORE_DONE, true).apply()
+    }
+
     /** Whether the one-shot #547 implausible-timestamp heal has run. Set true once it completes so the
      *  on-upgrade purge of bad-strap-clock rows (far-past / future-dated) never re-runs. Re-running is
      *  harmless (the deletes are idempotent), but the flag avoids the work on every launch. */

@@ -707,6 +707,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     flagSet = { NoopPrefs.setEffortRescoreDone(appContext) },
                 )
             }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
+            // One-shot skin-temp family rescore (#938 follow-up). The family fix (registry-label match +
+            // raw-magnitude inference) changes only how already-banked skin-temp rows are INTERPRETED —
+            // no HR row is inserted or deleted — so the #836 fingerprint gate below would skip the
+            // rescore forever on an unchanged DB. That is precisely the install the fix targets: a
+            // static .noopbak import whose nights were all scored (and watermarked) under the wrong
+            // /100 scale. Clearing the watermark once makes the next tick re-run analyzeRecent, which
+            // re-derives nightlySkinTempC/skinTempDevC under the corrected family; the flag keeps this
+            // from re-triggering on every launch. Mirrors the #313/#547 one-shot upgrade passes above.
+            runCatching {
+                if (!NoopPrefs.skinFamilyRescoreDone(appContext)) {
+                    NoopPrefs.setAnalyzeWatermark(appContext, "")
+                    NoopPrefs.setSkinFamilyRescoreDone(appContext)
+                }
+            }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
             while (isActive) {
                 // #547 RE-POLLUTION: a sync since the last tick may have flagged a re-heal (its ingest gate
                 // dropped bad-clock records). Re-run the purge BEFORE this tick's rescore so the affected days
