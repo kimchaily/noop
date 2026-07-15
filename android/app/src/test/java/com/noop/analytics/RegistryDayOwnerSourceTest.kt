@@ -6,6 +6,7 @@ import com.noop.data.DeviceRegistryDao
 import com.noop.data.DeviceStatus
 import com.noop.data.PairedDeviceRow
 import com.noop.data.SourceKind
+import com.noop.protocol.DeviceFamily
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -136,6 +137,45 @@ class RegistryDayOwnerSourceTest {
         // Even though the active strap has data, the locked override pins the day to the import.
         val owner = resolveWith(src, "2026-06-15", mapOf("my-whoop" to true, "oura" to true))
         assertEquals("oura", owner)
+    }
+
+    /** A paired device with an explicit `model` (the [device] helper forces model == brand). */
+    private fun deviceWithModel(id: String, brand: String, model: String, kind: SourceKind) =
+        PairedDeviceRow(
+            id = id, brand = brand, model = model, nickname = null,
+            sourceKind = kind.name, capabilities = "hr,hrv,skinTemp",
+            status = DeviceStatus.paired.name, addedAt = 100, lastSeenAt = 100,
+        )
+
+    /**
+     * #938: skinTempFamily resolves the raw→°C scale from the registry model, and now returns
+     * [DeviceFamily]? — null means "the registry genuinely doesn't know", NOT "assume WHOOP5". The Android
+     * wizard persists the SHORT label "4.0"/"5.0 MG" (never the "WHOOP 4.0" displayName the old exact match
+     * required), so both label forms must resolve; the bare seeded "WHOOP", an Oura "Ring 4", and an id
+     * absent from the (frequently EMPTY on a `.noopbak` import) registry must surface null so
+     * [IntelligenceEngine.analyzeRecent] falls back to its data-driven inference instead of a silent guess.
+     */
+    @Test
+    fun skinTempFamilyResolvesConfidentLabelsAndNullsTheRest() = runBlocking {
+        val dao = FakeDao().apply {
+            devices["whoop-aa"] = deviceWithModel("whoop-aa", "WHOOP", "4.0", SourceKind.liveBLE)
+            devices["whoop-parity"] = deviceWithModel("whoop-parity", "WHOOP", "WHOOP 4.0", SourceKind.liveBLE)
+            devices["whoop-bb"] = deviceWithModel("whoop-bb", "WHOOP", "5.0 MG", SourceKind.liveBLE)
+            devices["whoop-full5"] = deviceWithModel("whoop-full5", "WHOOP", "WHOOP 5.0 / MG", SourceKind.liveBLE)
+            devices["my-whoop"] = deviceWithModel("my-whoop", "WHOOP", "WHOOP", SourceKind.liveBLE)
+            devices["oura4"] = deviceWithModel("oura4", "Oura", "Oura Ring 4", SourceKind.cloudImport)
+        }
+        val src = RegistryDayOwnerSource(registry(dao))
+        // Both 4.0 label forms → WHOOP4; both 5/MG forms → WHOOP5.
+        assertEquals(DeviceFamily.WHOOP4, src.skinTempFamily("whoop-aa"))
+        assertEquals(DeviceFamily.WHOOP4, src.skinTempFamily("whoop-parity"))
+        assertEquals(DeviceFamily.WHOOP5, src.skinTempFamily("whoop-bb"))
+        assertEquals(DeviceFamily.WHOOP5, src.skinTempFamily("whoop-full5"))
+        // Ambiguous seed, an Oura Ring 4 (a "4" but no ".0"), and an unknown/absent id → null (defer to
+        // the engine's data-driven inference), never a guessed default.
+        assertNull(src.skinTempFamily("my-whoop"))
+        assertNull(src.skinTempFamily("oura4"))
+        assertNull(src.skinTempFamily("not-in-registry"))
     }
 
     @Test

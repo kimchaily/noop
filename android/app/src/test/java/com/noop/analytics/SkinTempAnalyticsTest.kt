@@ -223,6 +223,44 @@ class SkinTempAnalyticsTest {
         assertFalse(w4.isAbsent)
     }
 
+    // ── data-driven family inference (follow-up to #938) ────────────────────
+
+    /** Real WHOOP 4.0 worn raw-ADC values (the 500-900 band) infer WHOOP4 from magnitude alone — no
+     *  registry model needed. This is what fixes skin temp on a `.noopbak`-import install with an EMPTY
+     *  pairedDevice table (the verified real case: 1.36M rows, per-night median ~870). */
+    @Test
+    fun inferWhoop4FromWornRawAdcMagnitude() {
+        val temps = listOf(826, 830, 845, 859, 865, 870, 900).mapIndexed { i, raw -> skin(100L + i, raw) }
+        assertEquals(DeviceFamily.WHOOP4, AnalyticsEngine.inferSkinTempFamily(temps))
+    }
+
+    /** Real 5/MG centidegree values (worn + off-wrist) infer WHOOP5 from magnitude alone. */
+    @Test
+    fun inferWhoop5FromCentidegreeMagnitude() {
+        val temps = listOf(3057, 2247, 3400).mapIndexed { i, raw -> skin(200L + i, raw) }
+        assertEquals(DeviceFamily.WHOOP5, AnalyticsEngine.inferSkinTempFamily(temps))
+    }
+
+    /** The verified WHOOP 4.0 import's real spread — floor 521, worn ~870, spikes to 1419 — still infers
+     *  WHOOP4: the MEDIAN (~870) decides, robust to off-wrist/ambient outliers on both ends. */
+    @Test
+    fun inferWhoop4HoldsAcrossRealNightSpread() {
+        val temps = listOf(521, 726, 830, 870, 905, 1006, 1419).mapIndexed { i, raw -> skin(300L + i, raw) }
+        assertEquals(DeviceFamily.WHOOP4, AnalyticsEngine.inferSkinTempFamily(temps))
+    }
+
+    /** A median landing in the dead zone between the two known bands is inconclusive → null, not a guess. */
+    @Test
+    fun inferReturnsNullInTheDeadZoneBetweenBands() {
+        val temps = listOf(1400, 1500, 1600).mapIndexed { i, raw -> skin(400L + i, raw) }
+        assertNull(AnalyticsEngine.inferSkinTempFamily(temps))
+    }
+
+    @Test
+    fun inferReturnsNullOnEmptySamples() {
+        assertNull(AnalyticsEngine.inferSkinTempFamily(emptyList()))
+    }
+
     // ── seed → deviation (skin_temp baseline) ───────────────────────────────
 
     private val skinCfg = Baselines.metricCfg.getValue("skin_temp")
