@@ -653,6 +653,44 @@ object AnalyticsEngine {
             droppedOutOfRange = outOfRange, kept = kept, minSamples = minSamples, mean = mean,
         )
     }
+
+    // ── Data-driven skin-temp family inference (follow-up to #938) ─────────────────────────────────
+
+    /** At/below this raw magnitude, a night's samples read as a WHOOP 4.0 raw ADC. Verified on a real
+     *  WHOOP 4.0 import: 1.36M rows spanning 521-1419, per-night median ~870, ~76k/night inside the
+     *  726-1006 worn band (SkinTempConversionTest anchors 826↔33 °C). */
+    private const val RAW_ADC_MAX_MEDIAN = 1200.0
+
+    /** At/above this raw magnitude, a night's samples read as a WHOOP 5/MG raw centidegree register
+     *  (~2200-3400+ worn+off-wrist). Between the two thresholds is a deliberate dead zone: neither
+     *  family's real range lands there, so a median in it is inconclusive, not a family to guess. */
+    private const val RAW_CENTI_MIN_MEDIAN = 1800.0
+
+    /**
+     * Infer the writing strap's skin-temp [DeviceFamily] (#938) from the MAGNITUDE of its own raw
+     * register values, when the registry `model` string can't. This is the ONLY working signal on the
+     * most common broken shape: a `.noopbak`-import install whose pairedDevice table is EMPTY (verified
+     * on a real WHOOP 4.0 import), so [com.noop.ble.whoopSkinTempFamily] has nothing to read and every
+     * night silently defaulted to the WHOOP5 /100 scale — 870/100 = 8.7 °C, far under the 28 °C worn
+     * gate, so all samples dropped and skin temp went permanently empty.
+     *
+     * WHOOP4's raw ADC (~500-900 worn) and WHOOP5's centidegree register (~2200-3400) occupy cleanly
+     * separated bands, so the MEDIAN of a night classifies it, robust to the off-wrist/ambient outliers a
+     * real night carries (a WHOOP 4.0 import's max hit 1419 and floor 521, but the median sat ~870).
+     * Returns null (not a guess) when the sample is empty or its median lands in the dead zone, so a
+     * caller can retry on a later, more legible night rather than memoize a wrong answer.
+     */
+    fun inferSkinTempFamily(samples: List<SkinTempSample>): DeviceFamily? {
+        if (samples.isEmpty()) return null
+        val raws = samples.map { it.raw.toDouble() }.sorted()
+        val n = raws.size
+        val median = if (n % 2 == 1) raws[n / 2] else (raws[n / 2 - 1] + raws[n / 2]) / 2.0
+        return when {
+            median <= RAW_ADC_MAX_MEDIAN -> DeviceFamily.WHOOP4
+            median >= RAW_CENTI_MIN_MEDIAN -> DeviceFamily.WHOOP5
+            else -> null
+        }
+    }
 }
 
 /*
