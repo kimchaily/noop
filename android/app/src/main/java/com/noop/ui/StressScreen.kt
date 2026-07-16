@@ -241,7 +241,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.StressContent(
 // translucent near-black (mock rgba(13,14,20,.80)) so it floats over the day-of-sky; the vessel + white
 // count-up number read crisp on it. Radius 26 + a white@0.11 hairline give the frosted-glass edge. Same
 // numbers as the Today pilot's hero card.
-private val LIQUID_HERO_FILL: Color = Color(red = 13f / 255f, green = 14f / 255f, blue = 20f / 255f, alpha = 0.80f)
+private val LIQUID_HERO_FILL: Color get() = Palette.heroFill
 private val LIQUID_HERO_RADIUS = 26.dp
 
 // MARK: - 1 · Hero — the liquid stress VESSEL (the flat PipBar is gone)

@@ -80,7 +80,7 @@ private val hydrationAccent: Color
 // The frosted translucent near-black the hydration vessel floats on (mock rgba(13,14,20,.80)), so the vessel
 // + the white count-up litre figure read crisp over the day-of-sky. Radius 26 + a white@0.11 hairline give
 // the frosted-glass edge. Same numbers as the liquid Today heroCard (TodayScreen.kt LIQUID_HERO_*).
-private val LIQUID_HERO_FILL: Color = Color(red = 13f / 255f, green = 14f / 255f, blue = 20f / 255f, alpha = 0.80f)
+private val LIQUID_HERO_FILL: Color get() = Palette.heroFill
 private val LIQUID_HERO_RADIUS = 26.dp
 
 /** Upper bound (ml) for a single custom hydration log (#798) - a sane cap so a stray digit can't bank an

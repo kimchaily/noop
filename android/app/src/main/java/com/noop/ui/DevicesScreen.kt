@@ -82,7 +82,7 @@ import kotlinx.coroutines.launch
 // frosted card so the strap name + the live battery tube stay crisp on it. Same tokens as the liquid Today
 // hero (heroFill = rgba(13,14,20,.80), radius 26, white@0.11 hairline). Those Today constants are private to
 // TodayScreen, so the identical values are declared here. Mirrors the iOS liquid heroCard.
-private val LIQUID_HERO_FILL: Color = Color(red = 13f / 255f, green = 14f / 255f, blue = 20f / 255f, alpha = 0.80f)
+private val LIQUID_HERO_FILL: Color get() = Palette.heroFill
 private val LIQUID_HERO_RADIUS: Dp = 26.dp
 
 @Composable

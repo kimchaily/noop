@@ -53,6 +53,12 @@ object Palette {
     /** True when the light scheme is active (surface code uses this for the per-scheme idiom). */
     val isLight: Boolean get() = activeIsLight
 
+    /** The liquid-hero card fill for the ACTIVE theme family — the deep, translucent near-black the
+     *  score vessels + white ring numbers float on. Hued per family (violet under Aurora, warm under
+     *  Ember, …) so the hero harmonises with the theme; stays dark in both schemes for legibility.
+     *  Reads [ThemePrefs.family] (snapshot state) so it re-resolves live on a family switch. */
+    val heroFill: Color get() = ThemePrefs.family.heroFill
+
     // Chart style — when CLASSIC, the DATA accessors below return the throwback red→green ramps
     // (light/dark tuned). Reads ChartStylePrefs.style (snapshot state) so a flip re-colours live.
     val isClassic: Boolean get() = ChartStylePrefs.style == ChartStyle.CLASSIC

@@ -742,8 +742,7 @@ private fun VitalityHero(
 // The frosted translucent-black hero-card wrapper (mock rgba(13,14,20,.80), radius 26, white@0.11
 // hairline) that floats the hero over the day-of-sky so the vessel + white count-up stay crisp — the
 // card does the contrast work, not a muted sky. Byte-matched to the Today pilot's LIQUID_HERO_* values.
-private val HEALTH_HERO_FILL: Color =
-    Color(red = 13f / 255f, green = 14f / 255f, blue = 20f / 255f, alpha = 0.80f)
+private val HEALTH_HERO_FILL: Color get() = Palette.heroFill
 private val HEALTH_HERO_RADIUS: Dp = 26.dp
 
 /** Wrap a hero's content in the frosted liquid glass surface so it floats over the sky backdrop. Applied
