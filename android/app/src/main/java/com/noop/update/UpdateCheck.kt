@@ -56,28 +56,57 @@ object UpdateCheck {
         else Result.UpToDate(latest)
     }
 
-    /** Preview channel: the release LIST (which includes pre-releases); the newest non-draft
-     *  version wins, compared with the same numeric [isNewer] the stable path uses. */
+    /** One GitHub release as the list endpoint reports it, reduced to what the preview selector needs. */
+    data class ReleaseInfo(
+        val tag: String,
+        val prerelease: Boolean,
+        val draft: Boolean,
+        val url: String,
+        val notes: String,
+    ) {
+        /** The numeric version the tag carries, "v" stripped (e.g. "v8.3.0-pre" → "8.3.0-pre"). */
+        fun version(): String = tag.removePrefix("v")
+    }
+
+    /**
+     * Preview channel: pick the newest PRE-RELEASE from [releases]. This is the safety-critical
+     * filter — a preview install must NEVER be offered a STABLE release. Stable Choop and Choop
+     * Preview are different apps (different applicationId), so a stable APK can't even update the
+     * preview app; worse, tapping through would walk the user into installing/updating the *stable*
+     * app by mistake. So we drop every release that is not marked `prerelease` (and every draft),
+     * and only then take the newest by the same numeric [isNewer] compare the stable path uses.
+     * Pure + unit-tested (UpdateCheckTest) — the network layer just feeds it parsed [ReleaseInfo]s.
+     */
+    internal fun newestPreviewRelease(releases: List<ReleaseInfo>): ReleaseInfo? {
+        var best: ReleaseInfo? = null
+        for (r in releases) {
+            if (!r.prerelease || r.draft || r.version().isEmpty()) continue
+            if (best == null || isNewer(r.version(), best.version())) best = r
+        }
+        return best
+    }
+
+    /** Preview channel: the release LIST (which includes stable + pre-releases); [newestPreviewRelease]
+     *  keeps ONLY pre-releases, so a newer stable can never leak into the preview app's update check. */
     private fun checkList(currentVersion: String): Result {
         val body = fetch(LIST_ENDPOINT) ?: return Result.Failed
         val arr = JSONArray(body)
-        var best: JSONObject? = null
-        var bestTag = ""
+        val releases = ArrayList<ReleaseInfo>(arr.length())
         for (i in 0 until arr.length()) {
             val rel = arr.optJSONObject(i) ?: continue
-            if (rel.optBoolean("draft", false)) continue
-            val tag = rel.optString("tag_name", "").removePrefix("v")
-            if (tag.isEmpty()) continue
-            if (best == null || isNewer(tag, bestTag)) {
-                best = rel
-                bestTag = tag
-            }
+            releases += ReleaseInfo(
+                tag = rel.optString("tag_name", ""),
+                prerelease = rel.optBoolean("prerelease", false),
+                draft = rel.optBoolean("draft", false),
+                url = rel.optString("html_url", ""),
+                notes = cleanNotes(rel.optString("body", "")),
+            )
         }
-        val found = best ?: return Result.Failed
-        return if (isNewer(bestTag, currentVersion)) {
-            Result.Available(bestTag, found.getString("html_url"), cleanNotes(found.optString("body", "")))
+        val found = newestPreviewRelease(releases) ?: return Result.UpToDate(currentVersion)
+        return if (isNewer(found.version(), currentVersion)) {
+            Result.Available(found.version(), found.url, found.notes)
         } else {
-            Result.UpToDate(bestTag)
+            Result.UpToDate(found.version())
         }
     }
 
