@@ -45,6 +45,12 @@ enum class AppTheme(
     /** How strongly the sky is pulled toward [skyTint] (0 = none). Kept low so the day-cycle keeps its
      *  realistic dawn→day→dusk→night motion; it is only warmed/cooled to match the theme. */
     val skyTintStrength: Float = 0f,
+    /** The liquid-hero card fill — the deep, translucent near-black the score vessels + white ring
+     *  numbers float on (Today rings, Live HR, Sleep, Stress, …). It stays DARK in every scheme (those
+     *  white numbers + dark-glass vessels need a dark ground for contrast) but is HUED to the family so
+     *  the hero harmonises with the theme instead of a fixed neutral charcoal that clashes on a light
+     *  or coloured canvas. Default = the original Signal near-black (so Signal is byte-identical). */
+    val heroFill: Color = Color(red = 13f / 255f, green = 14f / 255f, blue = 20f / 255f, alpha = 0.80f),
 ) {
     // ── Signal — the WHOOP-reset blue. The default; identical to the app's existing look. ──────────
     SIGNAL(
@@ -95,6 +101,7 @@ enum class AppTheme(
         ),
         fontFamily = FontFamily.SansSerif,
         skyTint = Color(0xFFC23FD0), skyTintStrength = 0.20f,
+        heroFill = Color(0xFF12081F).copy(alpha = 0.80f),
     ),
 
     // ── Ember — a warm charcoal canvas of sunset amber, ember orange and dusty rose, in serif. ──────
@@ -134,6 +141,7 @@ enum class AppTheme(
         ),
         fontFamily = FontFamily.Serif,
         skyTint = Color(0xFFE07030), skyTintStrength = 0.18f,
+        heroFill = Color(0xFF160F08).copy(alpha = 0.80f),
     ),
 
     // ── Verdant — a warm moss/lime canvas: sun-baked earth, not cool forest. Pushed to the YELLOW-green
@@ -175,6 +183,7 @@ enum class AppTheme(
         ),
         fontFamily = FontFamily.SansSerif,
         skyTint = Color(0xFF6E9C1E), skyTintStrength = 0.18f,
+        heroFill = Color(0xFF0E1007).copy(alpha = 0.80f),
     ),
 
     // ── Graphite — TRUE achromatic instrument (zero-saturation canvas) with a single warm brass
@@ -218,6 +227,7 @@ enum class AppTheme(
         ),
         fontFamily = FontFamily.Monospace,
         skyTint = Color(0xFF4A4038), skyTintStrength = 0.24f,
+        heroFill = Color(0xFF08090A).copy(alpha = 0.82f),
     );
 
     /** The token set for the resolved scheme (dark or light) of this family. */

@@ -184,7 +184,7 @@ private var todayDidSnapToTodayThisLaunch = false
 // The hero card the score vessels float on, ported from the iOS LiquidTodayView. `heroFill` is a
 // translucent near-black (mock rgba(13,14,20,.80)) so it floats over the day-of-sky; the vessels + white
 // count-up numbers read crisp on it. Radius 26 + a white@0.11 hairline give the frosted-glass edge.
-private val LIQUID_HERO_FILL: Color = Color(red = 13f / 255f, green = 14f / 255f, blue = 20f / 255f, alpha = 0.80f)
+private val LIQUID_HERO_FILL: Color get() = Palette.heroFill
 private val LIQUID_HERO_RADIUS: Dp = 26.dp
 
 // The Vitality vessel purple (#9b7bff) — no exact Palette token in this theme, so a fixed brand literal
@@ -1158,7 +1158,7 @@ fun TodayScreen(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(LIQUID_HERO_RADIUS))
                 .background(LIQUID_HERO_FILL)
-                .border(1.dp, Color.White.copy(alpha = 0.11f), RoundedCornerShape(LIQUID_HERO_RADIUS))
+                .border(1.dp, Palette.heroHairline, RoundedCornerShape(LIQUID_HERO_RADIUS))
                 .staggeredAppear(1),
         ) {
             ScoreHeroRow(
@@ -2031,8 +2031,11 @@ private fun LiquidBatteryRing(batteryPct: Double?, onClick: () -> Unit) {
             .size(34.dp)
             .liquidPress(interaction)
             .clip(CircleShape)
-            // A translucent near-black disc + faint white rim, matching iOS (rgba(10,11,16,.5) + white@.15).
-            .background(Color(red = 10f / 255f, green = 11f / 255f, blue = 16f / 255f, alpha = 0.5f))
+            // A translucent theme-tinted DARK glass disc + faint white rim. It stays dark in BOTH schemes
+            // (the family's dark hero-glass hue) — unlike Palette.heroFill which goes light in a light
+            // theme — because the ring + white battery % inside it need a dark ground to read on the
+            // (now light-in-light-mode) day-cycle sky. iOS used a fixed rgba(10,11,16,.5); this hues it.
+            .background(ThemePrefs.family.heroFill.copy(alpha = 0.5f))
             .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
             .clickable(
                 interactionSource = interaction,

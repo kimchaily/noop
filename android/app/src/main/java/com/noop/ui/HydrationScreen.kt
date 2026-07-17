@@ -80,7 +80,7 @@ private val hydrationAccent: Color
 // The frosted translucent near-black the hydration vessel floats on (mock rgba(13,14,20,.80)), so the vessel
 // + the white count-up litre figure read crisp over the day-of-sky. Radius 26 + a white@0.11 hairline give
 // the frosted-glass edge. Same numbers as the liquid Today heroCard (TodayScreen.kt LIQUID_HERO_*).
-private val LIQUID_HERO_FILL: Color = Color(red = 13f / 255f, green = 14f / 255f, blue = 20f / 255f, alpha = 0.80f)
+private val LIQUID_HERO_FILL: Color get() = Palette.heroFill
 private val LIQUID_HERO_RADIUS = 26.dp
 
 /** Upper bound (ml) for a single custom hydration log (#798) - a sane cap so a stray digit can't bank an
@@ -190,7 +190,7 @@ fun HydrationScreen(viewModel: AppViewModel) {
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(LIQUID_HERO_RADIUS))
                     .background(LIQUID_HERO_FILL)
-                    .border(1.dp, Color.White.copy(alpha = 0.11f), RoundedCornerShape(LIQUID_HERO_RADIUS))
+                    .border(1.dp, Palette.heroHairline, RoundedCornerShape(LIQUID_HERO_RADIUS))
                     .padding(20.dp),
             ) {
                 Column(
@@ -230,7 +230,8 @@ fun HydrationScreen(viewModel: AppViewModel) {
                             Text(
                                 String.format(Locale.US, "of %.1f L", goalMl / 1000.0),
                                 style = NoopType.subhead,
-                                color = Color.White.copy(alpha = 0.72f),
+                                // Adaptive: light on the dark hero, dark on the light hero — reads on both.
+                                color = Palette.textSecondary,
                             )
                         }
                     }
@@ -251,7 +252,7 @@ fun HydrationScreen(viewModel: AppViewModel) {
                     Text(
                         "${kotlin.math.min(100, (fraction * 100).toInt())}% of today's goal",
                         style = NoopType.footnote,
-                        color = Color.White.copy(alpha = 0.6f),
+                        color = Palette.textTertiary,
                     )
                 }
             }
