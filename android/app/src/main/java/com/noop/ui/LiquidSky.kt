@@ -147,14 +147,13 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.renderLiquidSky(
     animate: Boolean,
     tint: Color? = null,
     tintStrength: Float = 0f,
-    light: Boolean = false,
 ) {
     val base = liquidSkyAt(hour)
     // Theme sky-tint: pull the day-cycle gradient a touch toward the active theme's hue so the
     // atmosphere reads as PART of the theme (warm under Ember, violet under Aurora, lime under Verdant, …) rather than
     // a bolted-on blue sky, while keeping the realistic dawn→day→dusk→night motion. null tint (Signal)
     // leaves the sky byte-identical to the untinted original.
-    val tinted = if (tint != null && tintStrength > 0f) {
+    val s = if (tint != null && tintStrength > 0f) {
         LiquidSkyResolved(
             top = lerpColor(base.top, tint, tintStrength.toDouble()),
             mid = lerpColor(base.mid, tint, tintStrength.toDouble()),
@@ -163,22 +162,6 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.renderLiquidSky(
             warm = base.warm,
         )
     } else base
-    // LIGHT SCHEME: the day-cycle sky MUST stay light. Dark on-canvas header text (SectionHeader,
-    // screen titles) scrolls over this band, and a realistic dark night sky under dark text is exactly
-    // the unreadable case reported. Blend the (tinted) sky strongly toward the light canvas ([settle] =
-    // surfaceBase) so only a PALE time-of-day wash remains — the day-cycle mood survives (warmer at
-    // dawn/dusk, cooler midday, the family hue at night) but the whole band is light, so dark text reads
-    // at every scroll position. Stars are dropped (white on a pale sky is invisible anyway). Dark schemes
-    // keep the rich sky (light text reads on it), so this is a light-only transform.
-    val s = if (light) {
-        LiquidSkyResolved(
-            top = lerpColor(tinted.top, settle, 0.72),
-            mid = lerpColor(tinted.mid, settle, 0.80),
-            hor = lerpColor(tinted.hor, settle, 0.88),
-            stars = 0.0,
-            warm = tinted.warm * 0.5,
-        )
-    } else tinted
     val w = size.width
     val h = size.height
 
@@ -290,12 +273,11 @@ fun LiquidSky(hour: Double? = null, modifier: Modifier = Modifier) {
     val settle = liquidSettleColor
     val tint = ThemePrefs.family.skyTint
     val tintStrength = ThemePrefs.family.skyTintStrength
-    val light = Palette.isLight
     val h = hour ?: liquidLiveHour()
 
     if (reduced) {
         // No frame loop under Reduce Motion — pose the static picture once.
-        Canvas(modifier = modifier) { renderLiquidSky(hour = h, now = 0.0, settle = settle, animate = false, tint = tint, tintStrength = tintStrength, light = light) }
+        Canvas(modifier = modifier) { renderLiquidSky(hour = h, now = 0.0, settle = settle, animate = false, tint = tint, tintStrength = tintStrength) }
         return
     }
 
@@ -313,7 +295,7 @@ fun LiquidSky(hour: Double? = null, modifier: Modifier = Modifier) {
     }
 
     Canvas(modifier = modifier) {
-        renderLiquidSky(hour = h, now = seconds, settle = settle, animate = true, tint = tint, tintStrength = tintStrength, light = light)
+        renderLiquidSky(hour = h, now = seconds, settle = settle, animate = true, tint = tint, tintStrength = tintStrength)
     }
 }
 
@@ -332,10 +314,9 @@ fun LiquidSkyStatic(hour: Double? = null, modifier: Modifier = Modifier) {
     val settle = liquidSettleColor
     val tint = ThemePrefs.family.skyTint
     val tintStrength = ThemePrefs.family.skyTintStrength
-    val light = Palette.isLight
     val h = hour ?: liquidLiveHour()
     Canvas(modifier = modifier) {
-        renderLiquidSky(hour = h, now = 0.0, settle = settle, animate = false, tint = tint, tintStrength = tintStrength, light = light)
+        renderLiquidSky(hour = h, now = 0.0, settle = settle, animate = false, tint = tint, tintStrength = tintStrength)
     }
 }
 

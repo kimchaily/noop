@@ -1944,16 +1944,14 @@ private fun LiquidTodayHeader(
                 // day-of-sky. NoopType.number is the house tabular sans; Bold at 28 is the display day title.
                 style = NoopType.number(28f, weight = FontWeight.Bold)
                     .copy(shadow = Shadow(color = Color.Black.copy(alpha = 0.4f), offset = Offset(0f, 1f), blurRadius = 10f)),
-                // Adaptive, not hardcoded white: near-white on the dark sky (dark theme), dark ink on the
-                // pale sky (light theme) — so the day title reads at every scroll position, in both schemes.
-                color = Palette.textPrimary,
+                color = Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 humanDate,
                 style = NoopType.caption.copy(shadow = Shadow(color = Color.Black.copy(alpha = 0.35f), offset = Offset(0f, 1f), blurRadius = 8f)),
-                color = Palette.textSecondary,
+                color = Color.White.copy(alpha = 0.78f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -2157,8 +2155,7 @@ private fun LiquidWordmark() {
                 ch.toString(),
                 style = NoopType.number(16f, weight = FontWeight.Bold)
                     .copy(shadow = Shadow(color = Color.Black.copy(alpha = 0.25f), offset = Offset(0f, 1f), blurRadius = 6f)),
-                // Adaptive faint watermark: light on the dark sky, dark on the pale light-theme sky.
-                color = Palette.textPrimary.copy(alpha = 0.42f),
+                color = Color.White.copy(alpha = 0.5f),
             )
         }
     }
