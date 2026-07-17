@@ -225,39 +225,34 @@ class SkinTempAnalyticsTest {
 
     // ── data-driven family inference (follow-up to #938) ────────────────────
 
-    /** A night of real WHOOP 4.0 worn raw-ADC values (500-900 band) infers WHOOP4 from magnitude alone —
-     *  no registry model string involved. This is what actually fixes skin temp for the classic seeded
-     *  single-WHOOP install (`model` = bare "WHOOP", never updated with the real hardware generation). */
+    /** Real WHOOP 4.0 worn raw-ADC values (the 500-900 band) infer WHOOP4 from magnitude alone — no
+     *  registry model needed. This is what fixes skin temp on a `.noopbak`-import install with an EMPTY
+     *  pairedDevice table (the verified real case: 1.36M rows, per-night median ~870). */
     @Test
     fun inferWhoop4FromWornRawAdcMagnitude() {
-        val start = 14_000_000L
-        val temps = listOf(826, 830, 845, 859, 865).map { skin(start + it, it) }
+        val temps = listOf(826, 830, 845, 859, 865, 870, 900).mapIndexed { i, raw -> skin(100L + i, raw) }
         assertEquals(DeviceFamily.WHOOP4, AnalyticsEngine.inferSkinTempFamily(temps))
     }
 
-    /** A night of real 5/MG centidegree values (worn + off-wrist) infers WHOOP5 from magnitude alone. */
+    /** Real 5/MG centidegree values (worn + off-wrist) infer WHOOP5 from magnitude alone. */
     @Test
     fun inferWhoop5FromCentidegreeMagnitude() {
-        val start = 15_000_000L
-        val temps = listOf(3057, 2247, 3400).map { skin(start + it, it) }
+        val temps = listOf(3057, 2247, 3400).mapIndexed { i, raw -> skin(200L + i, raw) }
         assertEquals(DeviceFamily.WHOOP5, AnalyticsEngine.inferSkinTempFamily(temps))
     }
 
-    /** A 4.0's no-contact floor (~506-520) is STILL well under the WHOOP4 band ceiling, so a night that's
-     *  mostly off-wrist doesn't flip the inferred family. */
+    /** The verified WHOOP 4.0 import's real spread — floor 521, worn ~870, spikes to 1419 — still infers
+     *  WHOOP4: the MEDIAN (~870) decides, robust to off-wrist/ambient outliers on both ends. */
     @Test
-    fun inferWhoop4HoldsAcrossTheNoContactFloor() {
-        val start = 16_000_000L
-        val temps = (listOf(826, 830, 845) + listOf(506, 514, 520)).mapIndexed { i, raw -> skin(start + i, raw) }
+    fun inferWhoop4HoldsAcrossRealNightSpread() {
+        val temps = listOf(521, 726, 830, 870, 905, 1006, 1419).mapIndexed { i, raw -> skin(300L + i, raw) }
         assertEquals(DeviceFamily.WHOOP4, AnalyticsEngine.inferSkinTempFamily(temps))
     }
 
-    /** A median landing in the dead zone between the two known bands (neither family's real range ever
-     *  lands there) is inconclusive — null, not a guess. */
+    /** A median landing in the dead zone between the two known bands is inconclusive → null, not a guess. */
     @Test
     fun inferReturnsNullInTheDeadZoneBetweenBands() {
-        val start = 17_000_000L
-        val temps = listOf(1400, 1500, 1600).map { skin(start + it, it) }
+        val temps = listOf(1400, 1500, 1600).mapIndexed { i, raw -> skin(400L + i, raw) }
         assertNull(AnalyticsEngine.inferSkinTempFamily(temps))
     }
 

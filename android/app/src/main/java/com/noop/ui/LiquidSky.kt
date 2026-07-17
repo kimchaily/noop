@@ -150,7 +150,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.renderLiquidSky(
 ) {
     val base = liquidSkyAt(hour)
     // Theme sky-tint: pull the day-cycle gradient a touch toward the active theme's hue so the
-    // atmosphere reads as PART of the theme (warm under Ember, cool-green under Verdant, …) rather than
+    // atmosphere reads as PART of the theme (warm under Ember, violet under Aurora, lime under Verdant, …) rather than
     // a bolted-on blue sky, while keeping the realistic dawn→day→dusk→night motion. null tint (Signal)
     // leaves the sky byte-identical to the untinted original.
     val s = if (tint != null && tintStrength > 0f) {

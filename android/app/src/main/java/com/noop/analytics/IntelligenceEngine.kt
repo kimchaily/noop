@@ -79,13 +79,12 @@ object IntelligenceEngine {
 
         /** The strap family that wrote [deviceId]'s rows (#938), so the nightly skin-temp funnel converts
          *  the raw register on the right scale (5/MG centidegrees vs a WHOOP 4.0 v24 raw ADC). Null means
-         *  "the registry doesn't confidently know" (a bare seeded "WHOOP" model, unrecognized, or absent)
-         *  — NOT "assume WHOOP5"; the caller in [analyzeRecent] falls back to
+         *  "the registry doesn't confidently know" (a bare seeded "WHOOP", an EMPTY registry, unrecognized,
+         *  or absent) — NOT "assume WHOOP5"; [analyzeRecent] then falls back to
          *  [AnalyticsEngine.inferSkinTempFamily] on the device's own raw samples before finally defaulting
-         *  to WHOOP5, so a family the registry can never see (the common ambiguous single-WHOOP install)
-         *  can still be resolved from the data itself. The default returns null (byte-identical to the
-         *  prior always-WHOOP5 default once combined with that same final fallback), so legacy/test
-         *  sources are unaffected; [RegistryDayOwnerSource] resolves a positively-identified 4.0/5.0. */
+         *  to WHOOP5, so a family the registry can't see (the common empty-registry `.noopbak` import) is
+         *  still resolved from the data. Default null keeps legacy/test sources unaffected;
+         *  [RegistryDayOwnerSource] resolves a positively-identified 4.0/5.0. */
         suspend fun skinTempFamily(deviceId: String): DeviceFamily? = null
     }
 
@@ -445,22 +444,19 @@ object IntelligenceEngine {
             val skin = repo.skinTempSamples(owner, from, to, STREAM_LIMIT)
             // #938 (+ follow-up): the strap family that WROTE this owner's skin-temp rows, so analyzeDay
             // converts the raw register on the right scale (5/MG banks centidegrees, a WHOOP 4.0 v24 banks
-            // a raw ADC). Two signals, tried in order, and cached in [skinFamilyByOwner] ONLY once one of
-            // them gives a CONFIDENT answer — never memoize a guess, so a later, more legible night can
-            // still resolve it:
-            //   1) the registry `model` string, when it confidently names a family (an explicit user
-            //      choice: the multi-device pairing wizard, or a Swift/.noopbak "WHOOP 4.0"/"WHOOP 5.0 / MG"
-            //      label).
+            // a raw ADC). Two signals, tried in order, cached in [skinFamilyByOwner] ONLY once one gives a
+            // CONFIDENT answer — never memoize a guess, so a later, more legible night can still resolve it:
+            //   1) the registry `model` string, when it confidently names a family (an explicit user choice:
+            //      the pairing wizard, or a Swift/.noopbak "WHOOP 4.0"/"WHOOP 5.0 / MG" label).
             //   2) failing that, the DATA ITSELF via [AnalyticsEngine.inferSkinTempFamily]: WHOOP4's raw ADC
-            //      and WHOOP5's raw centidegree register occupy cleanly separated magnitude bands, so this
-            //      night's OWN raw samples classify it directly. This is what actually resolves the common
-            //      case the registry alone never can: the classic seeded single-WHOOP "my-whoop" row is
-            //      stored with the family-ambiguous model "WHOOP" and is never updated with the real
-            //      hardware generation — neither on a live (re)connect nor on a `.noopbak` restore — so a
-            //      4.0 owner's skin temp silently defaulted to the WHOOP5 /100 scale and fell out of the
-            //      worn gate forever, even after the #938 model-string fix landed.
-            // Neither signal fires (registry ambiguous AND this night's sample too sparse/mixed to classify)
-            // → a provisional WHOOP5 default for JUST this day, NOT cached, so tomorrow's night retries.
+            //      and WHOOP5's centidegree register occupy cleanly separated magnitude bands, so this
+            //      night's OWN samples classify it. This resolves the case the registry NEVER can: a
+            //      `.noopbak`-import install with an EMPTY pairedDevice table (verified on a real WHOOP 4.0
+            //      import — 1.36M rows, median ~870 = squarely WHOOP4), which otherwise defaulted to the
+            //      WHOOP5 /100 scale (~8.7 °C), dropped every sample below the 28 °C worn gate, and left skin
+            //      temp permanently empty even after the #938 model-string fix.
+            // Neither fires (registry ambiguous AND this night's sample too sparse/mixed) → a provisional
+            // WHOOP5 default for JUST this day, NOT cached, so tomorrow's night retries.
             val skinFamily = skinFamilyByOwner[owner] ?: run {
                 val resolved = ownerSource?.skinTempFamily(owner) ?: AnalyticsEngine.inferSkinTempFamily(skin)
                 resolved?.also { skinFamilyByOwner[owner] = it }

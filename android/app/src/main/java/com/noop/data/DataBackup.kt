@@ -320,6 +320,21 @@ object DataBackup {
 
         rollbackFile.delete()
         tempSqlite.delete()
+
+        // #938 follow-up — force a full rescore of the freshly restored history. A restored DB carries
+        // whatever the SOURCE app computed; for a WHOOP 4.0 `.noopbak` that is a full set of nights scored
+        // on the WRONG /100 skin-temp scale (skinTempDevC all null). The post-restart analyze loop skips
+        // its 21-day rescore whenever the raw-HR fingerprint still equals the persisted analyze watermark
+        // (#836) — and an import leaves that stale — so the corrected family scale would never reach the
+        // imported nights. Clearing the watermark makes the mandated restart's FIRST tick re-score every
+        // imported night under the data-driven family (AnalyticsEngine.inferSkinTempFamily), so any
+        // interpretation-only fix reaches already-scored history. Written straight to SharedPreferences to
+        // avoid a data→ui dependency; the name/key mirror com.noop.ui.NoopPrefs.NAME / KEY_ANALYZE_WATERMARK.
+        runCatching {
+            appContext.getSharedPreferences("noop_prefs", Context.MODE_PRIVATE)
+                .edit().remove("noop.analyzeWatermark").apply()
+        }
+
         return ImportResult.NeedsRestart
     }
 

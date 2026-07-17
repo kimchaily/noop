@@ -31,32 +31,22 @@ enum class WhoopModel(val displayName: String, val service: UUID) {
 
 /**
  * Resolve the skin-temp raw→°C [DeviceFamily] (#938) from a paired device's persisted registry `model`
- * string, when the string CONFIDENTLY names one. Only a WHOOP 4.0 banks skin temp as a raw ADC that
- * needs the 4.0 transfer map; a 5/MG banks the /100 centidegree register ([DeviceFamily.WHOOP5]).
+ * string, when the string CONFIDENTLY names one. A WHOOP 4.0 banks skin temp as a raw ADC that needs the
+ * 4.0 transfer map; a 5/MG banks the /100 centidegree register.
  *
  * Returns null — a real "I don't know", not a default — when [model] doesn't confidently name either
- * family: a bare seeded "WHOOP" (the classic single-device install; genuinely ambiguous, and NEVER
- * updated with the real hardware generation, live or via a `.noopbak` restore), an unrecognized/blank
- * model, or a non-WHOOP source. Callers that need a concrete family must supply their OWN fallback —
- * see [com.noop.analytics.AnalyticsEngine.inferSkinTempFamily] for a data-driven one that classifies the
- * device's OWN raw skin-temp samples when this registry signal comes back null, which is what actually
- * resolves the ambiguous-model case above (the registry alone never can).
+ * family: a bare seeded "WHOOP", an EMPTY registry (a `.noopbak`-import install often has NO pairedDevice
+ * row at all — verified on a real WHOOP 4.0 import), an unrecognized/blank model, or a non-WHOOP source.
+ * Callers that need a concrete family fall back to the data-driven
+ * [com.noop.analytics.AnalyticsEngine.inferSkinTempFamily], which classifies the device's OWN raw
+ * skin-temp samples — the ONLY signal available when the registry can't identify the strap.
  *
- * The match must accept EVERY label the store actually holds for a WHOOP 4.0, and those diverged across
- * write paths:
- *   - the Android pairing wizard writes the SHORT label "4.0" ([com.noop.ui] AddDeviceWizard.finishAdd),
- *   - the Swift twin and any cross-platform `.noopbak` restore write the full "WHOOP 4.0"
- *     (Packages/WhoopStore PairedDevice.swift).
- * The previous logic compared the model for EXACT equality with [WhoopModel.WHOOP4.displayName]
- * ("WHOOP 4.0"), so on Android — where the wizard writes "4.0" — the WHOOP4 branch never fired: every
- * 4.0 night's raw ADC was divided by 100 (~8 °C), fell below the 28 °C worn gate, and skin temp (plus the
- * illness signal it feeds) vanished. That is issue #938 reintroduced through a model-string mismatch, and
- * it also carries into an imported/migrated DB verbatim (a `.noopbak` is a whole-DB restore).
- *
- * We key STRICTLY off the "4.0" / "5.0" markers rather than "not a 5" / "not a 4": an Oura ("Oura Ring
- * 4" — note NO ".0") stays null, so a stray/unknown label can never be mis-scaled as either family.
- * Kept in lockstep with the Swift `IntelligenceEngine.skinTempFamily(forOwner:devices:)`, which still
- * defaults ambiguous cases to WHOOP5 on that platform.
+ * The match accepts EVERY label the store actually holds for a WHOOP 4.0, which diverged across write
+ * paths: the Android pairing wizard writes the SHORT label "4.0" (AddDeviceWizard.finishAdd), while the
+ * Swift twin and a cross-platform `.noopbak` write the full "WHOOP 4.0" (Packages/WhoopStore). The prior
+ * logic compared for EXACT equality with [WhoopModel.WHOOP4.displayName] ("WHOOP 4.0"), so on Android —
+ * where the wizard writes "4.0" — the WHOOP4 branch never fired. We key off the "4.0"/"5.0" markers, so
+ * an Oura "Ring 4" (no ".0") stays null and is never mis-scaled.
  */
 fun whoopSkinTempFamily(model: String?): DeviceFamily? {
     val m = model?.trim()?.lowercase() ?: return null

@@ -338,11 +338,10 @@ private suspend fun readTimeline(
         TimelineMetric.SkinTemp -> {
             // #938 (+ follow-up): family-aware raw→°C — 5/MG centidegrees (raw/100, #156), a WHOOP 4.0 v24
             // raw ADC map. Prefer the registry model when it confidently names a family
-            // ([whoopSkinTempFamily] matches the short "4.0"/"5.0 MG" labels the Android wizard persists,
-            // plus the Swift-parity full labels); when the model is ambiguous (the classic seeded
-            // single-WHOOP "WHOOP" row, never updated with the real generation), fall back to classifying
-            // THIS chart's own raw samples by magnitude ([AnalyticsEngine.inferSkinTempFamily]) before
-            // finally defaulting to WHOOP5. Mirrors Swift Repository.timelineRawMetric.
+            // ([whoopSkinTempFamily] matches "4.0"/"5.0 MG" + the Swift-parity labels); when the registry
+            // is ambiguous or EMPTY (a `.noopbak` import often has no pairedDevice row), fall back to
+            // classifying THIS chart's own raw samples by magnitude ([AnalyticsEngine.inferSkinTempFamily])
+            // before finally defaulting to WHOOP5. Mirrors Swift Repository.timelineRawMetric.
             val model = runCatching { vm.pairedDevices() }.getOrDefault(emptyList())
                 .firstOrNull { it.id == deviceId }?.model
             val samples = runCatching { repo.skinTempSamples(deviceId, from, to, 200_000) }.getOrDefault(emptyList())

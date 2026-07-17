@@ -47,16 +47,13 @@ class RegistryDayOwnerSource(private val registry: DeviceRegistry) : Intelligenc
     override suspend fun activeWriteId(): String? = registry.activeDeviceId()
 
     // #938: resolve the strap family that wrote [deviceId]'s rows from its registry model, WHEN the model
-    // confidently names one. A WHOOP 4.0 maps to WHOOP4 (raw-ADC skin-temp scale), a 5/MG to WHOOP5. Null
-    // — NOT a WHOOP5 default — for a bare seeded "WHOOP" (the classic single-device install; genuinely
-    // ambiguous, never updated with the real generation), a non-WHOOP import, or an id absent from the
-    // registry: [IntelligenceEngine.analyzeRecent] is the one that owns the final fallback, trying the
-    // device's own raw skin-temp magnitude ([AnalyticsEngine.inferSkinTempFamily]) before defaulting, so
-    // this method must surface "don't know" honestly rather than pre-empting that with a guess. The
-    // Android wizard stores the WHOOP model as the short "4.0"/"5.0 MG" label (never the "WHOOP 4.0"
-    // displayName), so [whoopSkinTempFamily] matches on the labels actually persisted (and still on the
-    // Swift-parity "WHOOP 4.0"/"WHOOP 5.0 / MG"). Mirrors the Swift
-    // IntelligenceEngine.skinTempFamily(forOwner:devices:), which still defaults ambiguous to WHOOP5.
+    // confidently names one (WHOOP 4.0 → WHOOP4 raw-ADC scale; 5/MG → WHOOP5). Returns null — NOT a WHOOP5
+    // default — for a bare seeded "WHOOP", an EMPTY registry (a `.noopbak` import frequently has no
+    // pairedDevice row at all), a non-WHOOP import, or an absent id: [IntelligenceEngine.analyzeRecent]
+    // owns the final fallback, inferring the family from the device's own raw skin-temp magnitude
+    // ([AnalyticsEngine.inferSkinTempFamily]) before defaulting, so this must surface "don't know"
+    // honestly. [whoopSkinTempFamily] matches the short "4.0"/"5.0 MG" labels the Android wizard persists
+    // AND the Swift-parity full labels. Mirrors the Swift IntelligenceEngine.skinTempFamily(forOwner:).
     override suspend fun skinTempFamily(deviceId: String): DeviceFamily? {
         val model = registry.all().firstOrNull { it.id == deviceId }?.model
         return whoopSkinTempFamily(model)
