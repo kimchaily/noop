@@ -1158,7 +1158,7 @@ fun TodayScreen(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(LIQUID_HERO_RADIUS))
                 .background(LIQUID_HERO_FILL)
-                .border(1.dp, Color.White.copy(alpha = 0.11f), RoundedCornerShape(LIQUID_HERO_RADIUS))
+                .border(1.dp, Palette.heroHairline, RoundedCornerShape(LIQUID_HERO_RADIUS))
                 .staggeredAppear(1),
         ) {
             ScoreHeroRow(
@@ -1944,14 +1944,16 @@ private fun LiquidTodayHeader(
                 // day-of-sky. NoopType.number is the house tabular sans; Bold at 28 is the display day title.
                 style = NoopType.number(28f, weight = FontWeight.Bold)
                     .copy(shadow = Shadow(color = Color.Black.copy(alpha = 0.4f), offset = Offset(0f, 1f), blurRadius = 10f)),
-                color = Color.White,
+                // Adaptive, not hardcoded white: near-white on the dark sky (dark theme), dark ink on the
+                // pale sky (light theme) — so the day title reads at every scroll position, in both schemes.
+                color = Palette.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 humanDate,
                 style = NoopType.caption.copy(shadow = Shadow(color = Color.Black.copy(alpha = 0.35f), offset = Offset(0f, 1f), blurRadius = 8f)),
-                color = Color.White.copy(alpha = 0.78f),
+                color = Palette.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -2031,10 +2033,11 @@ private fun LiquidBatteryRing(batteryPct: Double?, onClick: () -> Unit) {
             .size(34.dp)
             .liquidPress(interaction)
             .clip(CircleShape)
-            // A translucent theme-tinted glass disc + faint white rim (iOS used a fixed rgba(10,11,16,.5);
-            // here it takes the family's hero glass hue at the same .5 translucency so the header chip
-            // matches the themed hero instead of a fixed neutral near-black on a coloured/light sky).
-            .background(Palette.heroFill.copy(alpha = 0.5f))
+            // A translucent theme-tinted DARK glass disc + faint white rim. It stays dark in BOTH schemes
+            // (the family's dark hero-glass hue) — unlike Palette.heroFill which goes light in a light
+            // theme — because the ring + white battery % inside it need a dark ground to read on the
+            // (now light-in-light-mode) day-cycle sky. iOS used a fixed rgba(10,11,16,.5); this hues it.
+            .background(ThemePrefs.family.heroFill.copy(alpha = 0.5f))
             .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
             .clickable(
                 interactionSource = interaction,
@@ -2154,7 +2157,8 @@ private fun LiquidWordmark() {
                 ch.toString(),
                 style = NoopType.number(16f, weight = FontWeight.Bold)
                     .copy(shadow = Shadow(color = Color.Black.copy(alpha = 0.25f), offset = Offset(0f, 1f), blurRadius = 6f)),
-                color = Color.White.copy(alpha = 0.5f),
+                // Adaptive faint watermark: light on the dark sky, dark on the pale light-theme sky.
+                color = Palette.textPrimary.copy(alpha = 0.42f),
             )
         }
     }

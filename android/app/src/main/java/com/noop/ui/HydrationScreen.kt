@@ -190,7 +190,7 @@ fun HydrationScreen(viewModel: AppViewModel) {
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(LIQUID_HERO_RADIUS))
                     .background(LIQUID_HERO_FILL)
-                    .border(1.dp, Color.White.copy(alpha = 0.11f), RoundedCornerShape(LIQUID_HERO_RADIUS))
+                    .border(1.dp, Palette.heroHairline, RoundedCornerShape(LIQUID_HERO_RADIUS))
                     .padding(20.dp),
             ) {
                 Column(
@@ -230,7 +230,8 @@ fun HydrationScreen(viewModel: AppViewModel) {
                             Text(
                                 String.format(Locale.US, "of %.1f L", goalMl / 1000.0),
                                 style = NoopType.subhead,
-                                color = Color.White.copy(alpha = 0.72f),
+                                // Adaptive: light on the dark hero, dark on the light hero — reads on both.
+                                color = Palette.textSecondary,
                             )
                         }
                     }
@@ -251,7 +252,7 @@ fun HydrationScreen(viewModel: AppViewModel) {
                     Text(
                         "${kotlin.math.min(100, (fraction * 100).toInt())}% of today's goal",
                         style = NoopType.footnote,
-                        color = Color.White.copy(alpha = 0.6f),
+                        color = Palette.textTertiary,
                     )
                 }
             }

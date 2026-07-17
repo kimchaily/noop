@@ -53,11 +53,22 @@ object Palette {
     /** True when the light scheme is active (surface code uses this for the per-scheme idiom). */
     val isLight: Boolean get() = activeIsLight
 
-    /** The liquid-hero card fill for the ACTIVE theme family — the deep, translucent near-black the
-     *  score vessels + white ring numbers float on. Hued per family (violet under Aurora, warm under
-     *  Ember, …) so the hero harmonises with the theme; stays dark in both schemes for legibility.
-     *  Reads [ThemePrefs.family] (snapshot state) so it re-resolves live on a family switch. */
-    val heroFill: Color get() = ThemePrefs.family.heroFill
+    /** The liquid-hero card fill the score vessels + count-up numbers float on.
+     *
+     *  It MATCHES the active scheme — a deep, family-hued near-black in DARK, a light frosted card in
+     *  LIGHT — so the hero is dark on a dark theme and light on a light theme. That is what lets the
+     *  hero's labels use the ordinary `Palette.text*` tokens (which flip with the scheme) and stay
+     *  legible in BOTH: a dark hero holds light text, a light hero holds dark text. (The vessels keep
+     *  their own dark interior for the white count-up number, so they read as glass orbs on either.)
+     *  Reads [ThemePrefs.family]/[activeIsLight] (snapshot) so it re-resolves live on a theme change. */
+    val heroFill: Color get() =
+        if (activeIsLight) surfaceRaised.copy(alpha = 0.92f)
+        else ThemePrefs.family.heroFill
+
+    /** The hairline edge of the liquid-hero card: a faint frosted-white edge on the dark hero, the
+     *  theme's hairline on the light hero (a white edge would vanish there). Matches the scheme. */
+    val heroHairline: Color get() =
+        if (activeIsLight) hairline else Color.White.copy(alpha = 0.11f)
 
     // Chart style — when CLASSIC, the DATA accessors below return the throwback red→green ramps
     // (light/dark tuned). Reads ChartStylePrefs.style (snapshot state) so a flip re-colours live.

@@ -263,7 +263,7 @@ private fun StressHeroCard(model: StressModel, modifier: Modifier = Modifier) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(LIQUID_HERO_RADIUS))
             .background(LIQUID_HERO_FILL)
-            .border(1.dp, Color.White.copy(alpha = 0.11f), RoundedCornerShape(LIQUID_HERO_RADIUS))
+            .border(1.dp, Palette.heroHairline, RoundedCornerShape(LIQUID_HERO_RADIUS))
             .padding(Metrics.cardPadding),
     ) {
         Column(

@@ -892,7 +892,7 @@ private fun BodyConsole(live: LiveState, bpm: Int?, activeConnection: Boolean, z
             .fillMaxWidth()
             .clip(RoundedCornerShape(LIVE_HERO_RADIUS))
             .background(LIVE_HERO_FILL)
-            .border(1.dp, Color.White.copy(alpha = 0.11f), RoundedCornerShape(LIVE_HERO_RADIUS))
+            .border(1.dp, Palette.heroHairline, RoundedCornerShape(LIVE_HERO_RADIUS))
             .padding(20.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
