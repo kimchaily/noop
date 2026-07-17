@@ -2760,14 +2760,17 @@ private fun RingNeedsTrackedNight() {
 @Composable
 private fun HeroMetricRows(day: DailyMetric?, carriedDay: DailyMetric? = null, vitalsDay: DailyMetric? = null) {
     // Per-field, today-first: today's own value wins; the vitals carry only fills a field today lacks.
-    val hrv = day?.avgHrv ?: vitalsDay?.avgHrv
-    val rhr = day?.restingHr ?: vitalsDay?.restingHr
-    val resp = day?.respRateBpm ?: vitalsDay?.respRateBpm
+    // Resolved through the shared [MetricReads] so the vitals card, the Key-Metrics tile and the Your-cards
+    // row can no longer disagree on the field / rounding / fill maths (only the carry ROW differs per
+    // surface; here it's [vitalsDay], the recovery-independent carry — see MetricReads' header).
+    val hrv = MetricReads.hrv(day, vitalsDay)
+    val rhr = MetricReads.restingHr(day, vitalsDay)
+    val resp = MetricReads.respiratory(day, vitalsDay)
     // The caption reflects the row the shown vitals actually came from: if today supplied ANY of them the
     // values are today's own, so don't stamp them as a prior "Last night · <date>"; only when EVERY shown
     // vital is carried do we stamp the carry's date (relabelled "Latest sleep · <date>" when weeks-old).
     val carriedFromVitals = day?.avgHrv == null && day?.restingHr == null && day?.respRateBpm == null &&
-        (hrv != null || rhr != null || resp != null) && vitalsDay != null
+        (hrv.hasValue || rhr.hasValue || resp.hasValue) && vitalsDay != null
     // iOS `recoveryVitalsSection`: a frosted card with a "RECOVERY VITALS" header + a "last night · <date>"
     // on the right, then three `vitalRow`s (26dp mini LIQUID VESSEL + label + value). NoopCard supplies the
     // same neutral surfaceRaised + hairline as iOS's frosted card. Inner spacing 12, matching iOS.
@@ -2787,21 +2790,21 @@ private fun HeroMetricRows(day: DailyMetric?, carriedDay: DailyMetric? = null, v
             }
             HeroVitalRow(
                 label = "Heart-rate variability",
-                value = hrv?.let { "${it.roundToInt()} ms" } ?: NO_DATA,
+                value = hrv.number?.let { "$it ${hrv.unit}" } ?: NO_DATA,
                 tint = Palette.metricCyan,
-                fraction = hrv?.let { (it / 120.0).coerceIn(0.0, 1.0) },
+                fraction = hrv.frac,
             )
             HeroVitalRow(
                 label = "Resting heart rate",
-                value = rhr?.let { "$it bpm" } ?: NO_DATA,
+                value = rhr.number?.let { "$it ${rhr.unit}" } ?: NO_DATA,
                 tint = Palette.metricRose,
-                fraction = rhr?.let { (it / 100.0).coerceIn(0.0, 1.0) },
+                fraction = rhr.frac,
             )
             HeroVitalRow(
                 label = "Breaths per minute",
-                value = resp?.let { String.format(Locale.US, "%.1f rpm", it) } ?: NO_DATA,
+                value = resp.number?.let { "$it ${resp.unit}" } ?: NO_DATA,
                 tint = Palette.accent,
-                fraction = resp?.let { (it / 24.0).coerceIn(0.0, 1.0) },
+                fraction = resp.frac,
             )
         }
     }
@@ -3034,9 +3037,10 @@ private fun dashboardCardFraction(
         DashboardCard.STRESS -> over(stress, 3.0)
         DashboardCard.FITNESS_AGE -> if (fitnessAge != null) 0.5 else null
         DashboardCard.VITALITY -> over(vitality, 100.0)
-        DashboardCard.HRV -> over(day?.avgHrv ?: vitalsDay?.avgHrv, 120.0)
-        DashboardCard.RESTING_HR -> over((day?.restingHr ?: vitalsDay?.restingHr)?.toDouble(), 100.0)
-        DashboardCard.RESPIRATORY -> over(day?.respRateBpm ?: vitalsDay?.respRateBpm, 24.0)
+        // Same shared reads as the row VALUE above, so the vessel fill and the number can't disagree.
+        DashboardCard.HRV -> MetricReads.hrv(day, vitalsDay).frac
+        DashboardCard.RESTING_HR -> MetricReads.restingHr(day, vitalsDay).frac
+        DashboardCard.RESPIRATORY -> MetricReads.respiratory(day, vitalsDay).frac
         DashboardCard.STEPS -> {
             val steps = (day?.steps ?: importedStepsForDay ?: estimatedStepsForDay)?.toDouble()
             over(steps, 10000.0)
@@ -3083,12 +3087,12 @@ private fun dashboardCardValue(
     val vd = carriedDay ?: day
 
     return when (card) {
-        DashboardCard.HRV ->
-            withUnit((day?.avgHrv ?: vitalsDay?.avgHrv)?.let { it.roundToInt().toString() } ?: NO_DATA)
-        DashboardCard.RESTING_HR ->
-            withUnit((day?.restingHr ?: vitalsDay?.restingHr)?.toString() ?: NO_DATA)
-        DashboardCard.RESPIRATORY ->
-            withUnit((day?.respRateBpm ?: vitalsDay?.respRateBpm)?.let { String.format(Locale.US, "%.1f", it) } ?: NO_DATA)
+        // The three overnight vitals resolve through the shared [MetricReads] (the recovery-independent
+        // [vitalsDay] carry), so the card's number always agrees with the vitals card + Key-Metrics tile.
+        // withUnit still appends card.unit, which equals the read's own unit for these three.
+        DashboardCard.HRV -> withUnit(MetricReads.hrv(day, vitalsDay).number ?: NO_DATA)
+        DashboardCard.RESTING_HR -> withUnit(MetricReads.restingHr(day, vitalsDay).number ?: NO_DATA)
+        DashboardCard.RESPIRATORY -> withUnit(MetricReads.respiratory(day, vitalsDay).number ?: NO_DATA)
         DashboardCard.BLOOD_OXYGEN ->
             vd?.spo2Pct?.let { String.format(Locale.US, "%.0f%%", it) } ?: NO_DATA
         DashboardCard.SKIN_TEMP ->
@@ -4229,23 +4233,25 @@ private fun MetricGrid(
             frac = restScore?.let { (it / 100.0).coerceIn(0.0, 1.0) },
         ),
         KeyMetric.HRV to run {
-            val v = d?.avgHrv ?: carriedDay?.avgHrv
+            // Shared read (carry = the recovery-gated carriedDay this grid already uses). Value/unit/fill
+            // now come from the same source as the vitals card + Your-cards row.
+            val mv = MetricReads.hrv(d, carriedDay)
             KeyTileData(
                 label = "HRV",
-                value = v?.let { "${it.roundToInt()}" } ?: NO_DATA,
-                unit = if (v != null) "ms" else "",
+                value = mv.number ?: NO_DATA,
+                unit = if (mv.hasValue) mv.unit else "",
                 tint = Palette.metricCyan,
-                frac = v?.let { (it / 120.0).coerceIn(0.0, 1.0) },
+                frac = mv.frac,
             )
         },
         KeyMetric.RESTING_HR to run {
-            val v = d?.restingHr ?: carriedDay?.restingHr
+            val mv = MetricReads.restingHr(d, carriedDay)
             KeyTileData(
                 label = "Rest HR",
-                value = v?.toString() ?: NO_DATA,
-                unit = if (v != null) "bpm" else "",
+                value = mv.number ?: NO_DATA,
+                unit = if (mv.hasValue) mv.unit else "",
                 tint = Palette.metricRose,
-                frac = v?.let { (it / 100.0).coerceIn(0.0, 1.0) },
+                frac = mv.frac,
             )
         },
         KeyMetric.BLOOD_OXYGEN to run {
@@ -4259,13 +4265,13 @@ private fun MetricGrid(
             )
         },
         KeyMetric.RESPIRATORY to run {
-            val v = d?.respRateBpm ?: carriedDay?.respRateBpm
+            val mv = MetricReads.respiratory(d, carriedDay)
             KeyTileData(
                 label = "Respiratory",
-                value = v?.let { String.format(Locale.US, "%.1f", it) } ?: NO_DATA,
-                unit = if (v != null) "rpm" else "",
+                value = mv.number ?: NO_DATA,
+                unit = if (mv.hasValue) mv.unit else "",
                 tint = Palette.accent,
-                frac = v?.let { (it / 24.0).coerceIn(0.0, 1.0) },
+                frac = mv.frac,
             )
         },
         KeyMetric.STEPS to run {
