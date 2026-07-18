@@ -996,29 +996,34 @@ fun TodayScreen(
             // shows just "v8.2.6"; preview adds build number and branch@sha so a screenshot
             // identifies the exact build. The wordmark keeps its tap easter egg.
             LiquidWordmark()
-            Text(
-                buildStamp(
-                    channel = BuildConfig.CHANNEL,
-                    versionName = BuildConfig.VERSION_NAME,
-                    versionCode = BuildConfig.VERSION_CODE,
-                    branch = BuildConfig.GIT_BRANCH,
-                    sha = BuildConfig.GIT_SHA,
-                ),
-                style = NoopType.number(9.5f)
-                    .copy(shadow = Shadow(color = Color.Black.copy(alpha = 0.3f), offset = Offset(0f, 1f), blurRadius = 6f)),
-                color = Color.White.copy(alpha = 0.45f),
-                textAlign = TextAlign.Center,
-                // Two lines, not one: a branch preview's stamp ("… · <branch>@<sha>") easily
-                // outgrows one line and maxLines=1 was silently CLIPPING the branch off (leaving a
-                // dangling "·"). The " · " separators are natural wrap points, so the source lands
-                // on its own centred second line; Ellipsis only for pathological lengths.
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp)
-                    .semantics { contentDescription = "App version" },
-            )
+            // Under-wordmark build stamp — STABLE only. On the preview channel the same string is carried
+            // by the always-on top band ([PreviewChannelBand] in AppRoot), so rendering it here too would
+            // show it twice; gate it out on preview. Stable keeps the calm "v8.2.11" exactly as before.
+            if (BuildConfig.CHANNEL != "preview") {
+                Text(
+                    buildStamp(
+                        channel = BuildConfig.CHANNEL,
+                        versionName = BuildConfig.VERSION_NAME,
+                        versionCode = BuildConfig.VERSION_CODE,
+                        branch = BuildConfig.GIT_BRANCH,
+                        sha = BuildConfig.GIT_SHA,
+                    ),
+                    style = NoopType.number(9.5f)
+                        .copy(shadow = Shadow(color = Color.Black.copy(alpha = 0.3f), offset = Offset(0f, 1f), blurRadius = 6f)),
+                    color = Color.White.copy(alpha = 0.45f),
+                    textAlign = TextAlign.Center,
+                    // Two lines, not one: a branch preview's stamp ("… · <branch>@<sha>") easily
+                    // outgrows one line and maxLines=1 was silently CLIPPING the branch off (leaving a
+                    // dangling "·"). The " · " separators are natural wrap points, so the source lands
+                    // on its own centred second line; Ellipsis only for pathological lengths.
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp)
+                        .semantics { contentDescription = "App version" },
+                )
+            }
             Spacer(Modifier.height(10.dp))
             LiquidTodayHeader(
                 dayTitle = dayTitle,

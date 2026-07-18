@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -71,6 +72,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.noop.BuildConfig
 import com.noop.R
 import com.noop.analytics.FusionSource
 import androidx.compose.ui.Alignment
@@ -90,6 +92,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -291,10 +294,19 @@ fun AppRoot(viewModel: AppViewModel = viewModel()) {
                 )
             },
         ) { inner ->
+            // Shell body. On the PREVIEW channel a fixed build band ([PreviewChannelBand]) is pinned to
+            // the very top OVER the NavHost — so it stays put while any screen scrolls AND persists across
+            // every tab/drill navigation (Settings · Today · Trends · Sleep · …) — and the NavHost gets
+            // matching extra top padding so no screen's content hides behind it. Stable renders neither,
+            // so stable's layout is byte-for-byte unchanged.
+            val isPreviewChannel = BuildConfig.CHANNEL == "preview"
+            Box(modifier = Modifier.fillMaxSize()) {
             NavHost(
                 navController = nav,
                 startDestination = Destination.Today.route,
-                modifier = Modifier.padding(inner),
+                modifier = Modifier
+                    .padding(inner)
+                    .then(if (isPreviewChannel) Modifier.padding(top = PreviewBandContentHeight) else Modifier),
                 // README motion: top-level destinations crossfade (~240ms) on the calm,
                 // decelerating global easing — nothing slides or bounces between tabs. The
                 // same fade is used for back (pop) so the bar never feels jerky. Drill-ins
@@ -434,6 +446,10 @@ fun AppRoot(viewModel: AppViewModel = viewModel()) {
                     MoreScreen(onNavigate = { nav.navigateTopLevel(it) })
                 }
             }
+            if (isPreviewChannel) {
+                PreviewChannelBand(modifier = Modifier.align(Alignment.TopCenter))
+            }
+            }
         }
 
         // Quick-actions sheet, opened by the raised gold centre FAB. Each row routes to an
@@ -538,6 +554,66 @@ fun AppRoot(viewModel: AppViewModel = viewModel()) {
                     },
                 )
             }
+        }
+    }
+}
+
+// MARK: - Preview channel build band
+//
+// A slim, always-on build band shown ONLY on the preview channel (BuildConfig.CHANNEL == "preview").
+// It carries the same channel-aware string as the Today build stamp ([buildStamp]) — version · build ·
+// branch@sha — but lives in [AppRoot] ABOVE the NavHost, so it stays fixed while a screen scrolls and
+// persists across every tab/drill navigation (Settings, Trends, Sleep, …). Stable never renders it, so
+// stable's layout is byte-for-byte unchanged. Edge/Chrome-Canary-style channel chrome: a diagnostic
+// ribbon, deliberately NOT a title bar — no wordmark, just the build identity for a bug report.
+
+/** Height of the band's CONTENT strip (excludes the status-bar inset the band also fills). The NavHost
+ *  reserves this as extra top padding on the preview channel so no screen hides behind the fixed band. */
+private val PreviewBandContentHeight: Dp = 30.dp
+
+@Composable
+private fun PreviewChannelBand(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        // Match the glass bar's language: a translucent raised surface with a hairline edge, so the band
+        // reads as the same floating-chrome family — here pinned to the top instead of the bottom.
+        color = Palette.surfaceRaised.copy(alpha = 0.94f),
+        contentColor = Palette.textSecondary,
+        shadowElevation = 3.dp,
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // Fill + clear the status bar so the band reads as a coloured top strip with its text
+                    // below the system clock (edge-to-edge: the activity draws under the status bar).
+                    .statusBarsPadding()
+                    .height(PreviewBandContentHeight)
+                    .padding(horizontal = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "Preview · " + buildStamp(
+                        channel = BuildConfig.CHANNEL,
+                        versionName = BuildConfig.VERSION_NAME,
+                        versionCode = BuildConfig.VERSION_CODE,
+                        branch = BuildConfig.GIT_BRANCH,
+                        sha = BuildConfig.GIT_SHA,
+                    ),
+                    style = NoopType.number(9.5f),
+                    color = Palette.textSecondary,
+                    // Two lines: a branch preview's "… · <branch>@<sha>" easily outgrows one line; the
+                    // " · " separators are natural wrap points so the source lands on a centred second
+                    // line rather than being clipped. Ellipsis only for pathological lengths.
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Preview build" },
+                )
+            }
+            HorizontalDivider(color = Palette.hairline)
         }
     }
 }
