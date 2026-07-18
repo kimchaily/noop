@@ -1367,6 +1367,7 @@ fun TodayScreen(
                 recoveryCalibration = recoveryCalibration,
                 lastScoredCharge = lastScoredCharge,
                 carriedDay = lastScoredRecoveryDay,
+                vitalsDay = lastVitalsDay,
                 unitSystem = unitSystem,
                 effortScale = effortScale,
                 latestWeightKg = weightKg,
@@ -4170,6 +4171,10 @@ private fun MetricGrid(
     recoveryCalibration: Int? = null,
     lastScoredCharge: LastCharge? = null,
     carriedDay: DailyMetric? = null,
+    // The recovery-INDEPENDENT vitals carry (#543). The three overnight vitals read against THIS, matching
+    // the vitals card + Your-cards row, so a night whose recovery was nulled still surfaces its OWN preserved
+    // HRV / Resting HR / Respiratory instead of an older recovery-scored day's. SpO₂ stays on [carriedDay].
+    vitalsDay: DailyMetric? = null,
     unitSystem: UnitSystem = UnitSystem.METRIC,
     effortScale: EffortScale = EffortScale.HUNDRED,
     latestWeightKg: Double? = null,
@@ -4230,9 +4235,9 @@ private fun MetricGrid(
             frac = restScore?.let { (it / 100.0).coerceIn(0.0, 1.0) },
         ),
         KeyMetric.HRV to run {
-            // Shared read (carry = the recovery-gated carriedDay this grid already uses). Value/unit/fill
-            // now come from the same source as the vitals card + Your-cards row.
-            val mv = MetricReads.hrv(d, carriedDay)
+            // Shared read on the recovery-INDEPENDENT vitals carry (#543): the tile now agrees with the
+            // vitals card + Your-cards row even at the rollover when last night's recovery was nulled.
+            val mv = MetricReads.hrv(d, vitalsDay)
             KeyTileData(
                 label = "HRV",
                 value = mv.number ?: NO_DATA,
@@ -4242,7 +4247,7 @@ private fun MetricGrid(
             )
         },
         KeyMetric.RESTING_HR to run {
-            val mv = MetricReads.restingHr(d, carriedDay)
+            val mv = MetricReads.restingHr(d, vitalsDay)
             KeyTileData(
                 label = "Rest HR",
                 value = mv.number ?: NO_DATA,
@@ -4263,7 +4268,7 @@ private fun MetricGrid(
             )
         },
         KeyMetric.RESPIRATORY to run {
-            val mv = MetricReads.respiratory(d, carriedDay)
+            val mv = MetricReads.respiratory(d, vitalsDay)
             KeyTileData(
                 label = "Respiratory",
                 value = mv.number ?: NO_DATA,

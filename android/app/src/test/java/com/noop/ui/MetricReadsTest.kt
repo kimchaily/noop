@@ -172,13 +172,29 @@ class MetricReadsTest {
     }
 
     @Test
-    fun carrySource_isCallerControlled_soSurfacesCanStillDifferOnWhichRowTheyCarry() {
-        // The grid carries `carriedDay`; the card carries `vitalsDay`. Same function, different carry arg —
-        // this is the intentionally-preserved difference the next step will reconcile.
+    fun carrySource_isCallerControlled_soASurfaceCanChooseWhichRowItCarries() {
+        // The carry ROW is a caller argument: SpO₂ passes its recovery-gated row, the three vitals pass the
+        // recovery-independent one. Same function, different carry.
         val today = row(hrv = null)
-        val gridCarry = row(hrv = 40.0)
-        val cardCarry = row(hrv = 44.0)
-        assertEquals("40", MetricReads.hrv(today, gridCarry).number)
-        assertEquals("44", MetricReads.hrv(today, cardCarry).number)
+        assertEquals("40", MetricReads.hrv(today, row(hrv = 40.0)).number)
+        assertEquals("44", MetricReads.hrv(today, row(hrv = 44.0)).number)
+    }
+
+    // MARK: the deliberate carry choice (Step 2) — the grid's three vitals now read the SAME recovery-
+    // independent carry the vitals card + Your-cards row use, so the tile and the card can't disagree.
+
+    @Test
+    fun convergedVitalsCarry_makesTheGridTileAgreeWithTheCard_inThe543Scenario() {
+        // #543: today is unscored (rollover); last night's recovery was nulled by a re-analysis but its HRV
+        // survived; an OLDER night was recovery-scored. The recovery-gated carry the grid USED to pass points
+        // at the older night; the recovery-independent vitals carry points at last night.
+        val lastNightVitals = row(day = "2026-06-18", hrv = 41.0)   // vitalsDay: recovery nulled, HRV intact
+        val olderScored = row(day = "2026-06-17", hrv = 55.0)       // carriedDay: older recovery-scored night
+        val today: DailyMetric? = null
+
+        // The old grid carry (carriedDay) would have shown the older night's 55 ms — the tile-vs-card gap.
+        assertEquals("55", MetricReads.hrv(today, olderScored).number)
+        // The converged carry (vitalsDay) shows last night's own 41 ms, matching the card + row.
+        assertEquals("41", MetricReads.hrv(today, lastNightVitals).number)
     }
 }
