@@ -1,6 +1,7 @@
 package com.noop.analytics
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -12,6 +13,36 @@ class VitalBandsTest {
 
     private val hrvCfg = Baselines.metricCfg.getValue("hrv")
     private val hrvPop = 40.0..120.0
+
+    // MARK: goodness — the continuous 0..1 gradient position the tiles sample (1 = green, 0 = red).
+
+    @Test
+    fun goodness_isOne_whenTheValueSitsOnThePersonalBaseline() {
+        // 14 identical nights → value == personal mean → z = 0 → goodness = 1 (the green end).
+        val r = VitalBands.band(35.0, List(14) { 35.0 }, hrvPop, hrvCfg)
+        assertEquals(VitalBands.Basis.PERSONAL, r.basis)
+        assertEquals(1.0, r.goodness!!, 1e-6)
+    }
+
+    @Test
+    fun goodness_clampsToZero_whenFarOffThePersonalBaseline() {
+        // |z| >= sigmaK (out of range) clamps the gradient at 0 (the red end).
+        val r = VitalBands.band(70.0, List(30) { 35.0 }, hrvPop, hrvCfg)
+        assertEquals(VitalBands.Band.OUT_OF_RANGE, r.band)
+        assertEquals(0.0, r.goodness!!, 1e-6)
+    }
+
+    @Test
+    fun goodness_isNull_forNoData() {
+        assertNull(VitalBands.band(null, listOf(50.0), hrvPop, hrvCfg).goodness)
+    }
+
+    @Test
+    fun goodness_populationPath_isCoarseInVsOut() {
+        // SpO₂ has no personal cfg → population-only: inside typical range reads green-ish, outside red-ish.
+        assertEquals(0.7, VitalBands.band(98.0, emptyList(), 95.0..100.0, null).goodness!!, 1e-9)
+        assertEquals(0.15, VitalBands.band(90.0, emptyList(), 95.0..100.0, null).goodness!!, 1e-9)
+    }
 
     @Test
     fun nullValue_isNoData() {

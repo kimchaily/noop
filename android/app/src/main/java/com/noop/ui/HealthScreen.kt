@@ -1511,13 +1511,11 @@ private data class Vital(
     /** Value with its unit appended, or null when no data. */
     val formattedValue: String? = value?.let { "${format(it)} $unit" }
 
-    /** Colour communicates state: in-range = the metric's category colour,
-     *  out-of-range = warning amber, no data = tertiary. */
-    val accent: Color = when (banding.band) {
-        VitalBands.Band.NO_DATA -> Palette.textTertiary
-        VitalBands.Band.IN_RANGE -> metricColor
-        VitalBands.Band.OUT_OF_RANGE -> Palette.statusWarning
-    }
+    /** Colour communicates STATE on one continuous scale: the value's goodness (1 = on your baseline →
+     *  green, drifting → amber, off → red) sampled through the shared [Palette.goodnessColor] gradient — the
+     *  SAME ramp the recovery score uses. No data = tertiary grey. (Identity is carried by the tile's label,
+     *  not the hue, so the colour now means "how am I doing", not "which metric".) */
+    val accent: Color = banding.goodness?.let { Palette.goodnessColor(it) } ?: Palette.textTertiary
 
     /** The in-range caption that stands in for a StatePill inside the fixed-height tile.
      *  The wording says which yardstick judged it: your baseline vs typical ranges. */
@@ -1706,12 +1704,13 @@ private fun VitalTile(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            // A metric-tinted sparkline trail with a glowing "now" end-cap, mirroring Today's tiles.
+            // A goodness-tinted sparkline trail with a glowing "now" end-cap, mirroring Today's tiles. Uses
+            // the same [accent] gradient colour as the value so trail and number agree on state.
             // Hidden below two points so a sparse vital shows the caption with no flat trail.
             if (vital.sparkline.size > 1) {
                 TileSparkline(
                     values = vital.sparkline,
-                    color = vital.metricColor,
+                    color = accent,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(20.dp)

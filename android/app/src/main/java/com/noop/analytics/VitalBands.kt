@@ -27,7 +27,7 @@ object VitalBands {
     /** How the band was judged — drives the tile's caption wording. */
     enum class Basis(val raw: String) { PERSONAL("personal"), POPULATION("population") }
 
-    data class Result(val band: Band, val basis: Basis, val nights: Int)
+    data class Result(val band: Band, val basis: Basis, val nights: Int, val goodness: Double? = null)
 
     /** |z| at or below this is in-range vs the personal baseline (~95% of the user's own
      *  normal nights; the |z| <= 1 of [Baselines.deviation] would flag ~32% — too noisy for
@@ -49,29 +49,39 @@ object VitalBands {
         populationRange: ClosedFloatingPointRange<Double>,
         cfg: MetricCfg?,
     ): Result {
-        if (value == null) return Result(Band.NO_DATA, Basis.POPULATION, 0)
+        // Coarse goodness (0..1) for the population path, before a trusted personal baseline exists: a
+        // reading inside the typical range reads green-ish, outside red-ish. The personal path below
+        // replaces this with the continuous 1 − |z|/sigmaK gradient.
+        fun popGoodness(inRange: Boolean): Double = if (inRange) 0.7 else 0.15
+
+        if (value == null) return Result(Band.NO_DATA, Basis.POPULATION, 0, goodness = null)
         if (cfg == null) {
+            val inRange = populationRange.contains(value)
             return Result(
-                if (populationRange.contains(value)) Band.IN_RANGE else Band.OUT_OF_RANGE,
-                Basis.POPULATION, 0,
+                if (inRange) Band.IN_RANGE else Band.OUT_OF_RANGE,
+                Basis.POPULATION, 0, goodness = popGoodness(inRange),
             )
         }
         val state = Baselines.foldHistory(history, cfg)
         // Absolute-plausibility outer guard: a value outside the physiological bounds is
         // out-of-range no matter how wide the personal spread happens to be.
         if (!(cfg.minVal <= value && value <= cfg.maxVal)) {
-            return Result(Band.OUT_OF_RANGE, Basis.POPULATION, state.nValid)
+            return Result(Band.OUT_OF_RANGE, Basis.POPULATION, state.nValid, goodness = 0.0)
         }
         if (state.trusted) {   // >= 14 valid nights and not stale
             val z = Baselines.deviation(value, state).z
             return Result(
                 if (abs(z) <= sigmaK) Band.IN_RANGE else Band.OUT_OF_RANGE,
                 Basis.PERSONAL, state.nValid,
+                // Continuous goodness: 0 deviation → 1.0 (green); |z| = sigmaK sits at the in/out boundary
+                // (→ 0.0, red); beyond clamps at 0. This is the gradient position the tiles sample.
+                goodness = (1.0 - abs(z) / sigmaK).coerceIn(0.0, 1.0),
             )
         }
+        val inRange = populationRange.contains(value)
         return Result(
-            if (populationRange.contains(value)) Band.IN_RANGE else Band.OUT_OF_RANGE,
-            Basis.POPULATION, state.nValid,
+            if (inRange) Band.IN_RANGE else Band.OUT_OF_RANGE,
+            Basis.POPULATION, state.nValid, goodness = popGoodness(inRange),
         )
     }
 

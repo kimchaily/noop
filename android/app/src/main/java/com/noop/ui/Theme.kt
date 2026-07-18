@@ -242,6 +242,12 @@ object Palette {
     /** Sample the recovery gradient at a recovery score 0..100. */
     fun recoveryColor(score: Double): Color = sample(recoveryStops, (score / 100.0).toFloat())
 
+    /** The shared "how good is this, 0..1" gradient: 1 = ideal (green end), 0 = poor (red end), sampled
+     *  continuously through the SAME theme-aware ramp the recovery score uses ([recoveryColor] IS
+     *  goodnessColor(score/100)). Baseline-banded vitals feed it goodness = 1 − |z|/2, so a vital near its
+     *  personal baseline reads green and one drifting off reads amber→red — scores and vitals on one scale. */
+    fun goodnessColor(goodness: Double): Color = sample(recoveryStops, goodness.coerceIn(0.0, 1.0).toFloat())
+
     /** Sample the strain gradient at an Effort value on the 0..100 scale. */
     fun strainColor(strain: Double): Color = sample(strainStops, (strain / 100.0).toFloat())
 
