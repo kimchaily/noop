@@ -1372,6 +1372,7 @@ fun TodayScreen(
                 effortScale = effortScale,
                 latestWeightKg = weightKg,
                 profileWeightKg = profileWeightKg,
+                latestActiveKcal = latestActiveKcal,
                 importedStepsForDay = importedStepsForDay,
                 estimatedStepsForDay = stepsEstForDay,
                 stepActivityClassForDay = stepActivityClassForDay,
@@ -2924,6 +2925,7 @@ private fun YourCardsSection(
                         vitality = vitality,
                         importedStepsForDay = importedStepsForDay,
                         estimatedStepsForDay = estimatedStepsForDay,
+                        latestActiveKcal = latestActiveKcal,
                     ),
                     tint = dashboardCardTint(card),
                     // #706/#684: every card now opens its OWN detail, matching iOS. The Stress card -> Stress;
@@ -3031,6 +3033,7 @@ private fun dashboardCardFraction(
     vitality: Double?,
     importedStepsForDay: Int?,
     estimatedStepsForDay: Int?,
+    latestActiveKcal: Double? = null,
 ): Double? {
     fun over(v: Double?, ceiling: Double): Double? = v?.let { (it / ceiling).coerceIn(0.0, 1.0) }
     val vd = carriedDay ?: day
@@ -3046,8 +3049,12 @@ private fun dashboardCardFraction(
             MetricReads.stepsFrac(MetricReads.stepsResolved(day?.steps, importedStepsForDay, estimatedStepsForDay))
         DashboardCard.SLEEP -> over(vd?.totalSleepMin, 480.0)
         DashboardCard.COUPLED -> 0.6
+        // Calories now carries a real read (day estimate ?: imported latest), so its vessel fills to match the
+        // shown number and the Key-Metrics tile — no longer an empty vessel beside a real value.
+        DashboardCard.CALORIES ->
+            MetricReads.caloriesFrac(MetricReads.caloriesResolved(day?.activeKcalEst, latestActiveKcal))
         // Not wired to a real read yet — an EMPTY vessel (not half-full) so it doesn't imply a reading.
-        DashboardCard.BLOOD_OXYGEN, DashboardCard.SKIN_TEMP, DashboardCard.CALORIES,
+        DashboardCard.BLOOD_OXYGEN, DashboardCard.SKIN_TEMP,
         DashboardCard.HYDRATION -> null
     }
 }
@@ -3104,7 +3111,9 @@ private fun dashboardCardValue(
             MetricReads.stepsResolved(day?.steps, importedStepsForDay, estimatedStepsForDay)
                 ?.let { intStringGrouped(it.toDouble()) } ?: NO_DATA
         DashboardCard.CALORIES ->
-            withUnit(latestActiveKcal?.let { intStringGrouped(it) } ?: NO_DATA)
+            // Day estimate first, imported Apple/HC latest as fallback (shared with the Key-Metrics tile), so
+            // a strap-only setup no longer reads "No Data" here while the tile shows a real value.
+            withUnit(MetricReads.caloriesResolved(day?.activeKcalEst, latestActiveKcal)?.let { intStringGrouped(it) } ?: NO_DATA)
         DashboardCard.STRESS ->
             // #706/#684: Stress is baseline-relative, so until the strap has banked enough worn nights to
             // seed the 30-day RHR/HRV baseline StressScreen reads, the front card has no number to show. The
@@ -4179,6 +4188,9 @@ private fun MetricGrid(
     effortScale: EffortScale = EffortScale.HUNDRED,
     latestWeightKg: Double? = null,
     profileWeightKg: Double = 75.0,
+    // The newest imported Apple Health / Health Connect active-energy figure — the Calories fallback when the
+    // app's own per-day estimate is absent. Shared with the Your-cards row so both surfaces agree (#calories).
+    latestActiveKcal: Double? = null,
     importedStepsForDay: Int? = null,
     estimatedStepsForDay: Int? = null,
     // #316 / @63, the selected day's representative activity class (0=still, 1=walk, 2=run), shown as a small
@@ -4299,13 +4311,18 @@ private fun MetricGrid(
                 frac = null,
             )
         },
-        KeyMetric.CALORIES to KeyTileData(
-            label = "Calories",
-            value = d?.activeKcalEst?.let { intString(it) } ?: NO_DATA,
-            unit = if (d?.activeKcalEst != null) "kcal" else "",
-            tint = Palette.metricAmber,
-            frac = d?.activeKcalEst?.let { (it / 800.0).coerceIn(0.0, 1.0) },
-        ),
+        KeyMetric.CALORIES to run {
+            // Day estimate first, imported Apple/HC latest as fallback — the SAME resolution the Your-cards
+            // row uses, so the two surfaces can no longer show a value on one and "No Data" on the other.
+            val kcal = MetricReads.caloriesResolved(d?.activeKcalEst, latestActiveKcal)
+            KeyTileData(
+                label = "Calories",
+                value = kcal?.let { intString(it) } ?: NO_DATA,
+                unit = if (kcal != null) "kcal" else "",
+                tint = Palette.metricAmber,
+                frac = MetricReads.caloriesFrac(kcal),
+            )
+        },
     )
 
     // Resolve the enabled tiles to their descriptors, dropping any unknown key defensively.

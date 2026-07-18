@@ -171,6 +171,43 @@ class MetricReadsTest {
         assertNull(MetricReads.stepsFrac(null))
     }
 
+    // MARK: calories — the tile-vs-card "No Data on one, value on the other" fix
+
+    @Test
+    fun caloriesResolved_prefersTheAppDayEstimate_overTheImportedLatest() {
+        assertEquals(1961.0, MetricReads.caloriesResolved(dayEstimateKcal = 1961.0, importedLatestKcal = 500.0)!!, 1e-9)
+    }
+
+    @Test
+    fun caloriesResolved_fallsBackToImportedLatest_whenNoDayEstimate() {
+        // The old Your-cards bug: no fallback, so a strap-only day read "No Data" while the tile had a value.
+        assertEquals(742.0, MetricReads.caloriesResolved(dayEstimateKcal = null, importedLatestKcal = 742.0)!!, 1e-9)
+    }
+
+    @Test
+    fun caloriesResolved_null_onlyWhenNeitherSourceHasAValue() {
+        assertNull(MetricReads.caloriesResolved(dayEstimateKcal = null, importedLatestKcal = null))
+    }
+
+    @Test
+    fun calories_bothSurfacesResolveTheSameNumber_soTheyCanNotDisagree() {
+        // Reproduces the screenshot: the tile read the day estimate, the row read the (absent) import. With
+        // one shared resolution both now land on 1961 — never value-on-one, No-Data-on-the-other.
+        val dayEstimate = 1961.0
+        val importedLatest: Double? = null   // strap-only setup: no Apple/HC calorie import
+        val tile = MetricReads.caloriesResolved(dayEstimate, importedLatest)
+        val row = MetricReads.caloriesResolved(dayEstimate, importedLatest)
+        assertEquals(tile, row)
+        assertEquals(1961.0, tile!!, 1e-9)
+    }
+
+    @Test
+    fun caloriesFrac_isKcalOver800_coerced() {
+        assertEquals(0.5, MetricReads.caloriesFrac(400.0)!!, 1e-9)
+        assertEquals(1.0, MetricReads.caloriesFrac(1961.0)!!, 1e-9)   // coerced at the ceiling
+        assertNull(MetricReads.caloriesFrac(null))
+    }
+
     @Test
     fun carrySource_isCallerControlled_soASurfaceCanChooseWhichRowItCarries() {
         // The carry ROW is a caller argument: SpO₂ passes its recovery-gated row, the three vitals pass the

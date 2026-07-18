@@ -100,4 +100,18 @@ internal object MetricReads {
 
     /** Steps vessel fill against a 10 000-step daily-goal ceiling. */
     fun stepsFrac(steps: Int?): Double? = steps?.let { (it / 10000.0).coerceIn(0.0, 1.0) }
+
+    /**
+     * Active-energy (kcal) resolution shared by the Key-Metrics tile and the Your-cards row: the app's own
+     * per-day estimate first, then the imported Apple Health / Health Connect latest as a fallback. The two
+     * surfaces previously read DIFFERENT sources with no shared fallback — the tile read the day estimate
+     * (activeKcalEst) while the row read only the Apple/HC latest — so on a strap-only setup (no Apple import)
+     * the row showed "No Data" while the tile showed a real value on the same screen. Resolving both here
+     * fixes that. Formatting stays per surface (bare on the tile, grouped on the row).
+     */
+    fun caloriesResolved(dayEstimateKcal: Double?, importedLatestKcal: Double?): Double? =
+        dayEstimateKcal ?: importedLatestKcal
+
+    /** Calories vessel fill against an 800 kcal active-energy ceiling. */
+    fun caloriesFrac(kcal: Double?): Double? = kcal?.let { (it / 800.0).coerceIn(0.0, 1.0) }
 }
