@@ -1387,6 +1387,7 @@ fun TodayScreen(
                 enabledMetrics = enabledKeyMetrics,
                 isToday = selectedDayOffset == 0,
                 onScoreInfo = openGuide,
+                onOpenMetric = onOpenMetric,
                 metricsExpanded = metricsExpanded,
                 onToggleMetrics = { metricsExpanded = !metricsExpanded },
             )
@@ -4213,6 +4214,10 @@ private fun MetricGrid(
     enabledMetrics: List<KeyMetric> = KeyMetric.defaultOrder,
     isToday: Boolean = false,
     onScoreInfo: (ScoreSection) -> Unit = {},
+    // A tap on a vital / Steps / Calories tile opens that metric's detail (vital_detail/<key>) — the SAME
+    // destination its Your-cards row uses, via [keyMetricDetailKey]. Defaults to a no-op for callers that
+    // don't wire navigation (e.g. a preview).
+    onOpenMetric: (String) -> Unit = {},
     // S5: cap the grid to the first METRICS_COLLAPSED_CAP tiles behind a "Show all metrics" expander,
     // collapsing OVERFLOW only (never dropping or reordering a user-selected tile, #251). Defaults keep the
     // grid fully expanded for any caller that doesn't opt into the cap.
@@ -4330,8 +4335,10 @@ private fun MetricGrid(
         },
     )
 
-    // Resolve the enabled tiles to their descriptors, dropping any unknown key defensively.
-    val allTiles = enabledMetrics.mapNotNull { descriptors[it] }
+    // Resolve the enabled tiles to their descriptors, PAIRED with their KeyMetric so a tap can open the
+    // metric's own detail (like the Your-cards rows already do); unknown keys are dropped defensively.
+    val allTiles: List<Pair<KeyMetric, KeyTileData>> =
+        enabledMetrics.mapNotNull { m -> descriptors[m]?.let { m to it } }
     // S5: slice from the FRONT of the saved order so a pinned/selected tile is never dropped or reordered
     // (#251); only the tail folds behind the expander. Mirrors the iOS visibleKeyMetrics prefix(cap).
     val hasOverflow = allTiles.size > METRICS_COLLAPSED_CAP
@@ -4342,7 +4349,14 @@ private fun MetricGrid(
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         tiles.chunked(3).forEach { rowTiles ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                rowTiles.forEach { tile -> LiquidKeyTile(tile, modifier = Modifier.weight(1f)) }
+                rowTiles.forEach { (metric, tile) ->
+                    LiquidKeyTile(
+                        tile,
+                        modifier = Modifier.weight(1f),
+                        // Vitals + Steps + Calories open their metric detail; scores/Weight have none.
+                        onClick = keyMetricDetailKey(metric)?.let { key -> { onOpenMetric(key) } },
+                    )
+                }
                 repeat(3 - rowTiles.size) { Spacer(Modifier.weight(1f)) }
             }
         }
@@ -4370,6 +4384,19 @@ private fun MetricGrid(
     }
 }
 
+/** The vital-detail key a Key-Metrics tile opens on tap, or null for tiles with no detail page: the
+ *  Charge / Effort / Rest scores reach their explainer via the ring ⓘ, and Weight has no trend page.
+ *  Mirrors [dashboardCardMetricKey] so a tile and its Your-cards row open the SAME detail. */
+private fun keyMetricDetailKey(m: KeyMetric): String? = when (m) {
+    KeyMetric.HRV -> "hrv"
+    KeyMetric.RESTING_HR -> "rhr"
+    KeyMetric.BLOOD_OXYGEN -> "spo2"
+    KeyMetric.RESPIRATORY -> "resp"
+    KeyMetric.STEPS -> "steps_est"
+    KeyMetric.CALORIES -> "active_kcal"
+    KeyMetric.CHARGE, KeyMetric.EFFORT, KeyMetric.REST, KeyMetric.WEIGHT -> null
+}
+
 /** One compact Key-Metrics tile's data: iOS `ktile`(label, value, unit, tint, frac). */
 private data class KeyTileData(
     val label: String,
@@ -4386,12 +4413,14 @@ private data class KeyTileData(
  * old tall 2-column SparkStatTile. A No-Data value dims and the tube reads empty.
  */
 @Composable
-private fun LiquidKeyTile(data: KeyTileData, modifier: Modifier = Modifier) {
+private fun LiquidKeyTile(data: KeyTileData, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val hasValue = data.value != NO_DATA
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
             .frostedCardSurface(cornerRadius = 16.dp)
+            // Tappable only when the metric has a detail page; the ripple is clipped to the tile's corner.
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 12.dp, vertical = 11.dp)
             .semantics { contentDescription = "${data.label} ${data.value} ${data.unit}".trim() },
         verticalArrangement = Arrangement.spacedBy(6.dp),
