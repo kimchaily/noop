@@ -3041,10 +3041,8 @@ private fun dashboardCardFraction(
         DashboardCard.HRV -> MetricReads.hrv(day, vitalsDay).frac
         DashboardCard.RESTING_HR -> MetricReads.restingHr(day, vitalsDay).frac
         DashboardCard.RESPIRATORY -> MetricReads.respiratory(day, vitalsDay).frac
-        DashboardCard.STEPS -> {
-            val steps = (day?.steps ?: importedStepsForDay ?: estimatedStepsForDay)?.toDouble()
-            over(steps, 10000.0)
-        }
+        DashboardCard.STEPS ->
+            MetricReads.stepsFrac(MetricReads.stepsResolved(day?.steps, importedStepsForDay, estimatedStepsForDay))
         DashboardCard.SLEEP -> over(vd?.totalSleepMin, 480.0)
         DashboardCard.COUPLED -> 0.6
         // Not wired to a real read yet — an EMPTY vessel (not half-full) so it doesn't imply a reading.
@@ -3094,17 +3092,16 @@ private fun dashboardCardValue(
         DashboardCard.RESTING_HR -> withUnit(MetricReads.restingHr(day, vitalsDay).number ?: NO_DATA)
         DashboardCard.RESPIRATORY -> withUnit(MetricReads.respiratory(day, vitalsDay).number ?: NO_DATA)
         DashboardCard.BLOOD_OXYGEN ->
-            vd?.spo2Pct?.let { String.format(Locale.US, "%.0f%%", it) } ?: NO_DATA
+            // vd = carriedDay ?: day (recovery-gated); shared "%.0f" format, joined inline as "97%".
+            MetricReads.bloodOxygen(vd, null).number?.let { "$it%" } ?: NO_DATA
         DashboardCard.SKIN_TEMP ->
             // Stored as a deviation from baseline (°C); show it signed so +/- reads honestly.
             vd?.skinTempDevC?.let { String.format(Locale.US, "%+.1f°", it) } ?: NO_DATA
         DashboardCard.SLEEP -> sleepValue(vd)
-        DashboardCard.STEPS -> {
-            val real = day?.steps?.let { intStringGrouped(it.toDouble()) }
-                ?: importedStepsForDay?.let { intStringGrouped(it.toDouble()) }
-            val est = estimatedStepsForDay?.let { intStringGrouped(it.toDouble()) }
-            real ?: est ?: NO_DATA
-        }
+        DashboardCard.STEPS ->
+            // Same precedence as the tile (via MetricReads); grouped format is this row's own.
+            MetricReads.stepsResolved(day?.steps, importedStepsForDay, estimatedStepsForDay)
+                ?.let { intStringGrouped(it.toDouble()) } ?: NO_DATA
         DashboardCard.CALORIES ->
             withUnit(latestActiveKcal?.let { intStringGrouped(it) } ?: NO_DATA)
         DashboardCard.STRESS ->
@@ -4255,13 +4252,14 @@ private fun MetricGrid(
             )
         },
         KeyMetric.BLOOD_OXYGEN to run {
-            val v = d?.spo2Pct ?: carriedDay?.spo2Pct
+            // Shared read (carry = the recovery-gated carriedDay; SpO₂ stays recovery-gated by design).
+            val mv = MetricReads.bloodOxygen(d, carriedDay)
             KeyTileData(
                 label = "Blood Oxygen",
-                value = v?.let { String.format(Locale.US, "%.0f", it) } ?: NO_DATA,
-                unit = if (v != null) "%" else "",
+                value = mv.number ?: NO_DATA,
+                unit = if (mv.hasValue) mv.unit else "",
                 tint = Palette.metricCyan,
-                frac = v?.let { (it / 100.0).coerceIn(0.0, 1.0) },
+                frac = mv.frac,
             )
         },
         KeyMetric.RESPIRATORY to run {
@@ -4275,15 +4273,15 @@ private fun MetricGrid(
             )
         },
         KeyMetric.STEPS to run {
-            // Steps precedence (unchanged): on-device count → imported → estimate. (#107/#150)
-            val realSteps = d?.steps ?: importedStepsForDay
-            val steps = realSteps ?: estimatedStepsForDay
+            // Steps precedence (on-device → imported → estimate, #107/#150) + fill ceiling now shared with
+            // the Your-cards row via MetricReads; only the number FORMAT differs (bare here, grouped there).
+            val steps = MetricReads.stepsResolved(d?.steps, importedStepsForDay, estimatedStepsForDay)
             KeyTileData(
                 label = "Steps",
                 value = steps?.let { intString(it.toDouble()) } ?: NO_DATA,
                 unit = "",
                 tint = Palette.metricCyan,
-                frac = steps?.let { (it / 10000.0).coerceIn(0.0, 1.0) },
+                frac = MetricReads.stepsFrac(steps),
             )
         },
         KeyMetric.WEIGHT to run {

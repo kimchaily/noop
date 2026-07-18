@@ -75,4 +75,29 @@ internal object MetricReads {
             frac = v?.let { (it / 24.0).coerceIn(0.0, 1.0) },
         )
     }
+
+    /**
+     * Blood oxygen saturation as a whole percent; vessel fills against a 100% ceiling. [number] is the bare
+     * percent ("97"), so the Key-Metrics tile keeps value and "%" unit split while the Your-cards row joins
+     * them inline ("97%"). SpO₂ is intentionally on the recovery-gated carry (unlike the three vitals), so
+     * callers still pass whichever gated row they use.
+     */
+    fun bloodOxygen(today: DailyMetric?, carry: DailyMetric?): MetricValue {
+        val v = today?.spo2Pct ?: carry?.spo2Pct
+        return MetricValue(
+            number = v?.let { String.format(Locale.US, "%.0f", it) },
+            unit = "%",
+            frac = v?.let { (it / 100.0).coerceIn(0.0, 1.0) },
+        )
+    }
+
+    /**
+     * The Steps precedence shared by every surface: on-device count → imported total → estimate (#107/#150).
+     * The FORMATTED string differs per surface (grouped "11,200" on the WHOOP row, bare "11200" on the compact
+     * tile), so this returns the resolved COUNT and each caller formats it; the fill ceiling is [stepsFrac].
+     */
+    fun stepsResolved(daySteps: Int?, imported: Int?, estimated: Int?): Int? = daySteps ?: imported ?: estimated
+
+    /** Steps vessel fill against a 10 000-step daily-goal ceiling. */
+    fun stepsFrac(steps: Int?): Double? = steps?.let { (it / 10000.0).coerceIn(0.0, 1.0) }
 }

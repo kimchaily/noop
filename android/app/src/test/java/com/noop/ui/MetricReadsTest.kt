@@ -22,7 +22,12 @@ class MetricReadsTest {
         hrv: Double? = null,
         rhr: Int? = null,
         resp: Double? = null,
-    ) = DailyMetric(deviceId = "my-whoop", day = day, avgHrv = hrv, restingHr = rhr, respRateBpm = resp)
+        spo2: Double? = null,
+        steps: Int? = null,
+    ) = DailyMetric(
+        deviceId = "my-whoop", day = day,
+        avgHrv = hrv, restingHr = rhr, respRateBpm = resp, spo2Pct = spo2, steps = steps,
+    )
 
     // MARK: today-first / carry fallback
 
@@ -117,6 +122,53 @@ class MetricReadsTest {
         assertEquals("55 ms", hrv.number + " " + hrv.unit)
         assertEquals("60 bpm", rhr.number + " " + rhr.unit)
         assertEquals("15.0 rpm", resp.number + " " + resp.unit)
+    }
+
+    // MARK: blood oxygen — whole percent, 100% ceiling, bare number (surfaces add the % their own way)
+
+    @Test
+    fun bloodOxygen_isWholePercent_likeTheOldInlineFormat() {
+        val v = 96.7
+        val mv = MetricReads.bloodOxygen(row(spo2 = v), null)
+        assertEquals(String.format(Locale.US, "%.0f", v), mv.number)   // old: "%.0f"
+        assertEquals("97", mv.number)
+        assertEquals("%", mv.unit)
+    }
+
+    @Test
+    fun bloodOxygen_frac_isValueOver100_coerced() {
+        assertEquals(0.95, MetricReads.bloodOxygen(row(spo2 = 95.0), null).frac!!, 1e-9)
+    }
+
+    @Test
+    fun bloodOxygen_todayFirstThenCarry_andNoReadingWhenBothNull() {
+        assertEquals("98", MetricReads.bloodOxygen(row(spo2 = 98.0), row(spo2 = 90.0)).number)
+        assertEquals("90", MetricReads.bloodOxygen(row(spo2 = null), row(spo2 = 90.0)).number)
+        assertNull(MetricReads.bloodOxygen(null, null).number)
+    }
+
+    @Test
+    fun bloodOxygen_joinedInline_matchesOldYourCardsPercentString() {
+        // Old Your-cards row: "%.0f%%" -> "97%". New: number + "%".
+        val mv = MetricReads.bloodOxygen(row(spo2 = 96.7), null)
+        assertEquals("97%", mv.number + "%")
+    }
+
+    // MARK: steps — shared precedence + fill; formatting stays per-surface
+
+    @Test
+    fun stepsResolved_prefersOnDevice_thenImported_thenEstimate() {
+        assertEquals(9000, MetricReads.stepsResolved(daySteps = 9000, imported = 8000, estimated = 5000))
+        assertEquals(8000, MetricReads.stepsResolved(daySteps = null, imported = 8000, estimated = 5000))
+        assertEquals(5000, MetricReads.stepsResolved(daySteps = null, imported = null, estimated = 5000))
+        assertNull(MetricReads.stepsResolved(daySteps = null, imported = null, estimated = null))
+    }
+
+    @Test
+    fun stepsFrac_isCountOver10k_coerced() {
+        assertEquals(0.8, MetricReads.stepsFrac(8000)!!, 1e-9)
+        assertEquals(1.0, MetricReads.stepsFrac(14000)!!, 1e-9)   // coerced at the goal
+        assertNull(MetricReads.stepsFrac(null))
     }
 
     @Test
