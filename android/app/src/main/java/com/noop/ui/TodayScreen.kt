@@ -1244,7 +1244,6 @@ fun TodayScreen(
                 // Respiratory cards read PER-FIELD today-first with THIS fallback, so a night whose recovery
                 // was nulled post-update still surfaces its OWN preserved vitals (not an older scored day's).
                 vitalsDay = lastVitalsDay,
-                days = days,
                 stress = stressToday,
                 fitnessAge = fitnessAgeToday,
                 vitality = vitalityToday,
@@ -1326,7 +1325,7 @@ fun TodayScreen(
         // they don't blank to "No Data" while live HR ticks (#543). Staggered in as index 3.
         item {
         Box(modifier = Modifier.fillMaxWidth().staggeredAppear(3)) {
-            HeroMetricRows(day = displayMetric, carriedDay = lastScoredRecoveryDay, vitalsDay = lastVitalsDay, days = days)
+            HeroMetricRows(day = displayMetric, carriedDay = lastScoredRecoveryDay, vitalsDay = lastVitalsDay)
         }
         }
 
@@ -1386,7 +1385,6 @@ fun TodayScreen(
                 restScore = restScoreForDay,
                 restSpark = restCompositeSpark,
                 enabledMetrics = enabledKeyMetrics,
-                days = days,
                 isToday = selectedDayOffset == 0,
                 onScoreInfo = openGuide,
                 onOpenMetric = onOpenMetric,
@@ -2768,12 +2766,7 @@ private fun RingNeedsTrackedNight() {
  *  card to the Key-Metrics tiles, which already read per-field. Each row still falls through to "No Data"
  *  for a vital neither today nor the carry supplies. */
 @Composable
-private fun HeroMetricRows(
-    day: DailyMetric?,
-    carriedDay: DailyMetric? = null,
-    vitalsDay: DailyMetric? = null,
-    days: List<DailyMetric> = emptyList(),
-) {
+private fun HeroMetricRows(day: DailyMetric?, carriedDay: DailyMetric? = null, vitalsDay: DailyMetric? = null) {
     // Per-field, today-first: today's own value wins; the vitals carry only fills a field today lacks.
     // Resolved through the shared [MetricReads] so the vitals card, the Key-Metrics tile and the Your-cards
     // row can no longer disagree on the field / rounding / fill maths (only the carry ROW differs per
@@ -2806,19 +2799,19 @@ private fun HeroMetricRows(
             HeroVitalRow(
                 label = "Heart-rate variability",
                 value = hrv.number?.let { "$it ${hrv.unit}" } ?: NO_DATA,
-                tint = VitalStatus.color("hrv", day ?: vitalsDay, days, Palette.metricCyan),
+                tint = Palette.metricCyan,
                 fraction = hrv.frac,
             )
             HeroVitalRow(
                 label = "Resting heart rate",
                 value = rhr.number?.let { "$it ${rhr.unit}" } ?: NO_DATA,
-                tint = VitalStatus.color("rhr", day ?: vitalsDay, days, Palette.metricRose),
+                tint = Palette.metricRose,
                 fraction = rhr.frac,
             )
             HeroVitalRow(
                 label = "Breaths per minute",
                 value = resp.number?.let { "$it ${resp.unit}" } ?: NO_DATA,
-                tint = VitalStatus.color("resp", day ?: vitalsDay, days, Palette.accent),
+                tint = Palette.accent,
                 fraction = resp.frac,
             )
         }
@@ -2872,8 +2865,6 @@ private fun YourCardsSection(
     day: DailyMetric?,
     carriedDay: DailyMetric?,
     vitalsDay: DailyMetric?,
-    // History for the vital cards' personal-baseline banding (green→amber→red), shared with the tiles.
-    days: List<DailyMetric>,
     stress: Double?,
     fitnessAge: Double?,
     vitality: Double?,
@@ -2942,12 +2933,7 @@ private fun YourCardsSection(
                         estimatedStepsForDay = estimatedStepsForDay,
                         latestActiveKcal = latestActiveKcal,
                     ),
-                    // Vital cards colour by STATE (green→amber→red vs your baseline), like the tiles + Vital
-                    // Signs; non-vitals keep their identity tint. A non-vital / no-reading key bands to null
-                    // → falls back to dashboardCardTint(card).
-                    tint = dashboardCardMetricKey(card)
-                        ?.let { key -> VitalStatus.color(key, day ?: vitalsDay, days, dashboardCardTint(card)) }
-                        ?: dashboardCardTint(card),
+                    tint = dashboardCardTint(card),
                     // #706/#684: every card now opens its OWN detail, matching iOS. The Stress card -> Stress;
                     // the overnight vitals (HRV / Resting HR / Respiratory / SpO₂ / Skin Temp) + Fitness age /
                     // Vitality / Steps / Calories -> each metric's focused trend (vital_detail/<key>, the iOS
@@ -4226,10 +4212,6 @@ private fun MetricGrid(
     // read their series off `w` (the DailyMetric windows).
     restSpark: List<Double> = emptyList(),
     enabledMetrics: List<KeyMetric> = KeyMetric.defaultOrder,
-    // History (oldest→newest) for the personal-baseline banding that tints the vital tiles by STATE
-    // (green on baseline → amber → red), matching the Vital Signs screen. Empty → vitals keep their
-    // identity tint (the fallback), so a caller that doesn't supply history is unaffected.
-    days: List<DailyMetric> = emptyList(),
     isToday: Boolean = false,
     onScoreInfo: (ScoreSection) -> Unit = {},
     // A tap on a vital / Steps / Calories tile opens that metric's detail (vital_detail/<key>) — the SAME
@@ -4282,7 +4264,7 @@ private fun MetricGrid(
                 label = "HRV",
                 value = mv.number ?: NO_DATA,
                 unit = if (mv.hasValue) mv.unit else "",
-                tint = VitalStatus.color("hrv", d, days, Palette.metricCyan),
+                tint = Palette.metricCyan,
                 frac = mv.frac,
             )
         },
@@ -4292,7 +4274,7 @@ private fun MetricGrid(
                 label = "Rest HR",
                 value = mv.number ?: NO_DATA,
                 unit = if (mv.hasValue) mv.unit else "",
-                tint = VitalStatus.color("rhr", d, days, Palette.metricRose),
+                tint = Palette.metricRose,
                 frac = mv.frac,
             )
         },
@@ -4303,7 +4285,7 @@ private fun MetricGrid(
                 label = "Blood Oxygen",
                 value = mv.number ?: NO_DATA,
                 unit = if (mv.hasValue) mv.unit else "",
-                tint = VitalStatus.color("spo2", d, days, Palette.metricCyan),
+                tint = Palette.metricCyan,
                 frac = mv.frac,
             )
         },
@@ -4313,7 +4295,7 @@ private fun MetricGrid(
                 label = "Respiratory",
                 value = mv.number ?: NO_DATA,
                 unit = if (mv.hasValue) mv.unit else "",
-                tint = VitalStatus.color("resp", d, days, Palette.accent),
+                tint = Palette.accent,
                 frac = mv.frac,
             )
         },
