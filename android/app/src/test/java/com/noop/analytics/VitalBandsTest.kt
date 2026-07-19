@@ -25,11 +25,12 @@ class VitalBandsTest {
     }
 
     @Test
-    fun goodness_clampsToZero_whenFarOffThePersonalBaseline() {
-        // |z| >= sigmaK (out of range) clamps the gradient at 0 (the red end).
+    fun goodness_dropsBelowTheGreenZone_whenOutOfRange() {
+        // An out-of-range reading (|z| > sigmaK) falls below the in-range green floor (0.78), into the
+        // amber→red descent. It only reaches a hard 0 (red) at |z| = 3·sigmaK; see personalGoodness below.
         val r = VitalBands.band(70.0, List(30) { 35.0 }, hrvPop, hrvCfg)
         assertEquals(VitalBands.Band.OUT_OF_RANGE, r.band)
-        assertEquals(0.0, r.goodness!!, 1e-6)
+        assert(r.goodness!! < 0.78) { "out-of-range should sit below the green zone, was ${r.goodness}" }
     }
 
     @Test
