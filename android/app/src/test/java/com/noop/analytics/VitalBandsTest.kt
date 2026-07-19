@@ -39,9 +39,22 @@ class VitalBandsTest {
 
     @Test
     fun goodness_populationPath_isCoarseInVsOut() {
-        // SpO₂ has no personal cfg → population-only: inside typical range reads green-ish, outside red-ish.
-        assertEquals(0.7, VitalBands.band(98.0, emptyList(), 95.0..100.0, null).goodness!!, 1e-9)
-        assertEquals(0.15, VitalBands.band(90.0, emptyList(), 95.0..100.0, null).goodness!!, 1e-9)
+        // SpO₂ has no personal cfg → population-only: inside typical range reads solidly green (0.85),
+        // outside amber-orange (0.35).
+        assertEquals(0.85, VitalBands.band(98.0, emptyList(), 95.0..100.0, null).goodness!!, 1e-9)
+        assertEquals(0.35, VitalBands.band(90.0, emptyList(), 95.0..100.0, null).goodness!!, 1e-9)
+    }
+
+    @Test
+    fun personalGoodness_keepsTheWholeInRangeBandInTheGreenZone() {
+        // The calibration point: a normal reading anywhere in-range (|z| <= sigmaK) maps to [0.78 .. 1.0]
+        // (green), NOT the amber middle. |z| = 1 (a perfectly ordinary night) must read green, not orange.
+        assertEquals(1.0, VitalBands.personalGoodness(0.0), 1e-9)
+        assertEquals(0.89, VitalBands.personalGoodness(1.0), 1e-9)   // |z| = 1 → still green
+        assertEquals(0.78, VitalBands.personalGoodness(VitalBands.sigmaK), 1e-9)  // in/out boundary
+        // Out-of-range eases down through amber toward red.
+        assert(VitalBands.personalGoodness(2.0 * VitalBands.sigmaK) < 0.5) { "far-off should be amber/red" }
+        assertEquals(0.0, VitalBands.personalGoodness(3.0 * VitalBands.sigmaK), 1e-9)  // red floor
     }
 
     @Test

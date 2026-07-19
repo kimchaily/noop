@@ -127,8 +127,11 @@ val LightTokens = PaletteTokens(
     glowAmbient = Color(0xFFF0E4C0),
     // Light chrome accent shifts to the deep brand blue (gold reserved for the recovery world + FAB).
     accent = Color(0xFF234F9E), accentHover = Color(0xFF1C3F80), accentMuted = Color(0xFFE4ECF6), focusRing = Color(0xFF2F6FCB),
-    recovery000 = Color(0xFF8F6212), recovery030 = Color(0xFFA87718), recovery055 = Color(0xFFC28E26),
-    recovery078 = Color(0xFFD2A23A), recovery100 = Color(0xFFE0B44C),
+    // Semantic wellness ramp (red → amber → green), the "how good, 0..1" scale scores + vitals both sample.
+    // Replaces the old monochrome-gold recovery ramp (light-gold vs dark-gold read as neither good nor bad).
+    // Tuned for legibility on the white tile surface — all five stops validated ≥ 3:1 contrast on #FFFFFF.
+    recovery000 = Color(0xFFC62828), recovery030 = Color(0xFFCC5A1F), recovery055 = Color(0xFFC77A1A),
+    recovery078 = Color(0xFF3E9B5C), recovery100 = Color(0xFF1F8B50),
     strain000 = Color(0xFF7E460E), strain033 = Color(0xFFA4621B), strain066 = Color(0xFFC2792E), strain100 = Color(0xFFD89240),
     sleepAwake = Color(0xFF97A2B2), sleepLight = Color(0xFF3A80D6), sleepDeep = Color(0xFF234F9E), sleepREM = Color(0xFF5790DA),
     zone1 = Color(0xFF3A80D6), zone2 = Color(0xFF2E92B4), zone3 = Color(0xFFC28E26), zone4 = Color(0xFFC2792E), zone5 = Color(0xFFC84E1E),
