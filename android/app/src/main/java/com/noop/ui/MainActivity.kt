@@ -241,6 +241,19 @@ object NoopPrefs {
         of(context).edit().putBoolean(KEY_CONTINUOUS_HRV_OVERNIGHT, enabled).apply()
     }
 
+    /** Whether the Today vital tiles / rows / Recovery-vitals card colour by STATE (green on your baseline
+     *  → amber → red) instead of a fixed identity hue. Default false (identity). The state colours are
+     *  baseline-RELATIVE, so the SAME reading can shift colour day to day as the trailing baseline moves —
+     *  opt-in for users who want that signal on Today. (The Vital Signs screen always colours by state.) */
+    const val KEY_VITAL_STATE_COLOURS = "noop.vitalStateColours"
+
+    fun vitalStateColours(context: Context): Boolean =
+        of(context).getBoolean(KEY_VITAL_STATE_COLOURS, false)
+
+    fun setVitalStateColours(context: Context, enabled: Boolean) {
+        of(context).edit().putBoolean(KEY_VITAL_STATE_COLOURS, enabled).apply()
+    }
+
     /** Whether the strap log is mirrored to logcat. Default false (normal users don't log to adb). */
     fun debugLogging(context: Context): Boolean =
         of(context).getBoolean(KEY_DEBUG_LOGGING, false)

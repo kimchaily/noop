@@ -422,6 +422,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     var stressAutoNudge by remember { mutableStateOf(BiofeedbackPrefs.autoNudge(context)) }
     var rhythmEnabled by remember { mutableStateOf(RhythmConsent.isEnabled(context)) }
     var coachSignals by remember { mutableStateOf(NoopPrefs.coachSignals(context)) }
+    var colourVitalsByState by remember { mutableStateOf(NoopPrefs.vitalStateColours(context)) }
     var autoDetectWorkouts by remember { mutableStateOf(NoopPrefs.autoDetectWorkouts(context)) }
     // Keep the screen on during a manual workout recording (#703), default OFF. The live-workout
     // screen reads this same "workoutKeepScreenOn" key. String shared verbatim with the iOS/Mac twin
@@ -1698,6 +1699,16 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
             blurb = "Optional, on-device wellness signals. Each is off by default, computed only on this phone from data you already have, and never a medical diagnosis.",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                ToggleRow(
+                    title = "Colour vitals by state on Today",
+                    detail = "Tints the Today vital tiles, rows and Recovery-vitals card by state — green when a reading sits on your personal baseline, amber to red as it drifts, like the Vital Signs screen. Off by default (fixed identity colours). Note: these colours are baseline-relative, so the same reading can shift colour from day to day as your trailing baseline moves.",
+                    checked = colourVitalsByState,
+                    onCheckedChange = {
+                        colourVitalsByState = it
+                        NoopPrefs.setVitalStateColours(context, it)
+                    },
+                )
+                RowDivider()
                 ToggleRow(
                     title = "Illness heads-up",
                     detail = "Watches your resting heart rate, HRV and skin temperature for the pattern that often shows up before you feel unwell, and surfaces a gentle heads-up. An observation about your own numbers, not a diagnosis.",
