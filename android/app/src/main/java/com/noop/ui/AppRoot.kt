@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
@@ -168,6 +169,9 @@ private enum class Destination(
     Notifications("notifications", R.string.nav_notifications, Icons.Filled.Notifications),
     Support("support", R.string.nav_support, Icons.Filled.Tune),
     Settings("settings", R.string.nav_settings, Icons.Filled.Settings),
+    // Profile is its own page (the "account" surface), reached from the Today header avatar — not listed
+    // in any [DrawerGroup], like CoupledView. A Settings gear on the Profile screen hops to Settings.
+    Profile("profile", R.string.nav_profile, Icons.Filled.AccountCircle),
     TestCentre("test_centre", R.string.nav_test_centre, Icons.Filled.BugReport),
 
     // The "More" tab: its own navigated page (mirroring the iOS More tab) that hosts the full
@@ -329,8 +333,10 @@ fun AppRoot(viewModel: AppViewModel = viewModel()) {
                         // and opens the inbox sheet AppRoot presents (it owns the nav for deep-links).
                         updateStore = updateStore,
                         onOpenUpdates = { showUpdatesInbox = true },
-                        // The leading profile avatar opens Settings (where the photo is set/changed),
-                        // mirroring iOS's avatar-leading Today header. The drawer hamburger is unchanged.
+                        // The leading avatar now opens the Profile page (the "account" surface); Settings is
+                        // reached from a gear there, and still lives in More → App. onOpenSettings stays for
+                        // the other Today entry points (e.g. the battery ring's Devices default).
+                        onOpenProfile = { nav.navigateTopLevel(Destination.Profile.route) },
                         onOpenSettings = { nav.navigateTopLevel(Destination.Settings.route) },
                         // The opt-in Hydration card (only shown when Hydration tracking is on) pushes its
                         // detail. A normal push so the back-stack returns to Today.
@@ -438,6 +444,9 @@ fun AppRoot(viewModel: AppViewModel = viewModel()) {
                 composable(Destination.Notifications.route) { NotificationsSettingsScreen(viewModel) }
                 composable(Destination.Settings.route) {
                     SettingsScreen(viewModel, onOpenTestCentre = { nav.navigate(Destination.TestCentre.route) })
+                }
+                composable(Destination.Profile.route) {
+                    ProfileScreen(viewModel, onOpenSettings = { nav.navigateTopLevel(Destination.Settings.route) })
                 }
                 composable(Destination.TestCentre.route) { TestCentreScreen(viewModel) }
                 // The "More" page — the iOS More tab's twin: a navigated ScreenScaffold page hosting the

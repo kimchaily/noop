@@ -224,6 +224,9 @@ fun TodayScreen(
     updateStore: UpdateStore? = null,
     onOpenUpdates: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    // The Today header avatar opens the Profile page (the "account" surface). Defaulted to onOpenSettings
+    // so an unbound caller keeps the old avatar→Settings behaviour; AppRoot binds it to the Profile route.
+    onOpenProfile: () -> Unit = onOpenSettings,
     onOpenHydration: () -> Unit = {},
     // #706/#684: the "Your cards" dashboard rows are tappable on iOS but only Hydration navigated on Android.
     // These push each card's detail (Stress card -> Stress; Sleep -> Sleep), matching the iOS pinnedCardRow
@@ -1037,6 +1040,7 @@ fun TodayScreen(
                 onSupport = onSupport,
                 onQuickActions = onQuickActions,
                 onOpenSettings = onOpenSettings,
+                onOpenProfile = onOpenProfile,
                 onOpenDevices = onOpenDevices,
             )
         }
@@ -1899,6 +1903,7 @@ private fun LiquidTodayHeader(
     onSupport: () -> Unit,
     onQuickActions: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenProfile: () -> Unit,
     onOpenDevices: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -1980,7 +1985,7 @@ private fun LiquidTodayHeader(
             // (a) Support / donate heart — a filled heart in the charge-green tint (iOS chargeColor). Choop is
             // free forever; donations are optional. Mirrors iOS `heart.fill` → showSupport.
             HeaderHeartButton(onSupport = onSupport)
-            // (b) Profile avatar (the photo set in Settings, or the Choop loop mark) → Settings. Mirrors iOS.
+            // (b) Profile avatar (the photo set on the Profile page, or the Choop loop mark) → Profile.
             Box(
                 modifier = Modifier
                     .size(34.dp)
@@ -1988,9 +1993,9 @@ private fun LiquidTodayHeader(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = onOpenSettings,
+                        onClick = onOpenProfile,
                     )
-                    .semantics { contentDescription = "Profile and settings" },
+                    .semantics { contentDescription = "Profile" },
                 contentAlignment = Alignment.Center,
             ) {
                 ProfileAvatar(size = 34.dp)
