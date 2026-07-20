@@ -1157,7 +1157,10 @@ fun TodayScreen(
         // emitted. The Hero carries its adjacent context cards (Live-session entry + effort-zero note),
         // so they travel and hide with it. Each section keeps its OWN gates (day 0, data presence) ANDed
         // with the enabled flag. Edited from Settings → Appearance → Today layout.
-        enabledTodaySections.forEach { todaySection ->
+        enabledTodaySections.forEachIndexed { sectionPos, todaySection ->
+            // Stagger the entrance by RENDER position (the header is index 0), so a reordered or
+            // hidden section animates in at its NEW place instead of its old fixed index.
+            val stagger = sectionPos + 1
             when (todaySection) {
                 TodaySection.HERO -> {
                     item {
@@ -1171,7 +1174,7 @@ fun TodayScreen(
                             .clip(RoundedCornerShape(LIQUID_HERO_RADIUS))
                             .background(LIQUID_HERO_FILL)
                             .border(1.dp, Palette.heroHairline, RoundedCornerShape(LIQUID_HERO_RADIUS))
-                            .staggeredAppear(1),
+                            .staggeredAppear(stagger),
                     ) {
                         ScoreHeroRow(
                             day = displayMetric,
@@ -1245,7 +1248,7 @@ fun TodayScreen(
                     // #991: HeartRateTrendCard emits its SectionHeader + card as two siblings; a Box overlaid them
                     // (the header showed THROUGH the card in the v8 layout). A spaced Column stacks them instead.
                     Column(
-                        modifier = Modifier.fillMaxWidth().staggeredAppear(5),
+                        modifier = Modifier.fillMaxWidth().staggeredAppear(stagger),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         HeartRateTrendCard(viewModel, days, selectedDay, todayDate, displayMetric, effortScale)
@@ -1293,7 +1296,7 @@ fun TodayScreen(
                 }
                 TodaySection.SYNTHESIS -> {
                     item {
-                    Box(modifier = Modifier.fillMaxWidth().staggeredAppear(2)) {
+                    Box(modifier = Modifier.fillMaxWidth().staggeredAppear(stagger)) {
                         SynthesisHeroCard(
                             day = displayMetric,
                             recoveryCalibration = recoveryCalibration,
@@ -1308,7 +1311,7 @@ fun TodayScreen(
                 }
                 TodaySection.RECOVERY_VITALS -> {
                     item {
-                    Box(modifier = Modifier.fillMaxWidth().staggeredAppear(3)) {
+                    Box(modifier = Modifier.fillMaxWidth().staggeredAppear(stagger)) {
                         HeroMetricRows(day = displayMetric, carriedDay = lastScoredRecoveryDay, vitalsDay = lastVitalsDay, days = days, colourVitalsByState = colourVitalsByState)
                     }
                     }
@@ -1334,7 +1337,7 @@ fun TodayScreen(
                     }
                     }
                     item {
-                    Box(modifier = Modifier.fillMaxWidth().staggeredAppear(4)) {
+                    Box(modifier = Modifier.fillMaxWidth().staggeredAppear(stagger)) {
                         MetricGrid(
                             d = displayMetric,
                             w = window,
@@ -1370,7 +1373,7 @@ fun TodayScreen(
                     // #991: same fix as the HR card — TodayWorkoutsSection emits header + card as two siblings, so a
                     // Box overlaid them. Stack them in a spaced Column.
                     Column(
-                        modifier = Modifier.fillMaxWidth().staggeredAppear(6),
+                        modifier = Modifier.fillMaxWidth().staggeredAppear(stagger),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         TodayWorkoutsSection(footer.recentWorkouts)
