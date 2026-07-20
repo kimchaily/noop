@@ -32,8 +32,8 @@ android {
         // versionName numeric-only — UpdateCheck.isNewer parses digits.
         //   8.2.3 / 262 — first Choop release (rebrand + own key).
         //   8.2.4 / 263 — in-app "NOOP" wordmarks/copy → "Choop"; versioned APK filename.
-        versionCode = 274
-        versionName = "8.2.16"
+        versionCode = 275
+        versionName = "8.2.17"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

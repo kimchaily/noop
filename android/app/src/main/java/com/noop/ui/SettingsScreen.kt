@@ -371,6 +371,17 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         mutableStateOf(SettingsDisclosurePrefs.read(NoopPrefs.of(context)))
     }
 
+    // Accordion state (#IA): the set of COLLAPSED top-level category titles. Default empty (everything
+    // open, as before); tapping a category header adds/removes its title and writes straight through, so
+    // the open/closed state is remembered across launches. SharedPreferences isn't reactive, hence the
+    // local mirror. `sectionExpanded`/`toggleSection` are the two helpers the category cards below use.
+    var collapsedSections by remember { mutableStateOf(SettingsSectionPrefs.readCollapsed(NoopPrefs.of(context))) }
+    fun sectionExpanded(title: String): Boolean = title !in collapsedSections
+    fun toggleSection(title: String) {
+        collapsedSections = if (title in collapsedSections) collapsedSections - title else collapsedSections + title
+        SettingsSectionPrefs.writeCollapsed(NoopPrefs.of(context), collapsedSections)
+    }
+
     // EXPERIMENTAL WHOOP 5/MG protocol probes (off by default). Mirrors the macOS @AppStorage toggle;
     // SharedPreferences isn't reactive, so the Switch drives a local mutableState that the store reads.
     val puffinExperiment = remember { PuffinExperiment.from(context) }
@@ -580,6 +591,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         SettingsSection(
             icon = Icons.Outlined.AccountCircle,
             title = "Profile photo",
+            expanded = sectionExpanded("Profile photo"),
+            onToggle = { toggleSection("Profile photo") },
             blurb = "Optional. Add a photo for the avatar in the top-left. Stored only on this phone. Choop is offline, so it's never uploaded.",
         ) {
             Row(
@@ -620,6 +633,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         SettingsSection(
             icon = Icons.Outlined.Person,
             title = "Profile",
+            expanded = sectionExpanded("Profile"),
+            onToggle = { toggleSection("Profile") },
             blurb = "These power your heart-rate zones, calorie estimates and recovery baselines. Keep them accurate.",
         ) {
             Column {
@@ -832,7 +847,9 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         SettingsSection(
             icon = Icons.Filled.Brightness6,
             title = "Appearance",
-            blurb = "Pick a theme, then choose Light, Dark, or follow your system. Every theme ships both a light and a dark scheme, and the day-cycle background flows seamlessly into whichever you choose.",
+            expanded = sectionExpanded("Appearance"),
+            onToggle = { toggleSection("Appearance") },
+            blurb = "How Choop looks: theme and light/dark, chart colours, the day-cycle background, plus your units and app icon. Every theme ships both a light and a dark scheme.",
         ) {
             // Theme gallery — the selectable colour worlds, each with its own palette, sky and typeface.
             // Each swatch previews in its OWN dark tokens so you can see the design before you pick it.
@@ -921,17 +938,18 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     NoopPrefs.setVitalStateColours(context, it)
                 },
             )
-        }
 
-        // --- Units ---
-        // Imperial/Metric display toggle + a separate temperature override. Display-only — nothing
-        // stored changes; Choop keeps everything in SI and converts at the point of display. Mirrors the
-        // macOS Settings → Units card.
-        SettingsSection(
-            icon = Icons.Filled.Straighten,
-            title = "Units",
-            blurb = "Choose how distances, weights, heights, temperatures and Effort are shown. Your data is always stored the same way. This only changes the display.",
-        ) {
+            RowDivider()
+            // Units — folded in from its own card. Display-only: nothing stored changes; Choop keeps
+            // everything in SI and converts at the point of display.
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Units", style = NoopType.body, color = Palette.textPrimary)
+                Text(
+                    "How distances, weights, heights, temperatures and Effort are shown. Your data is always stored the same way.",
+                    style = NoopType.footnote,
+                    color = Palette.textTertiary,
+                )
+            }
             Column {
                 FormRow(label = "Measurement system") {
                     SegmentedPillControl(
@@ -979,17 +997,17 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     )
                 }
             }
-        }
 
-        // --- App icon (v3 "Titanium & Gold") ---
-        // Two staged launcher icons — machined titanium (default) and blued/dark-blue titanium. The
-        // swap is done by enabling exactly one <activity-alias> (.IconDefault / .IconNavy) at runtime;
-        // the launcher may take a beat (or briefly disappear/redraw) while it re-reads the icon.
-        SettingsSection(
-            icon = Icons.Filled.Palette,
-            title = "App icon",
-            blurb = "Choose how Choop looks on your home screen. The launcher may take a moment to refresh the icon after you change it.",
-        ) {
+            RowDivider()
+            // App icon — folded in from its own card.
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("App icon", style = NoopType.body, color = Palette.textPrimary)
+                Text(
+                    "How Choop looks on your home screen. The launcher may take a moment to refresh after a change.",
+                    style = NoopType.footnote,
+                    color = Palette.textTertiary,
+                )
+            }
             FormRow(label = "Icon") {
                 SegmentedPillControl(
                     items = listOf(false, true),
@@ -1007,6 +1025,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         SettingsSection(
             icon = Icons.Filled.Sensors,
             title = "Strap",
+            expanded = sectionExpanded("Strap"),
+            onToggle = { toggleSection("Strap") },
             blurb = "Choop pairs directly with your WHOOP over Bluetooth: no WHOOP app, no cloud.",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -1301,6 +1321,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         SettingsSection(
             icon = Icons.Filled.Science,
             title = "Health & wellness",
+            expanded = sectionExpanded("Health & wellness"),
+            onToggle = { toggleSection("Health & wellness") },
             blurb = "Optional, on-device wellness signals. Each is off by default, computed only on this phone from data you already have, and never a medical diagnosis.",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -1425,6 +1447,107 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
             }
         }
 
+        SettingsSection(
+            icon = Icons.Filled.Storage,
+            title = "Backup & restore",
+            expanded = sectionExpanded("Backup & restore"),
+            onToggle = { toggleSection("Backup & restore") },
+            blurb = "Move all your Choop data to another phone. Export saves everything (history, sleeps, workouts, settings) to a single file you can copy across; import replaces this phone's data with a backup.",
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Three equal-width buttons share the row (each takes a third via weight) — mirrors the
+                // iOS Backup card's three fullWidth NoopButtonStyle buttons. The busy spinner sits BELOW
+                // the row (not inside it) so it never steals a button's share of the width.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    NoopButton(
+                        text = "Export…",
+                        kind = NoopButtonKind.Primary,
+                        enabled = !backupBusy,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            backupBusy = true
+                            exportLauncher.launch("noop-backup-${java.time.LocalDate.now()}.noopbak")
+                        },
+                    )
+
+                    NoopButton(
+                        text = "Import…",
+                        kind = NoopButtonKind.Secondary,
+                        enabled = !backupBusy,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            backupBusy = true
+                            importLauncher.launch(arrayOf("*/*"))
+                        },
+                    )
+
+                    NoopButton(
+                        text = "Export CSV…",
+                        kind = NoopButtonKind.Secondary,
+                        enabled = !backupBusy,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            backupBusy = true
+                            csvExportLauncher.launch("noop-export-${java.time.LocalDate.now()}.zip")
+                        },
+                    )
+                }
+
+                if (backupBusy) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            color = Palette.accent,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text("Working…", style = NoopType.footnote, color = Palette.textSecondary)
+                    }
+                }
+
+                NoteRow(
+                    icon = Icons.Filled.Info,
+                    iconTint = Palette.textTertiary,
+                    text = "Importing overwrites everything currently on this phone. Your old data is kept in a side file just in case. Choop needs a relaunch for an import to take effect. " +
+                        "Export CSV writes a WHOOP-format zip of your days, sleeps, workouts and journal that re-imports into Choop on Android or Mac. On-device computed rows are marked APPROXIMATE in its Source column; the .noopbak backup stays the lossless restore path.",
+                )
+            }
+        }
+
+        // Lower-frequency sections collapse behind a single default-closed disclosure (S3) so the
+        // screen opens at the everyday handful instead of the full wall of cards. Nothing is removed;
+        // the experimental probes, diagnostics, raw-capture export and Trends report all stay one tap
+        // away. Mirrors the iOS SettingsView "Advanced" disclosure and the Test Centre Advanced group.
+        SettingsDisclosure(
+            title = "Advanced",
+            subtitle = "Experimental probes, diagnostics, raw-sensor export, and the Trends report. Tucked away to keep the everyday screen tidy.",
+            expanded = advancedOpen,
+            onToggle = { advancedOpen = !advancedOpen; SettingsDisclosurePrefs.write(NoopPrefs.of(context), advancedOpen) },
+        ) {
+        Column(verticalArrangement = Arrangement.spacedBy(Metrics.screenRowSpacing)) {
+        // --- Test Centre (the diagnostic home, #507/#509) ---
+        // A nav row into the Test Centre: the single home for the diagnostic, log and test controls (spec
+        // section 7). The strap log, recalibrate, scheduled export and experimental toggles also live there
+        // on the same bindings, so this is a faster door to the full set without growing this screen.
+        SettingsSection(
+            icon = Icons.Filled.BugReport,
+            title = "Test Centre",
+            blurb = "Turn on a test for the thing that's wrong, wear the strap, then tap Report. Your strap log, recalibrate, scheduled export and experimental probes all live here too.",
+        ) {
+            NoopButton(
+                text = "Open Test Centre",
+                leadingIcon = Icons.Filled.BugReport,
+                kind = NoopButtonKind.Secondary,
+                fullWidth = true,
+                onClick = onOpenTestCentre,
+            )
+        }
+
         // --- Charge (Recovery) advanced ---
         // A manual reset for the personal Charge baseline. If a bad first week poisons it — worn while
         // sick, or the first few nights read high (a common cold-start artefact) — the baseline anchors
@@ -1503,105 +1626,6 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
             )
         }
 
-        SettingsSection(
-            icon = Icons.Filled.Storage,
-            title = "Backup & restore",
-            blurb = "Move all your Choop data to another phone. Export saves everything (history, sleeps, workouts, settings) to a single file you can copy across; import replaces this phone's data with a backup.",
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                // Three equal-width buttons share the row (each takes a third via weight) — mirrors the
-                // iOS Backup card's three fullWidth NoopButtonStyle buttons. The busy spinner sits BELOW
-                // the row (not inside it) so it never steals a button's share of the width.
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    NoopButton(
-                        text = "Export…",
-                        kind = NoopButtonKind.Primary,
-                        enabled = !backupBusy,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            backupBusy = true
-                            exportLauncher.launch("noop-backup-${java.time.LocalDate.now()}.noopbak")
-                        },
-                    )
-
-                    NoopButton(
-                        text = "Import…",
-                        kind = NoopButtonKind.Secondary,
-                        enabled = !backupBusy,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            backupBusy = true
-                            importLauncher.launch(arrayOf("*/*"))
-                        },
-                    )
-
-                    NoopButton(
-                        text = "Export CSV…",
-                        kind = NoopButtonKind.Secondary,
-                        enabled = !backupBusy,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            backupBusy = true
-                            csvExportLauncher.launch("noop-export-${java.time.LocalDate.now()}.zip")
-                        },
-                    )
-                }
-
-                if (backupBusy) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        CircularProgressIndicator(
-                            color = Palette.accent,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Text("Working…", style = NoopType.footnote, color = Palette.textSecondary)
-                    }
-                }
-
-                NoteRow(
-                    icon = Icons.Filled.Info,
-                    iconTint = Palette.textTertiary,
-                    text = "Importing overwrites everything currently on this phone. Your old data is kept in a side file just in case. Choop needs a relaunch for an import to take effect. " +
-                        "Export CSV writes a WHOOP-format zip of your days, sleeps, workouts and journal that re-imports into Choop on Android or Mac. On-device computed rows are marked APPROXIMATE in its Source column; the .noopbak backup stays the lossless restore path.",
-                )
-            }
-        }
-
-        // --- Test Centre (the diagnostic home, #507/#509) ---
-        // A nav row into the Test Centre: the single home for the diagnostic, log and test controls (spec
-        // section 7). The strap log, recalibrate, scheduled export and experimental toggles also live there
-        // on the same bindings, so this is a faster door to the full set without growing this screen.
-        SettingsSection(
-            icon = Icons.Filled.BugReport,
-            title = "Test Centre",
-            blurb = "Turn on a test for the thing that's wrong, wear the strap, then tap Report. Your strap log, recalibrate, scheduled export and experimental probes all live here too.",
-        ) {
-            NoopButton(
-                text = "Open Test Centre",
-                leadingIcon = Icons.Filled.BugReport,
-                kind = NoopButtonKind.Secondary,
-                fullWidth = true,
-                onClick = onOpenTestCentre,
-            )
-        }
-
-        // Lower-frequency sections collapse behind a single default-closed disclosure (S3) so the
-        // screen opens at the everyday handful instead of the full wall of cards. Nothing is removed;
-        // the experimental probes, diagnostics, raw-capture export and Trends report all stay one tap
-        // away. Mirrors the iOS SettingsView "Advanced" disclosure and the Test Centre Advanced group.
-        SettingsDisclosure(
-            title = "Advanced",
-            subtitle = "Experimental probes, diagnostics, raw-sensor export, and the Trends report. Tucked away to keep the everyday screen tidy.",
-            expanded = advancedOpen,
-            onToggle = { advancedOpen = !advancedOpen; SettingsDisclosurePrefs.write(NoopPrefs.of(context), advancedOpen) },
-        ) {
-        Column(verticalArrangement = Arrangement.spacedBy(Metrics.screenRowSpacing)) {
         // --- Experimental · WHOOP 5 / MG --- (hidden when the user is confidently on a 4.0, #22)
         if (showFiveMGControls) {
         SettingsSection(
@@ -2005,6 +2029,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         SettingsSection(
             icon = Icons.Filled.Info,
             title = "About",
+            expanded = sectionExpanded("About"),
+            onToggle = { toggleSection("About") },
             blurb = "Choop: all your data, none of the cloud.",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -2542,6 +2568,25 @@ internal object SettingsDisclosurePrefs {
     fun write(prefs: SharedPreferences, open: Boolean) { prefs.edit().putBoolean(KEY, open).apply() }
 }
 
+// MARK: - Settings accordion persistence
+//
+// Persisted collapsed/expanded state of the top-level Settings category cards (the accordion). We store
+// the set of COLLAPSED section titles (as a sorted comma-joined string under one key) rather than the
+// expanded set, so the default — nothing stored — means "everything open", matching the pre-accordion
+// always-open layout. No section title contains a comma, so a plain CSV is a safe, human-readable codec.
+internal object SettingsSectionPrefs {
+    const val KEY = "noop.settings.collapsedSections"
+
+    /** Read the set of collapsed section titles; empty (all expanded) when never written. */
+    fun readCollapsed(prefs: SharedPreferences): Set<String> =
+        (prefs.getString(KEY, null) ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+
+    /** Persist the collapsed set as a sorted, comma-joined string. */
+    fun writeCollapsed(prefs: SharedPreferences, collapsed: Set<String>) {
+        prefs.edit().putString(KEY, collapsed.toSortedSet().joinToString(",")).apply()
+    }
+}
+
 // MARK: - Advanced disclosure (S3, ports SettingsView's SettingsDisclosureGroup)
 
 /**
@@ -2610,22 +2655,63 @@ private fun SettingsSection(
     icon: ImageVector,
     title: String,
     blurb: String,
+    // Accordion support: when [onToggle] is non-null the card becomes collapsible — the header row
+    // taps to expand/collapse (chevron on the right), and the blurb + content render only when
+    // [expanded]. Left null (the default) the card is always-open, exactly as before, so the sections
+    // nested inside the Advanced disclosure keep their fixed-open behaviour untouched.
+    expanded: Boolean = true,
+    onToggle: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
+    val collapsible = onToggle != null
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 0f else -90f,
+        label = "sectionChevron",
+    )
+    val headerInteraction = remember { MutableInteractionSource() }
     NoopCard(padding = 20.dp, tint = Palette.accent) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = if (collapsible) {
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .liquidPress(headerInteraction)
+                        .clickable(
+                            interactionSource = headerInteraction,
+                            indication = null,
+                            onClick = { onToggle?.invoke() },
+                        )
+                        .semantics {
+                            contentDescription = title
+                            stateDescription = if (expanded) "Expanded" else "Collapsed"
+                        }
+                } else {
+                    Modifier
+                },
+            ) {
                 Overline("Settings")
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Icon(icon, contentDescription = null, tint = Palette.accent, modifier = Modifier.size(18.dp))
-                    Text(title, style = NoopType.title2, color = Palette.textPrimary)
+                    Text(title, style = NoopType.title2, color = Palette.textPrimary, modifier = Modifier.weight(1f))
+                    if (collapsible) {
+                        Icon(
+                            Icons.Filled.KeyboardArrowDown,
+                            contentDescription = null,
+                            tint = Palette.textTertiary,
+                            modifier = Modifier.size(22.dp).rotate(chevronRotation),
+                        )
+                    }
                 }
             }
-            Text(blurb, style = NoopType.subhead, color = Palette.textSecondary)
-            content()
+            if (expanded) {
+                Text(blurb, style = NoopType.subhead, color = Palette.textSecondary)
+                content()
+            }
         }
     }
 }
