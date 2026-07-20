@@ -828,64 +828,6 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
             }
         }
 
-        // --- Units ---
-        // Imperial/Metric display toggle + a separate temperature override. Display-only — nothing
-        // stored changes; Choop keeps everything in SI and converts at the point of display. Mirrors the
-        // macOS Settings → Units card.
-        SettingsSection(
-            icon = Icons.Filled.Straighten,
-            title = "Units",
-            blurb = "Choose how distances, weights, heights, temperatures and Effort are shown. Your data is always stored the same way. This only changes the display.",
-        ) {
-            Column {
-                FormRow(label = "Measurement system") {
-                    SegmentedPillControl(
-                        items = listOf(UnitSystem.METRIC, UnitSystem.IMPERIAL),
-                        selection = unitSystem,
-                        label = { if (it == UnitSystem.METRIC) "Metric" else "Imperial" },
-                        onSelect = {
-                            unitSystem = it
-                            NoopPrefs.setUnitSystem(context, it)
-                        },
-                    )
-                }
-                RowDivider()
-                FormRow(label = "Temperature") {
-                    // Three-way: "Match" follows the system above; °C / °F pin it explicitly. Stored as an
-                    // empty string ("match") or the TemperatureUnit raw value.
-                    SegmentedPillControl(
-                        items = listOf("", TemperatureUnit.CELSIUS.raw, TemperatureUnit.FAHRENHEIT.raw),
-                        selection = temperatureRaw,
-                        label = {
-                            when (it) {
-                                TemperatureUnit.CELSIUS.raw -> "°C"
-                                TemperatureUnit.FAHRENHEIT.raw -> "°F"
-                                else -> "Match"
-                            }
-                        },
-                        onSelect = {
-                            temperatureRaw = it
-                            NoopPrefs.setTemperatureUnit(context, TemperatureUnit.fromRaw(it))
-                        },
-                    )
-                }
-                RowDivider()
-                // Effort scale (#268) — Choop's native 0–100 Effort or WHOOP's 0–21 Day Strain axis.
-                // Display-only; the stored value never changes, so a flip just re-labels every read-out.
-                FormRow(label = "Effort scale") {
-                    SegmentedPillControl(
-                        items = listOf(EffortScale.HUNDRED, EffortScale.WHOOP),
-                        selection = effortScale,
-                        label = { if (it == EffortScale.HUNDRED) "0-100" else "0-21" },
-                        onSelect = {
-                            effortScale = it
-                            UnitPrefs.setEffortScale(context, it)
-                        },
-                    )
-                }
-            }
-        }
-
         // --- Appearance (Theme) ---
         SettingsSection(
             icon = Icons.Filled.Brightness6,
@@ -963,6 +905,79 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         uncheckedBorderColor = Palette.hairline,
                     ),
                 )
+            }
+
+            // Colour Today's vitals by state — moved here from Health & wellness because it's a
+            // display/colour choice, so it belongs with the other appearance controls. Off by default
+            // keeps the calm identity colours; on tints the Today vital tiles, rows and Recovery-vitals
+            // card green→amber→red by how far each reading sits from your personal baseline, exactly like
+            // the Vital Signs screen (same VitalStatus banding).
+            ToggleRow(
+                title = "Colour vitals by state on Today",
+                detail = "Tints the Today vital tiles, rows and Recovery-vitals card by state — green when a reading sits on your personal baseline, amber to red as it drifts, like the Vital Signs screen. Off by default (fixed identity colours). Note: these colours are baseline-relative, so the same reading can shift colour from day to day as your trailing baseline moves.",
+                checked = colourVitalsByState,
+                onCheckedChange = {
+                    colourVitalsByState = it
+                    NoopPrefs.setVitalStateColours(context, it)
+                },
+            )
+        }
+
+        // --- Units ---
+        // Imperial/Metric display toggle + a separate temperature override. Display-only — nothing
+        // stored changes; Choop keeps everything in SI and converts at the point of display. Mirrors the
+        // macOS Settings → Units card.
+        SettingsSection(
+            icon = Icons.Filled.Straighten,
+            title = "Units",
+            blurb = "Choose how distances, weights, heights, temperatures and Effort are shown. Your data is always stored the same way. This only changes the display.",
+        ) {
+            Column {
+                FormRow(label = "Measurement system") {
+                    SegmentedPillControl(
+                        items = listOf(UnitSystem.METRIC, UnitSystem.IMPERIAL),
+                        selection = unitSystem,
+                        label = { if (it == UnitSystem.METRIC) "Metric" else "Imperial" },
+                        onSelect = {
+                            unitSystem = it
+                            NoopPrefs.setUnitSystem(context, it)
+                        },
+                    )
+                }
+                RowDivider()
+                FormRow(label = "Temperature") {
+                    // Three-way: "Match" follows the system above; °C / °F pin it explicitly. Stored as an
+                    // empty string ("match") or the TemperatureUnit raw value.
+                    SegmentedPillControl(
+                        items = listOf("", TemperatureUnit.CELSIUS.raw, TemperatureUnit.FAHRENHEIT.raw),
+                        selection = temperatureRaw,
+                        label = {
+                            when (it) {
+                                TemperatureUnit.CELSIUS.raw -> "°C"
+                                TemperatureUnit.FAHRENHEIT.raw -> "°F"
+                                else -> "Match"
+                            }
+                        },
+                        onSelect = {
+                            temperatureRaw = it
+                            NoopPrefs.setTemperatureUnit(context, TemperatureUnit.fromRaw(it))
+                        },
+                    )
+                }
+                RowDivider()
+                // Effort scale (#268) — Choop's native 0–100 Effort or WHOOP's 0–21 Day Strain axis.
+                // Display-only; the stored value never changes, so a flip just re-labels every read-out.
+                FormRow(label = "Effort scale") {
+                    SegmentedPillControl(
+                        items = listOf(EffortScale.HUNDRED, EffortScale.WHOOP),
+                        selection = effortScale,
+                        label = { if (it == EffortScale.HUNDRED) "0-100" else "0-21" },
+                        onSelect = {
+                            effortScale = it
+                            UnitPrefs.setEffortScale(context, it)
+                        },
+                    )
+                }
             }
         }
 
@@ -1280,6 +1295,300 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     }
                 }
             }
+        }
+
+        // --- Health & wellness (v5 opt-in toggles) ---
+        SettingsSection(
+            icon = Icons.Filled.Science,
+            title = "Health & wellness",
+            blurb = "Optional, on-device wellness signals. Each is off by default, computed only on this phone from data you already have, and never a medical diagnosis.",
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                ToggleRow(
+                    title = "Illness heads-up",
+                    detail = "Watches your resting heart rate, HRV and skin temperature for the pattern that often shows up before you feel unwell, and surfaces a gentle heads-up. An observation about your own numbers, not a diagnosis.",
+                    checked = illnessWatch,
+                    onCheckedChange = {
+                        illnessWatch = it
+                        vm.setIllnessWatchEnabled(it)
+                    },
+                )
+                RowDivider()
+                // #801 — not offered on a male profile (it would just sit at "Learning your pattern"). Hidden
+                // when off for a male profile so it can't be enabled here; still shown when already on so it
+                // can be turned off — mirroring HealthScreen's cycle opt-in gate (cycleOptInApplies). The
+                // sister surfaces (Health opt-in, the card's off-control) were sex-gated in v7.3.2; this
+                // Settings toggle was the one surface that was missed, so a male profile could enable it here.
+                if (cycleTracking || cycleOptInApplies(profile.sex)) {
+                    ToggleRow(
+                        title = "Cycle awareness",
+                        detail = "Reads a coarse menstrual-cycle phase from your nightly skin-temperature shift, on this device only. Awareness only: not contraception, not a fertility predictor, not a medical service.",
+                        checked = cycleTracking,
+                        onCheckedChange = {
+                            cycleTracking = it
+                            vm.setCycleTrackingEnabled(it)
+                        },
+                    )
+                    RowDivider()
+                }
+                ToggleRow(
+                    title = "Hydration tracking",
+                    detail = "Adds a simple fluid log with a daily goal that adjusts to your effort. Tap to add a sip, cup or bottle and watch a progress ring fill. On this phone only. Nothing is synced.",
+                    checked = hydrationTracking,
+                    onCheckedChange = {
+                        hydrationTracking = it
+                        NoopPrefs.setHydrationTracking(context, it)
+                    },
+                )
+                RowDivider()
+                ToggleRow(
+                    title = "Auto-detect workouts",
+                    detail = "After a sync, Choop looks over your recent heart rate for a sustained, raised stretch that looks like exercise and offers to save it. It only ever suggests. Nothing is saved until you tap Save, and you can dismiss any suggestion. Deliberately conservative, so the odd workout may be missed. On this phone only.",
+                    checked = autoDetectWorkouts,
+                    onCheckedChange = {
+                        autoDetectWorkouts = it
+                        NoopPrefs.setAutoDetectWorkouts(context, it)
+                    },
+                )
+                RowDivider()
+                ToggleRow(
+                    title = "Keep screen on during a workout",
+                    detail = "Holds the screen awake while you're recording a workout, so your live heart rate stays visible without the phone dimming. Only applies during a recording. The screen sleeps normally the rest of the time. Leaving it on does use a bit more battery, and means your unlocked screen stays visible for the whole workout, so flip it off if that's a concern.",
+                    checked = workoutKeepScreenOn,
+                    onCheckedChange = {
+                        workoutKeepScreenOn = it
+                        NoopPrefs.of(context).edit().putBoolean("workoutKeepScreenOn", it).apply()
+                    },
+                )
+                RowDivider()
+                // BETA + default ON (the one exception to this section's off-by-default rule): the flag
+                // gates the Today entry so anyone can wave the beta away here with one flip.
+                ToggleRow(
+                    title = "Live Sessions (beta)",
+                    detail = "Silence-first strap coaching during workouts.",
+                    checked = liveSessionsBeta,
+                    onCheckedChange = {
+                        liveSessionsBeta = it
+                        LiveSessionPrefs.setEnabled(context, it)
+                    },
+                )
+                RowDivider()
+                ToggleRow(
+                    title = "Stress check-ins (haptic)",
+                    detail = "Lets Choop notice a fresh HRV dip while you're still and offer a minute to breathe. \"Stress\" here is an autonomic proxy from your own baseline, never a diagnosis. The strap gives one light confirming buzz; no push notification.",
+                    checked = stressCheckIn,
+                    onCheckedChange = {
+                        stressCheckIn = it
+                        BiofeedbackPrefs.setCheckInEnabled(context, it)
+                        // Turning the master off also disarms the auto-nudge sub-toggle so it can't fire.
+                        if (!it) { stressAutoNudge = false; BiofeedbackPrefs.setAutoNudge(context, false) }
+                    },
+                )
+                if (stressCheckIn) {
+                    ToggleRow(
+                        title = "Offer a breath automatically",
+                        detail = "When a dip is detected, surface the check-in card on its own (rate-limited, quiet-hours aware). Off keeps it manual.",
+                        checked = stressAutoNudge,
+                        onCheckedChange = {
+                            stressAutoNudge = it
+                            BiofeedbackPrefs.setAutoNudge(context, it)
+                        },
+                    )
+                }
+                RowDivider()
+                ToggleRow(
+                    title = "Rhythm (experimental)",
+                    detail = "An experimental picture of your beat-to-beat timing: a Poincaré scatter and plain regularity stats from quiet resting windows. Not an ECG and not a diagnosis; you'll read a short disclaimer and accept before it turns on.",
+                    checked = rhythmEnabled,
+                    onCheckedChange = {
+                        // Enabling here just un-gates the experimental item; the screen itself still shows
+                        // its consent clickwrap on first open (and re-prompts on a version bump). Disabling
+                        // clears the flag so the screen returns to its gate.
+                        rhythmEnabled = it
+                        if (it) {
+                            NoopPrefs.of(context).edit().putBoolean(RhythmConsent.KEY_ENABLED, true).apply()
+                        } else {
+                            NoopPrefs.of(context).edit().putBoolean(RhythmConsent.KEY_ENABLED, false).apply()
+                        }
+                    },
+                )
+                RowDivider()
+                ToggleRow(
+                    title = "Share on-device signals with the Coach",
+                    detail = "When the opt-in Coach is set up with your own key, also include a short summary of your strongest on-device patterns and Lab Book markers in its context. Summary only; no raw data leaves your phone. Requires the Coach's own data consent first.",
+                    checked = coachSignals,
+                    onCheckedChange = {
+                        coachSignals = it
+                        NoopPrefs.setCoachSignals(context, it)
+                    },
+                )
+            }
+        }
+
+        // --- Charge (Recovery) advanced ---
+        // A manual reset for the personal Charge baseline. If a bad first week poisons it — worn while
+        // sick, or the first few nights read high (a common cold-start artefact) — the baseline anchors
+        // off and holds your Charge wrong for a couple of weeks while the rolling average catches up.
+        // Recalibrate re-learns it from tonight onward. Writes now-seconds to BOTH noop.hrvBaselineEpoch
+        // and noop.recoveryBaselineEpoch (so HRV plus resting HR / respiration / skin temp re-anchor);
+        // foldHistory drops every night before that epoch and re-seeds. Mirrors the iOS/Mac button.
+        SettingsSection(
+            icon = Icons.Filled.Favorite,
+            title = "Charge",
+            blurb = "Charge is Choop's daily readiness score, learned from your own HRV, resting heart rate and more over time. Your history stays.",
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Recalibrate Charge baseline", style = NoopType.subhead, color = Palette.textPrimary)
+                    Text(
+                        "Restarts the roughly 4-night build-up for Charge and your HRV baseline from tonight. Use it if a bad first week set your baseline off. Your history stays.",
+                        style = NoopType.footnote,
+                        color = Palette.textTertiary,
+                    )
+                }
+                NoopButton(
+                    text = "Recalibrate Charge baseline",
+                    leadingIcon = Icons.Filled.Autorenew,
+                    kind = NoopButtonKind.Secondary,
+                    fullWidth = true,
+                    modifier = Modifier.semantics { contentDescription = "Recalibrate Charge baseline" },
+                    onClick = { showRecalibrateConfirm = true },
+                )
+            }
+        }
+
+        if (showRecalibrateConfirm) {
+            AlertDialog(
+                onDismissRequest = { showRecalibrateConfirm = false },
+                containerColor = Palette.surfaceOverlay,
+                title = { Text("Recalibrate your Charge baseline?", style = NoopType.title2, color = Palette.textPrimary) },
+                text = {
+                    Text(
+                        "This restarts the roughly 4-night build-up for Charge and your HRV baseline. Your history stays. Use it if a bad first week, like wearing it while sick, set your baseline off.",
+                        style = NoopType.subhead,
+                        color = Palette.textSecondary,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            // Re-anchor EVERY baseline that feeds Charge — HRV plus resting HR /
+                            // respiration / skin temp — by writing now-seconds to BOTH shared epoch keys
+                            // (the EXACT same keys the iOS/Mac button + Baselines.foldHistory use), via
+                            // the single cross-platform source of truth. Stored as whole epoch SECONDS in
+                            // a Long (SharedPreferences has no putDouble; the readers do getLong→toDouble),
+                            // matching the "epoch SECONDS" the keys document. No stored day is deleted.
+                            val nowSeconds = System.currentTimeMillis() / 1000L
+                            val editor = NoopPrefs.of(context).edit()
+                            Baselines.recalibrateRecoveryBaselines(editor, nowSeconds)
+                            editor.apply()
+                            showRecalibrateConfirm = false
+                            // Nudge an immediate re-analyze so the change is felt now; the standing
+                            // 15-min analyze loop also re-runs foldHistory regardless. No-ops cleanly
+                            // when the strap isn't connected.
+                            vm.syncNow()
+                            Toast.makeText(
+                                context,
+                                "Charge baseline reset. Choop will re-learn it from tonight. Your history stays, and it takes a few nights to settle.",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        },
+                    ) { Text("Recalibrate", style = NoopType.body, color = Palette.accent) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRecalibrateConfirm = false }) {
+                        Text("Cancel", style = NoopType.body, color = Palette.textSecondary)
+                    }
+                },
+            )
+        }
+
+        SettingsSection(
+            icon = Icons.Filled.Storage,
+            title = "Backup & restore",
+            blurb = "Move all your Choop data to another phone. Export saves everything (history, sleeps, workouts, settings) to a single file you can copy across; import replaces this phone's data with a backup.",
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Three equal-width buttons share the row (each takes a third via weight) — mirrors the
+                // iOS Backup card's three fullWidth NoopButtonStyle buttons. The busy spinner sits BELOW
+                // the row (not inside it) so it never steals a button's share of the width.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    NoopButton(
+                        text = "Export…",
+                        kind = NoopButtonKind.Primary,
+                        enabled = !backupBusy,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            backupBusy = true
+                            exportLauncher.launch("noop-backup-${java.time.LocalDate.now()}.noopbak")
+                        },
+                    )
+
+                    NoopButton(
+                        text = "Import…",
+                        kind = NoopButtonKind.Secondary,
+                        enabled = !backupBusy,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            backupBusy = true
+                            importLauncher.launch(arrayOf("*/*"))
+                        },
+                    )
+
+                    NoopButton(
+                        text = "Export CSV…",
+                        kind = NoopButtonKind.Secondary,
+                        enabled = !backupBusy,
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            backupBusy = true
+                            csvExportLauncher.launch("noop-export-${java.time.LocalDate.now()}.zip")
+                        },
+                    )
+                }
+
+                if (backupBusy) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            color = Palette.accent,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text("Working…", style = NoopType.footnote, color = Palette.textSecondary)
+                    }
+                }
+
+                NoteRow(
+                    icon = Icons.Filled.Info,
+                    iconTint = Palette.textTertiary,
+                    text = "Importing overwrites everything currently on this phone. Your old data is kept in a side file just in case. Choop needs a relaunch for an import to take effect. " +
+                        "Export CSV writes a WHOOP-format zip of your days, sleeps, workouts and journal that re-imports into Choop on Android or Mac. On-device computed rows are marked APPROXIMATE in its Source column; the .noopbak backup stays the lossless restore path.",
+                )
+            }
+        }
+
+        // --- Test Centre (the diagnostic home, #507/#509) ---
+        // A nav row into the Test Centre: the single home for the diagnostic, log and test controls (spec
+        // section 7). The strap log, recalibrate, scheduled export and experimental toggles also live there
+        // on the same bindings, so this is a faster door to the full set without growing this screen.
+        SettingsSection(
+            icon = Icons.Filled.BugReport,
+            title = "Test Centre",
+            blurb = "Turn on a test for the thing that's wrong, wear the strap, then tap Report. Your strap log, recalibrate, scheduled export and experimental probes all live here too.",
+        ) {
+            NoopButton(
+                text = "Open Test Centre",
+                leadingIcon = Icons.Filled.BugReport,
+                kind = NoopButtonKind.Secondary,
+                fullWidth = true,
+                onClick = onOpenTestCentre,
+            )
         }
 
         // Lower-frequency sections collapse behind a single default-closed disclosure (S3) so the
@@ -1691,310 +2000,6 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         TrendsReportExportSection(vm)
         } // end Advanced disclosure content Column
         } // end SettingsDisclosure("Advanced")
-
-        // --- Health & wellness (v5 opt-in toggles) ---
-        SettingsSection(
-            icon = Icons.Filled.Science,
-            title = "Health & wellness",
-            blurb = "Optional, on-device wellness signals. Each is off by default, computed only on this phone from data you already have, and never a medical diagnosis.",
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                ToggleRow(
-                    title = "Colour vitals by state on Today",
-                    detail = "Tints the Today vital tiles, rows and Recovery-vitals card by state — green when a reading sits on your personal baseline, amber to red as it drifts, like the Vital Signs screen. Off by default (fixed identity colours). Note: these colours are baseline-relative, so the same reading can shift colour from day to day as your trailing baseline moves.",
-                    checked = colourVitalsByState,
-                    onCheckedChange = {
-                        colourVitalsByState = it
-                        NoopPrefs.setVitalStateColours(context, it)
-                    },
-                )
-                RowDivider()
-                ToggleRow(
-                    title = "Illness heads-up",
-                    detail = "Watches your resting heart rate, HRV and skin temperature for the pattern that often shows up before you feel unwell, and surfaces a gentle heads-up. An observation about your own numbers, not a diagnosis.",
-                    checked = illnessWatch,
-                    onCheckedChange = {
-                        illnessWatch = it
-                        vm.setIllnessWatchEnabled(it)
-                    },
-                )
-                RowDivider()
-                // #801 — not offered on a male profile (it would just sit at "Learning your pattern"). Hidden
-                // when off for a male profile so it can't be enabled here; still shown when already on so it
-                // can be turned off — mirroring HealthScreen's cycle opt-in gate (cycleOptInApplies). The
-                // sister surfaces (Health opt-in, the card's off-control) were sex-gated in v7.3.2; this
-                // Settings toggle was the one surface that was missed, so a male profile could enable it here.
-                if (cycleTracking || cycleOptInApplies(profile.sex)) {
-                    ToggleRow(
-                        title = "Cycle awareness",
-                        detail = "Reads a coarse menstrual-cycle phase from your nightly skin-temperature shift, on this device only. Awareness only: not contraception, not a fertility predictor, not a medical service.",
-                        checked = cycleTracking,
-                        onCheckedChange = {
-                            cycleTracking = it
-                            vm.setCycleTrackingEnabled(it)
-                        },
-                    )
-                    RowDivider()
-                }
-                ToggleRow(
-                    title = "Hydration tracking",
-                    detail = "Adds a simple fluid log with a daily goal that adjusts to your effort. Tap to add a sip, cup or bottle and watch a progress ring fill. On this phone only. Nothing is synced.",
-                    checked = hydrationTracking,
-                    onCheckedChange = {
-                        hydrationTracking = it
-                        NoopPrefs.setHydrationTracking(context, it)
-                    },
-                )
-                RowDivider()
-                ToggleRow(
-                    title = "Auto-detect workouts",
-                    detail = "After a sync, Choop looks over your recent heart rate for a sustained, raised stretch that looks like exercise and offers to save it. It only ever suggests. Nothing is saved until you tap Save, and you can dismiss any suggestion. Deliberately conservative, so the odd workout may be missed. On this phone only.",
-                    checked = autoDetectWorkouts,
-                    onCheckedChange = {
-                        autoDetectWorkouts = it
-                        NoopPrefs.setAutoDetectWorkouts(context, it)
-                    },
-                )
-                RowDivider()
-                ToggleRow(
-                    title = "Keep screen on during a workout",
-                    detail = "Holds the screen awake while you're recording a workout, so your live heart rate stays visible without the phone dimming. Only applies during a recording. The screen sleeps normally the rest of the time. Leaving it on does use a bit more battery, and means your unlocked screen stays visible for the whole workout, so flip it off if that's a concern.",
-                    checked = workoutKeepScreenOn,
-                    onCheckedChange = {
-                        workoutKeepScreenOn = it
-                        NoopPrefs.of(context).edit().putBoolean("workoutKeepScreenOn", it).apply()
-                    },
-                )
-                RowDivider()
-                // BETA + default ON (the one exception to this section's off-by-default rule): the flag
-                // gates the Today entry so anyone can wave the beta away here with one flip.
-                ToggleRow(
-                    title = "Live Sessions (beta)",
-                    detail = "Silence-first strap coaching during workouts.",
-                    checked = liveSessionsBeta,
-                    onCheckedChange = {
-                        liveSessionsBeta = it
-                        LiveSessionPrefs.setEnabled(context, it)
-                    },
-                )
-                RowDivider()
-                ToggleRow(
-                    title = "Stress check-ins (haptic)",
-                    detail = "Lets Choop notice a fresh HRV dip while you're still and offer a minute to breathe. \"Stress\" here is an autonomic proxy from your own baseline, never a diagnosis. The strap gives one light confirming buzz; no push notification.",
-                    checked = stressCheckIn,
-                    onCheckedChange = {
-                        stressCheckIn = it
-                        BiofeedbackPrefs.setCheckInEnabled(context, it)
-                        // Turning the master off also disarms the auto-nudge sub-toggle so it can't fire.
-                        if (!it) { stressAutoNudge = false; BiofeedbackPrefs.setAutoNudge(context, false) }
-                    },
-                )
-                if (stressCheckIn) {
-                    ToggleRow(
-                        title = "Offer a breath automatically",
-                        detail = "When a dip is detected, surface the check-in card on its own (rate-limited, quiet-hours aware). Off keeps it manual.",
-                        checked = stressAutoNudge,
-                        onCheckedChange = {
-                            stressAutoNudge = it
-                            BiofeedbackPrefs.setAutoNudge(context, it)
-                        },
-                    )
-                }
-                RowDivider()
-                ToggleRow(
-                    title = "Rhythm (experimental)",
-                    detail = "An experimental picture of your beat-to-beat timing: a Poincaré scatter and plain regularity stats from quiet resting windows. Not an ECG and not a diagnosis; you'll read a short disclaimer and accept before it turns on.",
-                    checked = rhythmEnabled,
-                    onCheckedChange = {
-                        // Enabling here just un-gates the experimental item; the screen itself still shows
-                        // its consent clickwrap on first open (and re-prompts on a version bump). Disabling
-                        // clears the flag so the screen returns to its gate.
-                        rhythmEnabled = it
-                        if (it) {
-                            NoopPrefs.of(context).edit().putBoolean(RhythmConsent.KEY_ENABLED, true).apply()
-                        } else {
-                            NoopPrefs.of(context).edit().putBoolean(RhythmConsent.KEY_ENABLED, false).apply()
-                        }
-                    },
-                )
-                RowDivider()
-                ToggleRow(
-                    title = "Share on-device signals with the Coach",
-                    detail = "When the opt-in Coach is set up with your own key, also include a short summary of your strongest on-device patterns and Lab Book markers in its context. Summary only; no raw data leaves your phone. Requires the Coach's own data consent first.",
-                    checked = coachSignals,
-                    onCheckedChange = {
-                        coachSignals = it
-                        NoopPrefs.setCoachSignals(context, it)
-                    },
-                )
-            }
-        }
-
-        // --- Test Centre (the diagnostic home, #507/#509) ---
-        // A nav row into the Test Centre: the single home for the diagnostic, log and test controls (spec
-        // section 7). The strap log, recalibrate, scheduled export and experimental toggles also live there
-        // on the same bindings, so this is a faster door to the full set without growing this screen.
-        SettingsSection(
-            icon = Icons.Filled.BugReport,
-            title = "Test Centre",
-            blurb = "Turn on a test for the thing that's wrong, wear the strap, then tap Report. Your strap log, recalibrate, scheduled export and experimental probes all live here too.",
-        ) {
-            NoopButton(
-                text = "Open Test Centre",
-                leadingIcon = Icons.Filled.BugReport,
-                kind = NoopButtonKind.Secondary,
-                fullWidth = true,
-                onClick = onOpenTestCentre,
-            )
-        }
-
-        // --- Charge (Recovery) advanced ---
-        // A manual reset for the personal Charge baseline. If a bad first week poisons it — worn while
-        // sick, or the first few nights read high (a common cold-start artefact) — the baseline anchors
-        // off and holds your Charge wrong for a couple of weeks while the rolling average catches up.
-        // Recalibrate re-learns it from tonight onward. Writes now-seconds to BOTH noop.hrvBaselineEpoch
-        // and noop.recoveryBaselineEpoch (so HRV plus resting HR / respiration / skin temp re-anchor);
-        // foldHistory drops every night before that epoch and re-seeds. Mirrors the iOS/Mac button.
-        SettingsSection(
-            icon = Icons.Filled.Favorite,
-            title = "Charge",
-            blurb = "Charge is Choop's daily readiness score, learned from your own HRV, resting heart rate and more over time. Your history stays.",
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Recalibrate Charge baseline", style = NoopType.subhead, color = Palette.textPrimary)
-                    Text(
-                        "Restarts the roughly 4-night build-up for Charge and your HRV baseline from tonight. Use it if a bad first week set your baseline off. Your history stays.",
-                        style = NoopType.footnote,
-                        color = Palette.textTertiary,
-                    )
-                }
-                NoopButton(
-                    text = "Recalibrate Charge baseline",
-                    leadingIcon = Icons.Filled.Autorenew,
-                    kind = NoopButtonKind.Secondary,
-                    fullWidth = true,
-                    modifier = Modifier.semantics { contentDescription = "Recalibrate Charge baseline" },
-                    onClick = { showRecalibrateConfirm = true },
-                )
-            }
-        }
-
-        if (showRecalibrateConfirm) {
-            AlertDialog(
-                onDismissRequest = { showRecalibrateConfirm = false },
-                containerColor = Palette.surfaceOverlay,
-                title = { Text("Recalibrate your Charge baseline?", style = NoopType.title2, color = Palette.textPrimary) },
-                text = {
-                    Text(
-                        "This restarts the roughly 4-night build-up for Charge and your HRV baseline. Your history stays. Use it if a bad first week, like wearing it while sick, set your baseline off.",
-                        style = NoopType.subhead,
-                        color = Palette.textSecondary,
-                    )
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            // Re-anchor EVERY baseline that feeds Charge — HRV plus resting HR /
-                            // respiration / skin temp — by writing now-seconds to BOTH shared epoch keys
-                            // (the EXACT same keys the iOS/Mac button + Baselines.foldHistory use), via
-                            // the single cross-platform source of truth. Stored as whole epoch SECONDS in
-                            // a Long (SharedPreferences has no putDouble; the readers do getLong→toDouble),
-                            // matching the "epoch SECONDS" the keys document. No stored day is deleted.
-                            val nowSeconds = System.currentTimeMillis() / 1000L
-                            val editor = NoopPrefs.of(context).edit()
-                            Baselines.recalibrateRecoveryBaselines(editor, nowSeconds)
-                            editor.apply()
-                            showRecalibrateConfirm = false
-                            // Nudge an immediate re-analyze so the change is felt now; the standing
-                            // 15-min analyze loop also re-runs foldHistory regardless. No-ops cleanly
-                            // when the strap isn't connected.
-                            vm.syncNow()
-                            Toast.makeText(
-                                context,
-                                "Charge baseline reset. Choop will re-learn it from tonight. Your history stays, and it takes a few nights to settle.",
-                                Toast.LENGTH_LONG,
-                            ).show()
-                        },
-                    ) { Text("Recalibrate", style = NoopType.body, color = Palette.accent) }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showRecalibrateConfirm = false }) {
-                        Text("Cancel", style = NoopType.body, color = Palette.textSecondary)
-                    }
-                },
-            )
-        }
-
-        SettingsSection(
-            icon = Icons.Filled.Storage,
-            title = "Backup & restore",
-            blurb = "Move all your Choop data to another phone. Export saves everything (history, sleeps, workouts, settings) to a single file you can copy across; import replaces this phone's data with a backup.",
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                // Three equal-width buttons share the row (each takes a third via weight) — mirrors the
-                // iOS Backup card's three fullWidth NoopButtonStyle buttons. The busy spinner sits BELOW
-                // the row (not inside it) so it never steals a button's share of the width.
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    NoopButton(
-                        text = "Export…",
-                        kind = NoopButtonKind.Primary,
-                        enabled = !backupBusy,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            backupBusy = true
-                            exportLauncher.launch("noop-backup-${java.time.LocalDate.now()}.noopbak")
-                        },
-                    )
-
-                    NoopButton(
-                        text = "Import…",
-                        kind = NoopButtonKind.Secondary,
-                        enabled = !backupBusy,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            backupBusy = true
-                            importLauncher.launch(arrayOf("*/*"))
-                        },
-                    )
-
-                    NoopButton(
-                        text = "Export CSV…",
-                        kind = NoopButtonKind.Secondary,
-                        enabled = !backupBusy,
-                        modifier = Modifier.weight(1f),
-                        onClick = {
-                            backupBusy = true
-                            csvExportLauncher.launch("noop-export-${java.time.LocalDate.now()}.zip")
-                        },
-                    )
-                }
-
-                if (backupBusy) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        CircularProgressIndicator(
-                            color = Palette.accent,
-                            strokeWidth = 2.dp,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Text("Working…", style = NoopType.footnote, color = Palette.textSecondary)
-                    }
-                }
-
-                NoteRow(
-                    icon = Icons.Filled.Info,
-                    iconTint = Palette.textTertiary,
-                    text = "Importing overwrites everything currently on this phone. Your old data is kept in a side file just in case. Choop needs a relaunch for an import to take effect. " +
-                        "Export CSV writes a WHOOP-format zip of your days, sleeps, workouts and journal that re-imports into Choop on Android or Mac. On-device computed rows are marked APPROXIMATE in its Source column; the .noopbak backup stays the lossless restore path.",
-                )
-            }
-        }
 
         // --- About ---
         SettingsSection(
