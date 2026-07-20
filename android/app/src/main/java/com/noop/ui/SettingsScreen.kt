@@ -318,6 +318,11 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     val scope = rememberCoroutineScope()
     val live by vm.live.collectAsStateWithLifecycle()
 
+    // Read-only profile handle — the Profile card moved to its own screen, but the Health & wellness
+    // "Cycle awareness" toggle still sex-gates on profile.sex (cycleOptInApplies). No rev/mutate here:
+    // this screen never edits the profile anymore.
+    val profile = remember { ProfileStore.from(context) }
+
     var backupBusy by remember { mutableStateOf(false) }
 
     // Re-scan must request the runtime Bluetooth permission before scanning — without this the
