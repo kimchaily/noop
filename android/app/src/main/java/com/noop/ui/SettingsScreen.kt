@@ -338,6 +338,10 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     // "How your scores work" explainer sheet, reachable any time from About (macOS/iOS parity).
     var showScoringGuide by remember { mutableStateOf(false) }
 
+    // "Today layout" editor (reorder / hide the Today sections) — opened from the Appearance card, writes
+    // TodaySectionPrefs; TodayScreen re-reads the layout on its next composition when you return to it.
+    var showTodayLayoutEditor by remember { mutableStateOf(false) }
+
     // "How Choop works" primer sheet (COMPONENT 5 of the explainability layer), reachable any time
     // from About — the plain-English tour of sleep sorting, scores, recording and provenance.
     var showHowNoopWorks by remember { mutableStateOf(false) }
@@ -650,6 +654,26 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     NoopPrefs.setVitalStateColours(context, it)
                 },
             )
+
+            RowDivider()
+            // Today layout — reorder / hide the top-level Today sections (TodaySectionPrefs). Opens the
+            // shared TodaySectionsEditorDialog; TodayScreen re-reads the layout when you return to it.
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Today layout", style = NoopType.body, color = Palette.textPrimary)
+                    Text(
+                        "Reorder or hide the sections on the Today screen — Score rings, Heart rate, Your cards, Synthesis, Recovery vitals, Key metrics, Workouts.",
+                        style = NoopType.footnote,
+                        color = Palette.textTertiary,
+                    )
+                }
+                NoopButton(
+                    text = "Customise Today layout",
+                    kind = NoopButtonKind.Secondary,
+                    fullWidth = true,
+                    onClick = { showTodayLayoutEditor = true },
+                )
+            }
 
             RowDivider()
             // Units — folded in from its own card. Display-only: nothing stored changes; Choop keeps
@@ -2098,6 +2122,19 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
 
         // What's new sheet, opened from the About row above. Full-screen Dialog so it
         // covers the whole screen like the macOS .sheet; closing just hides it.
+        // Today layout editor (reorder / hide Today sections), opened from the Appearance card. A compact
+        // dialog (not full-screen); on Done it writes TodaySectionPrefs and TodayScreen re-reads on return.
+        if (showTodayLayoutEditor) {
+            TodaySectionsEditorDialog(
+                initial = TodaySectionPrefs.enabled(context),
+                onDismiss = { showTodayLayoutEditor = false },
+                onSave = { sections ->
+                    TodaySectionPrefs.setEnabled(context, sections)
+                    showTodayLayoutEditor = false
+                },
+            )
+        }
+
         if (showWhatsNew) {
             Dialog(
                 onDismissRequest = { showWhatsNew = false },
