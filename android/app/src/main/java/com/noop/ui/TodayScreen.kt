@@ -1728,6 +1728,35 @@ private fun QuickActionDisc(onClick: () -> Unit) {
     }
 }
 
+/** The Today-header Settings gear — a direct hop to Settings. Styled like [QuickActionDisc] / the battery
+ *  ring (a translucent-white liquid disc + a crisp white glyph) so it reads on the day-of-sky and fits the
+ *  liquid header cluster across every theme, rather than a flat grey icon that only suits some palettes. */
+@Composable
+private fun SettingsDisc(onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        modifier = Modifier
+            .size(34.dp)
+            .liquidPress(interaction)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.16f))
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = onClick,
+            )
+            .semantics { contentDescription = "Settings" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Filled.Settings,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
 // MARK: - Scoring-guide affordances (ⓘ + first-run card)
 
 /**
@@ -1983,26 +2012,9 @@ private fun LiquidTodayHeader(
                 ProfileAvatar(size = 34.dp)
             }
             // (b2) Settings gear — a direct one-tap into Settings from the Today header, so you don't have to
-            // go via Profile or More. Pairs with the avatar: avatar → Profile, gear → Settings.
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onOpenSettings,
-                    )
-                    .semantics { contentDescription = "Settings" },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    Icons.Filled.Settings,
-                    contentDescription = null,
-                    tint = Palette.textSecondary,
-                    modifier = Modifier.size(22.dp),
-                )
-            }
+            // go via Profile or More. Pairs with the avatar: avatar → Profile, gear → Settings. Styled like
+            // the + / battery disc so it matches the liquid header across every theme (see SettingsDisc).
+            SettingsDisc(onClick = onOpenSettings)
             // (c) Quick-add (+), the accented primary. Mirrors iOS's LiquidAddButton (a glyph on a translucent
             // disc → the quick-actions menu). Sized 34dp to match the rest of the liquid cluster.
             QuickActionDisc(onClick = onQuickActions)
