@@ -533,15 +533,16 @@ fun TodayScreen(
     // existing RecoveryDriversSection (gated to the calibration countdown when the night can't score) plus
     // the folded Readiness card (S4). Not persisted, so it reopens closed. Mirrors iOS showChargeBreakdown.
     var showChargeBreakdown by remember { mutableStateOf(false) }
-    // LIVE SESSIONS (beta, default ON): the "Start session" entry under the hero + its full-screen Dialog
+    // LIVE SESSIONS (beta, default ON): the "Start session" entry in the Workouts area + its full-screen Dialog
     // (the same presentation the live-workout overlay / Charge breakdown use — deliberately NOT a nav
     // destination, so dismissing it leaves the session's runner coaching and this entry is the way back
-    // in). Gated on the Settings `live_sessions_beta` flag; SharedPreferences isn't reactive, so it's read
-    // once into local state like the hydration/day-cycle gates above. The ACTIVE runner is also collected
-    // here (null ↔ runner only — the per-second snapshot is scoped inside the entry card) so a running
-    // session keeps its way-back-in card even if the beta flag was just switched off.
+    // in). Gated on the Settings `live_sessions_beta` flag. Read FRESH each composition (not remembered):
+    // the toggle lives on the Settings screen, so a remembered read stayed stale until an app restart —
+    // the beta switch appeared not to work. A fresh read (a cheap pref lookup) means the recomposition on
+    // return from Settings picks up the change. The ACTIVE runner is also collected here (null ↔ runner
+    // only) so a running session keeps its way-back-in card even if the beta flag was just switched off.
     var showLiveSession by remember { mutableStateOf(false) }
-    val liveSessionsEnabled = remember { LiveSessionPrefs.enabled(context) }
+    val liveSessionsEnabled = LiveSessionPrefs.enabled(context)
     val activeLiveSession by LiveSessionRunner.active.collectAsStateWithLifecycle()
     // S4: the Synthesis card collapses to a one-liner that expands on tap (default collapsed). Mirrors iOS.
     var synthesisExpanded by remember { mutableStateOf(false) }
@@ -1190,26 +1191,6 @@ fun TodayScreen(
                         )
                     }
                     }
-                    // LIVE SESSIONS (beta): the compact "Start session · BETA" entry, directly under the hero. Today
-                    // only (offset 0 — a session is a now-thing), gated on the Settings beta flag; a RUNNING session
-                    // keeps the card visible regardless (it is the designed way back into the dismissed session dialog,
-                    // see LiveSessionRunner's lifetime note). The card swaps itself to "Session running" / "Session
-                    // ended" (it scopes the runner's per-second snapshot internally, like WorkoutInProgressCard's clock).
-                    if (selectedDayOffset == 0 && (liveSessionsEnabled || activeLiveSession != null)) {
-                        item {
-                            LiveSessionEntryCard(
-                                onOpen = {
-                                    // Only BEGIN when nothing is in flight: an active runner (running, or ended and
-                                    // holding its unseen summary) is simply re-presented, never displaced — so a tap
-                                    // can't silently discard a running session or a summary awaiting its "Done".
-                                    if (LiveSessionRunner.active.value == null) {
-                                        startOrResumeLiveSession(viewModel, context)
-                                    }
-                                    showLiveSession = true
-                                },
-                            )
-                        }
-                    }
                     // Honest "why is Effort 0?" caption (#482/#480), only when today's Effort is a real
                     // near-zero (HR present but never crossed the cardio zone), so a calm day reads as explained
                     // rather than broken. Mirrors the iOS effortZeroNote. A low-HR day honestly earns ~0.
@@ -1369,6 +1350,27 @@ fun TodayScreen(
                     }
                 }
                 TodaySection.WORKOUTS -> {
+                    // LIVE SESSIONS (beta): the compact "Start session · BETA" entry, at the top of the Workouts
+                    // area (moved here from under the hero — a session becomes a workout). Today only (offset 0 —
+                    // a session is a now-thing), gated on the Settings beta flag; a RUNNING session
+                    // keeps the card visible regardless (it is the designed way back into the dismissed session dialog,
+                    // see LiveSessionRunner's lifetime note). The card swaps itself to "Session running" / "Session
+                    // ended" (it scopes the runner's per-second snapshot internally, like WorkoutInProgressCard's clock).
+                    if (selectedDayOffset == 0 && (liveSessionsEnabled || activeLiveSession != null)) {
+                        item {
+                            LiveSessionEntryCard(
+                                onOpen = {
+                                    // Only BEGIN when nothing is in flight: an active runner (running, or ended and
+                                    // holding its unseen summary) is simply re-presented, never displaced — so a tap
+                                    // can't silently discard a running session or a summary awaiting its "Done".
+                                    if (LiveSessionRunner.active.value == null) {
+                                        startOrResumeLiveSession(viewModel, context)
+                                    }
+                                    showLiveSession = true
+                                },
+                            )
+                        }
+                    }
                     item {
                     // #991: same fix as the HR card — TodayWorkoutsSection emits header + card as two siblings, so a
                     // Box overlaid them. Stack them in a spaced Column.
@@ -1591,7 +1593,7 @@ private fun WorkoutInProgressCard(
 }
 
 /**
- * The compact Live Sessions entry under the hero ("Start session · BETA"). Three honest states off the
+ * The compact Live Sessions entry in the Workouts area ("Start session · BETA"). Three honest states off the
  * process-wide [LiveSessionRunner.active]: no session → start affordance; session running → the way back
  * into the dismissed session dialog (with a live elapsed clock); session ended but its summary not yet
  * Done-dismissed → "See the summary". The runner's 1 Hz snapshot is collected INSIDE this card only, so
