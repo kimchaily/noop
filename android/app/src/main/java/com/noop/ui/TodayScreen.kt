@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.TrackChanges
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Info
@@ -381,6 +382,11 @@ fun TodayScreen(
     // happens on another screen, so the recomposition when you navigate back to Today picks up the change.
     // SharedPreferences isn't reactive, and an activity ON_RESUME observer wouldn't fire on in-app nav.
     val enabledTodaySections = TodaySectionPrefs.enabled(context)
+
+    // Whether the support / donation surfaces show (Today header heart, Support card, donation nudge, and
+    // the More → Support entry). Default ON; edited in Settings → Appearance. Read fresh each composition
+    // (like the flags above) so toggling it in Settings takes effect on return to Today.
+    val showSupport = NoopPrefs.showSupport(context)
 
     // The pinned "Your cards" values (Stress / Fitness age / Vitality), surfaced on Today so the buried
     // Explore features sit on the home screen (#582). The same merged resolvedSeries reads their detail
@@ -1049,6 +1055,7 @@ fun TodayScreen(
                 onOpenSettings = onOpenSettings,
                 onOpenProfile = onOpenProfile,
                 onOpenDevices = onOpenDevices,
+                showSupport = showSupport,
             )
         }
         }
@@ -1390,12 +1397,12 @@ fun TodayScreen(
         if (selectedDayOffset == 0) {
             item { AutoWorkoutNudgeCard(viewModel = viewModel, days = days) }
         }
-        // Honest, dismissible 12-hourly donation ask, a card in the flow, never a dialog.
-        item { DonationNudgeCard() }
+        // Honest, dismissible 12-hourly donation ask, a card in the flow, never a dialog. Hidden with the
+        // rest of support/donation when the Settings toggle is off.
+        if (showSupport) item { DonationNudgeCard() }
         // Support, an in-content card (heart.fill in metricRose, "Donate or get in touch, totally
-        // optional.", chevron). The Support heart left the header cluster for parity with iOS, where
-        // Support is an in-flow supportRow near the donation nudge (still reachable via More → Support).
-        item { SupportRow(onSupport = onSupport) }
+        // optional.", chevron). Hidden with the rest of support/donation when the Settings toggle is off.
+        if (showSupport) item { SupportRow(onSupport = onSupport) }
         // Strap battery only while the link is up AND a real reading exists, a stale % from a
         // dropped connection must not present as live (#159).
         item {
@@ -1875,6 +1882,7 @@ private fun LiquidTodayHeader(
     onOpenSettings: () -> Unit,
     onOpenProfile: () -> Unit,
     onOpenDevices: () -> Unit,
+    showSupport: Boolean,
     modifier: Modifier = Modifier,
 ) {
     var showPicker by remember { mutableStateOf(false) }
@@ -1947,14 +1955,18 @@ private fun LiquidTodayHeader(
             )
         }
 
-        // RIGHT: the iOS four controls, in order — heart · avatar · + · battery ring. Each ~34dp, 8dp apart.
+        // RIGHT: the header controls, in order — heart · avatar · settings gear · + · battery ring. Each
+        // ~34dp, 8dp apart. The heart hides when support/donation is off; the gear is a direct hop to Settings.
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             // (a) Support / donate heart — a filled heart in the charge-green tint (iOS chargeColor). Choop is
-            // free forever; donations are optional. Mirrors iOS `heart.fill` → showSupport.
-            HeaderHeartButton(onSupport = onSupport)
+            // free forever; donations are optional. Hidden when the support/donation surfaces are turned
+            // off (Settings → Appearance → "Show support & donation").
+            if (showSupport) {
+                HeaderHeartButton(onSupport = onSupport)
+            }
             // (b) Profile avatar (the photo set on the Profile page, or the Choop loop mark) → Profile.
             Box(
                 modifier = Modifier
@@ -1969,6 +1981,27 @@ private fun LiquidTodayHeader(
                 contentAlignment = Alignment.Center,
             ) {
                 ProfileAvatar(size = 34.dp)
+            }
+            // (b2) Settings gear — a direct one-tap into Settings from the Today header, so you don't have to
+            // go via Profile or More. Pairs with the avatar: avatar → Profile, gear → Settings.
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onOpenSettings,
+                    )
+                    .semantics { contentDescription = "Settings" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Filled.Settings,
+                    contentDescription = null,
+                    tint = Palette.textSecondary,
+                    modifier = Modifier.size(22.dp),
+                )
             }
             // (c) Quick-add (+), the accented primary. Mirrors iOS's LiquidAddButton (a glyph on a translucent
             // disc → the quick-actions menu). Sized 34dp to match the rest of the liquid cluster.

@@ -254,6 +254,18 @@ object NoopPrefs {
         of(context).edit().putBoolean(KEY_VITAL_STATE_COLOURS, enabled).apply()
     }
 
+    /** Whether the support / donation surfaces show: the Today header heart, the Today Support card, the
+     *  donation-nudge card, and the More → Support entry. Default TRUE (unchanged behaviour); off hides
+     *  them all so nothing points at the Support page. */
+    const val KEY_SHOW_SUPPORT = "noop.showSupport"
+
+    fun showSupport(context: Context): Boolean =
+        of(context).getBoolean(KEY_SHOW_SUPPORT, true)
+
+    fun setShowSupport(context: Context, enabled: Boolean) {
+        of(context).edit().putBoolean(KEY_SHOW_SUPPORT, enabled).apply()
+    }
+
     /** Whether the strap log is mirrored to logcat. Default false (normal users don't log to adb). */
     fun debugLogging(context: Context): Boolean =
         of(context).getBoolean(KEY_DEBUG_LOGGING, false)
