@@ -648,6 +648,9 @@ private fun MoreScreen(onNavigate: (String) -> Unit) {
     // @AppStorage("more.expandedSections"). Seeded ONCE from the stored value so first run still shows the
     // Insights+Body default; every toggle writes through so the next visit reflects the saved state.
     val context = androidx.compose.ui.platform.LocalContext.current
+    // Support/donation off (Settings → Appearance) drops the More → Support entry too, so nothing points at
+    // the orphaned Support page. Read fresh each composition so a toggle in Settings shows on return here.
+    val showSupport = NoopPrefs.showSupport(context)
     val expanded = remember {
         val stored = MoreSectionPrefs.read(NoopPrefs.of(context), defaultExpandedHeaders())
         androidx.compose.runtime.mutableStateMapOf<String, Boolean>().apply {
@@ -676,11 +679,12 @@ private fun MoreScreen(onNavigate: (String) -> Unit) {
                     },
                 )
                 if (isOpen) {
+                    val items = group.items.filter { showSupport || it != Destination.Support }
                     NoopCard(padding = 0.dp) {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            group.items.forEachIndexed { i, dest ->
+                            items.forEachIndexed { i, dest ->
                                 MoreRow(dest = dest, onClick = { onNavigate(dest.route) })
-                                if (i < group.items.lastIndex) {
+                                if (i < items.lastIndex) {
                                     HorizontalDivider(
                                         color = Palette.hairline,
                                         modifier = Modifier.padding(start = 50.dp),

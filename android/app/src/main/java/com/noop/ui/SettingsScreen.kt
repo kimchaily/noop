@@ -432,6 +432,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     var rhythmEnabled by remember { mutableStateOf(RhythmConsent.isEnabled(context)) }
     var coachSignals by remember { mutableStateOf(NoopPrefs.coachSignals(context)) }
     var colourVitalsByState by remember { mutableStateOf(NoopPrefs.vitalStateColours(context)) }
+    var showSupportSurfaces by remember { mutableStateOf(NoopPrefs.showSupport(context)) }
     var autoDetectWorkouts by remember { mutableStateOf(NoopPrefs.autoDetectWorkouts(context)) }
     // Keep the screen on during a manual workout recording (#703), default OFF. The live-workout
     // screen reads this same "workoutKeepScreenOn" key. String shared verbatim with the iOS/Mac twin
@@ -674,6 +675,19 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     onClick = { showTodayLayoutEditor = true },
                 )
             }
+
+            RowDivider()
+            // Support & donation visibility — one switch for all of it (Today header heart, the Support
+            // card, the donation nudge, and the More → Support entry). On by default.
+            ToggleRow(
+                title = "Show support & donation",
+                detail = "Shows the support heart in the Today header, the Support card, the donation nudge, and the More → Support entry. Turn it off to hide all of them. On by default.",
+                checked = showSupportSurfaces,
+                onCheckedChange = {
+                    showSupportSurfaces = it
+                    NoopPrefs.setShowSupport(context, it)
+                },
+            )
 
             RowDivider()
             // Units — folded in from its own card. Display-only: nothing stored changes; Choop keeps
