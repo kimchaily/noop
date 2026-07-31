@@ -23,6 +23,21 @@ The text comes from the PR: its **title** becomes the headline, and the `- **Lea
 
 Do not skip step 3. **Previews come from branches; stable comes from `main`; `main` is only ever updated after a preview is approved.**
 
+## Bringing `main` into a branch — rebase, never a merge commit
+
+When a feature branch needs to pick up newer `main` — a merge-conflict notice, a "base branch recovered" notice, a stale branch before a preview cut, or just catching up — **rebase the branch onto `main`. Do not merge `main` into the branch.** Branch history stays linear and the diff stays exactly the branch's own work.
+
+```
+git fetch origin main
+git rebase origin/main            # resolve conflicts, git rebase --continue
+git push --force-with-lease -u origin <branch>
+```
+
+- **Always `--force-with-lease`**, never a bare `--force` — a rebase rewrites the branch's commits, so the push must be a forced update, and the lease is what stops it from clobbering someone else's push.
+- `git pull` on a feature branch means `git pull --rebase`. Never let it create a merge commit.
+- This applies to the `main` → branch direction only. Landing a finished branch **into** `main` is still a normal PR merge (step 4 of the release flow above) — don't rebase-push over `main`.
+- Fall back to a merge only when a rebase genuinely can't work — e.g. the branch has already been merged somewhere, or is shared and being built on by someone else — and say explicitly why the merge was used.
+
 ## Build / test notes
 
 - A full Gradle build does **not** run in the Claude Code sandbox — the Android Gradle Plugin can't be fetched through the agent proxy. Rely on a green CI run, not a local build. (Kotlin logic can still be reviewed and reasoned about locally, and pure functions verified by hand.)
