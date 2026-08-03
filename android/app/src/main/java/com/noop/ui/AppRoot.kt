@@ -281,7 +281,7 @@ fun AppRoot(
     val currentRoute = backStack?.destination?.route
     val current = Destination.forRoute(currentRoute)
 
-    // Home-screen launcher shortcut: MainActivity stages the requested route here (see ShortcutRoutes);
+    // Home-screen launcher shortcut: MainActivity stages the requested route here (see NoopShortcuts);
     // jump to it once, then clear the flag so a recomposition / config change can't re-fire the jump.
     // Uses the same top-level nav as the bottom bar, so the target reads as a normal tab switch.
     LaunchedEffect(deepLink?.value) {

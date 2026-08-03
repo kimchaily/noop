@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -60,6 +59,11 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         handleDeepLinkIntent(intent)
 
+        // Publish the long-press launcher shortcuts as DYNAMIC shortcuts (explicit intents to THIS app,
+        // so they never disambiguate against a side-by-side Choop/Choop Preview install). Idempotent and
+        // cheap; runs off the launch-critical path via runCatching so it can never block start.
+        runCatching { NoopShortcuts.publish(applicationContext) }
+
         // Demo build only: preload a full synthetic dataset so every screen is populated
         // out of the box (no strap, no import). No-op once seeded; never runs on the full app.
         if (BuildConfig.ENABLE_DEMO) {
@@ -114,7 +118,7 @@ class MainActivity : ComponentActivity() {
 
     /**
      * A launcher shortcut fired while this (singleTop) activity was already running is delivered here
-     * rather than starting a fresh instance. Keep [getIntent] in sync and route the new deep-link.
+     * rather than starting a fresh instance. Keep [getIntent] in sync and route the new shortcut.
      */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -122,10 +126,13 @@ class MainActivity : ComponentActivity() {
         handleDeepLinkIntent(intent)
     }
 
-    /** Resolve a shortcut deep-link on [intent] to a nav route and stage it for [AppRoot]. No-op for a
-     *  normal launch, an unknown URI, or before onboarding (there's no app shell to navigate into yet). */
+    /** Read the nav route a launcher shortcut requested (via [NoopShortcuts.EXTRA_ROUTE]) and stage it
+     *  for [AppRoot]. No-op for a normal launch, an unknown/unlisted route, or before onboarding (there's
+     *  no app shell to navigate into yet). The route is validated against the allow-list so a crafted
+     *  intent can't drive navigation anywhere arbitrary. */
     private fun handleDeepLinkIntent(intent: Intent?) {
-        val route = ShortcutRoutes.routeFor(intent?.data) ?: return
+        val route = intent?.getStringExtra(NoopShortcuts.EXTRA_ROUTE) ?: return
+        if (route !in NoopShortcuts.routes) return
         if (!NoopPrefs.of(this).getBoolean(NoopPrefs.KEY_ONBOARDED, false)) return
         pendingDeepLink.value = route
     }
@@ -147,25 +154,6 @@ class MainActivity : ComponentActivity() {
         }.toTypedArray()
 
         if (needed.isNotEmpty()) permissionLauncher.launch(needed)
-    }
-}
-
-/**
- * Maps a home-screen launcher shortcut deep-link ("noop://open/<key>", declared in res/xml/shortcuts.xml)
- * to the in-app nav route [AppRoot] understands. The target route ids are the stable `Destination.route`
- * strings; because that enum is private to AppRoot they are repeated here as literals, so this table and
- * the enum must be kept in step (each mapping notes its Destination for that reason).
- */
-internal object ShortcutRoutes {
-    fun routeFor(uri: Uri?): String? {
-        if (uri == null || uri.scheme != "noop" || uri.host != "open") return null
-        return when (uri.lastPathSegment) {
-            "live" -> "live"          // Destination.Live
-            "workouts" -> "workouts"  // Destination.Workouts
-            "journal" -> "insights"   // Destination.Insights — the journal lives on the Insights screen
-            "settings" -> "settings"  // Destination.Settings
-            else -> null
-        }
     }
 }
 

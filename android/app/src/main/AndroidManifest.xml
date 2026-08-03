@@ -164,18 +164,13 @@
                 <action android:name="androidx.health.connect.action.SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
             <!--
-              Home-screen shortcut deep-link. The launcher shortcuts (@xml/shortcuts) fire an implicit
-              VIEW intent with a "noop://open/<route>" URI; MainActivity reads the path and navigates
-              (see ShortcutRoutes). A custom scheme keeps this in-app and flavor-independent — no
-              applicationId is hardcoded, so full/demo/preview/.debug all resolve to this activity.
-              category.DEFAULT is required for the implicit VIEW intent to match; BROWSABLE is
-              deliberately omitted (these are app-owned shortcuts, not web links).
+              Home-screen shortcuts are published at runtime as DYNAMIC shortcuts (see NoopShortcuts),
+              each carrying an EXPLICIT Intent to this app's MainActivity. There is deliberately NO
+              static <meta-data android:name="android.app.shortcuts"> and no custom-scheme VIEW filter:
+              an implicit shortcut intent matched BOTH the stable and preview apps when installed side by
+              side, popping an "Open with Choop / Choop Preview" chooser. Explicit dynamic intents resolve
+              to the owning app only, so each app's shortcuts open that app.
             -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="noop" android:host="open" />
-            </intent-filter>
         </activity>
 
         <!--
@@ -197,11 +192,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Long-press launcher shortcuts. Declared on BOTH aliases because whichever one is
-                 enabled (App Icon setting) is the live home-screen entry the shortcuts hang off. -->
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
         </activity-alias>
 
         <activity-alias
@@ -216,10 +206,6 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Same shortcut set as .IconDefault, so long-press works with either app icon enabled. -->
-            <meta-data
-                android:name="android.app.shortcuts"
-                android:resource="@xml/shortcuts" />
         </activity-alias>
 
         <!-- Health Connect permissions-rationale route (Android 14+, platform Health Connect). -->
