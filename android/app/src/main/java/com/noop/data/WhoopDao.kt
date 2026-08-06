@@ -566,6 +566,31 @@ interface WhoopDao : DeviceRegistryDao {
     // #836: max raw-HR timestamp across all devices. Paired with countHr() as a cheap whole-history change
     // fingerprint so the 15-min idle rescore can skip when nothing new has landed (COALESCE → 0 when empty).
     @Query("SELECT COALESCE(MAX(ts), 0) FROM hrSample") suspend fun maxHrTs(): Long
+
+    /**
+     * Per-day input digest for one device's window: how many raw rows, their edge timestamps, and a
+     * checksum of the values. Aggregates only — SQLite answers these from the (deviceId, ts) index
+     * without handing a single row to the app, which is what makes it cheap enough to run per day on
+     * every pass. Compare it against the digest stored when the day was last scored: equal means that
+     * day's inputs cannot have changed, so re-deriving it from raw would reproduce the same numbers.
+     *
+     * The value checksum matters as much as the count: a re-import that CORRECTS bpm in place leaves
+     * both the row count and the edge timestamps untouched, and a count-only digest would call that
+     * day unchanged and keep serving the stale score.
+     */
+    @Query(
+        "SELECT COUNT(*) || ':' || COALESCE(MIN(ts), 0) || ':' || COALESCE(MAX(ts), 0) || ':' || " +
+            "COALESCE(SUM(bpm), 0) FROM hrSample WHERE deviceId = :deviceId AND ts BETWEEN :from AND :to",
+    )
+    suspend fun hrDayDigest(deviceId: String, from: Long, to: Long): String
+
+    /** The gravity twin of [hrDayDigest]. Sleep staging reads motion, so a day whose HR is untouched but
+     *  whose motion changed can still stage differently and produce a different HRV/resting HR. */
+    @Query(
+        "SELECT COUNT(*) || ':' || COALESCE(MIN(ts), 0) || ':' || COALESCE(MAX(ts), 0) FROM " +
+            "gravitySample WHERE deviceId = :deviceId AND ts BETWEEN :from AND :to",
+    )
+    suspend fun gravityDayDigest(deviceId: String, from: Long, to: Long): String
     @Query("SELECT COUNT(*) FROM rrInterval") suspend fun countRr(): Int
     @Query("SELECT COUNT(*) FROM event") suspend fun countEvents(): Int
     @Query("SELECT COUNT(*) FROM battery") suspend fun countBattery(): Int

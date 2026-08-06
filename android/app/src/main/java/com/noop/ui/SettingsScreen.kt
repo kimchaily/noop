@@ -95,7 +95,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.noop.BuildConfig
 import com.noop.analytics.Baselines
-import com.noop.analytics.IntelligenceEngine
+import com.noop.analytics.ScoringFingerprint
 import com.noop.analytics.Zones
 import com.noop.ble.PuffinExperiment
 import com.noop.ble.WhoopModel
@@ -2804,9 +2804,8 @@ private fun AttributionRow(repo: String, note: String) {
  */
 private fun chargeRescoreStatusLine(context: android.content.Context, running: Boolean): String {
     if (running) return "Recalculating your history now…"
-    val done = NoopPrefs.chargeRescoreCompletedVersion(context)
     val at = NoopPrefs.chargeRescoreCompletedAt(context)
-    if (done < IntelligenceEngine.SCORING_VERSION) {
+    if (!NoopPrefs.chargeRescoreUpToDate(context, ScoringFingerprint.value)) {
         // Either never run, or run at an older scoring version — both mean older days may still carry
         // numbers the current algorithm would not produce.
         return "Your history has not been rebuilt for the current scoring yet."

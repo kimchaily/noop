@@ -15,6 +15,7 @@ import com.noop.analytics.IllnessWatch
 import com.noop.analytics.IntelligenceEngine
 import com.noop.analytics.V5HealthSignals
 import com.noop.analytics.RegistryDayOwnerSource
+import com.noop.analytics.ScoringFingerprint
 import com.noop.analytics.RestScorer
 import com.noop.analytics.RouteMath
 import com.noop.analytics.SleepMark
@@ -725,11 +726,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     // stored history is brought onto the new definition exactly once per version. The old
                     // boolean fired on the build that introduced it and then swallowed every later fix.
                     flagGet = {
-                        NoopPrefs.chargeRescoreUpToDate(appContext, IntelligenceEngine.SCORING_VERSION)
+                        NoopPrefs.chargeRescoreUpToDate(appContext, ScoringFingerprint.value)
                     },
                     flagSet = {
                         NoopPrefs.setChargeRescoreCompleted(
-                            appContext, IntelligenceEngine.SCORING_VERSION,
+                            appContext, IntelligenceEngine.SCORING_VERSION, ScoringFingerprint.value,
                             System.currentTimeMillis() / 1000L,
                         )
                     },
@@ -813,6 +814,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         diag = { line -> ble.externalLog(line) },
                         // Opt-in experimental sleep staging (V2) — read off SharedPreferences here (the
                         // analytics layer is Context-free) and thread it into the sleep self-heal. (V7 3b)
+                        // Skip days whose inputs provably did not move (battery): in the steady state
+                        // that leaves one day instead of twenty-one.
+                        digestGet = ::dayDigestGet,
+                        digestPut = ::dayDigestPut,
                         useExperimentalSleepV2 = PuffinExperiment.from(appContext).experimentalSleepV2,
                         // Sleep & Rest test mode (Test Centre E5): when the SLEEP domain is on, route the
                         // per-day sleep gate trace into the SAME shareable strap log, tagged .sleep so it
@@ -1342,11 +1347,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     importedDeviceId = deviceId,
                     maxHROverride = profileStore.hrMaxOverride.takeIf { it > 0 }?.toDouble(),
                     flagGet = {
-                        NoopPrefs.chargeRescoreUpToDate(appContext, IntelligenceEngine.SCORING_VERSION)
+                        NoopPrefs.chargeRescoreUpToDate(appContext, ScoringFingerprint.value)
                     },
                     flagSet = {
                         NoopPrefs.setChargeRescoreCompleted(
-                            appContext, IntelligenceEngine.SCORING_VERSION,
+                            appContext, IntelligenceEngine.SCORING_VERSION, ScoringFingerprint.value,
                             System.currentTimeMillis() / 1000L,
                         )
                     },
@@ -1361,6 +1366,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 .isSuccess
             onDone(ok)
         }
+    }
+
+    /**
+     * Per-day input digests for the analyze pass, in their own preferences file.
+     *
+     * A day whose digest is unchanged cannot score differently, so the pass skips re-deriving it. Kept
+     * out of the main preferences file because the entries are per-day and accumulate (~365 a year);
+     * mixing them into settings would bloat a file the app reads on every launch.
+     */
+    private val dayDigests by lazy {
+        appContext.getSharedPreferences("noop.dayDigests", android.content.Context.MODE_PRIVATE)
+    }
+
+    private fun dayDigestGet(day: String): String? = dayDigests.getString(day, null)
+
+    private fun dayDigestPut(day: String, digest: String) {
+        dayDigests.edit().putString(day, digest).apply()
     }
 
     /** Re-read every source + the dismissed markers and republish [workouts]. */

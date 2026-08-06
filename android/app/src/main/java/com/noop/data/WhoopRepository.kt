@@ -221,6 +221,29 @@ class WhoopRepository(private val dao: WhoopDao) {
      *  moves it (count or maxTs), so a real change always rescores; mirrors Swift WhoopStore.hrFingerprint. */
     suspend fun hrFingerprint(): String = "${dao.countHr()}:${dao.maxHrTs()}"
 
+    /**
+     * Digest of everything a single day's scoring reads from raw, for [deviceId] over [from]..[to].
+     *
+     * Purpose: decide whether a day needs re-deriving at all. The engine used to re-read ~10 streams for
+     * every day in its window on every pass — at 1 Hz that is over a million rows every fifteen minutes,
+     * essentially all of it to recompute numbers that could not have changed. This answers "did this
+     * day's inputs move?" from index-backed aggregates, without transferring a row.
+     *
+     * Covers HR (the dominant driver, with a value checksum so a corrected re-import is not mistaken for
+     * no change) and gravity (staging reads motion, so it can shift a night's HRV without touching HR).
+     * Deliberately NOT a full hash of every stream: this is a change DETECTOR guarding a recomputation,
+     * and its failure mode is bounded — a missed change means one stale day until anything else in the
+     * window moves, not a wrong number forever.
+     */
+    suspend fun dayInputDigest(deviceId: String, from: Long, to: Long): String =
+        "${dao.hrDayDigest(deviceId, from, to)}|${dao.gravityDayDigest(deviceId, from, to)}"
+
+    /** [dayInputDigest] across BOTH strap lineages. A day's raw can sit under either id (the "Make
+     *  active" split), so a digest over one alone would call a day unchanged while the other lineage
+     *  gained rows — the same blind spot that let pre-switch nights vanish from the baseline. */
+    suspend fun dayInputDigestUnion(activeDeviceId: String, from: Long, to: Long): String =
+        importedSourceIds(activeDeviceId).joinToString("|") { dayInputDigest(it, from, to) }
+
     // MARK: - Server-derived caches (latest value wins on conflict)
 
     suspend fun upsertDailyMetrics(days: List<DailyMetric>) = dao.upsertDailyMetrics(days)
