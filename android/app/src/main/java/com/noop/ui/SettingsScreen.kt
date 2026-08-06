@@ -377,6 +377,13 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     // that feeds Charge from tonight onward; the standing analyze loop picks it up on its next pass.
     // Fixes a baseline poisoned by a bad first week (worn sick, or early nights that anchored too high).
     var showRecalibrateConfirm by remember { mutableStateOf(false) }
+    // The Charge baseline start date, mirrored into snapshot state because SharedPreferences is not
+    // reactive: every button below writes the pref AND this, so the status line can never disagree
+    // with what is actually stored.
+    var chargeAnchorSeconds by remember {
+        mutableStateOf(NoopPrefs.of(context).getLong(Baselines.hrvBaselineEpochKey, 0L))
+    }
+    var showAnchorDatePicker by remember { mutableStateOf(false) }
 
     // Whether the "Advanced" disclosure (experimental probes, diagnostics, raw-sensor export, Trends
     // report) is expanded. Default FALSE so a first-run user lands on the everyday sections instead of
@@ -1340,22 +1347,81 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
             blurb = "Charge is Choop's daily readiness score, learned from your own HRV, resting heart rate and more over time. Your history stays.",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // THE ANCHOR, made visible and reversible. It used to be a one-way button: tapping
+                // Recalibrate silently wrote "now" into two preference keys, and afterwards there was no
+                // way to see what it had done, move it, or undo it — a Charge that stayed low for weeks
+                // was indistinguishable from a Charge that was low because of one bad Tuesday. The
+                // anchor never deletes a night; it only moves where the average STARTS, so showing it and
+                // letting it be moved or removed costs nothing and can lose nothing.
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Recalibrate Charge baseline", style = NoopType.subhead, color = Palette.textPrimary)
+                    Text("Baseline start", style = NoopType.subhead, color = Palette.textPrimary)
                     Text(
-                        "Restarts the roughly 4-night build-up for Charge and your HRV baseline from tonight. Use it if a bad first week set your baseline off. Your history stays.",
+                        baselineAnchorLine(chargeAnchorSeconds),
+                        style = NoopType.footnote,
+                        color = Palette.textSecondary,
+                    )
+                    Text(
+                        "Charge compares each night with your own recent nights. The start date says how " +
+                            "far back that comparison reaches. Nights before it are still recorded and " +
+                            "still shown; they just don't count towards the average.",
                         style = NoopType.footnote,
                         color = Palette.textTertiary,
                     )
                 }
                 NoopButton(
-                    text = "Recalibrate Charge baseline",
+                    text = "Start from tonight",
                     leadingIcon = Icons.Filled.Autorenew,
                     kind = NoopButtonKind.Secondary,
                     fullWidth = true,
                     modifier = Modifier.semantics { contentDescription = "Recalibrate Charge baseline" },
                     onClick = { showRecalibrateConfirm = true },
                 )
+                NoopButton(
+                    text = "Start from a date…",
+                    leadingIcon = Icons.Filled.Autorenew,
+                    kind = NoopButtonKind.Secondary,
+                    fullWidth = true,
+                    onClick = { showAnchorDatePicker = true },
+                )
+                NoopButton(
+                    text = "Use only the last 30 nights",
+                    leadingIcon = Icons.Filled.Autorenew,
+                    kind = NoopButtonKind.Secondary,
+                    fullWidth = true,
+                    onClick = {
+                        // Not a separate mechanism — "seed from recent nights" IS the anchor placed 30
+                        // days back. Saying it in one sentence beats a second concept doing the same job.
+                        setChargeAnchor(
+                            context,
+                            java.time.LocalDate.now().minusDays(30)
+                                .atStartOfDay(java.time.ZoneId.systemDefault()).toEpochSecond(),
+                        )
+                        chargeAnchorSeconds = NoopPrefs.of(context)
+                            .getLong(Baselines.hrvBaselineEpochKey, 0L)
+                        vm.recalculateAllCharge()
+                    },
+                )
+                if (chargeAnchorSeconds > 0L) {
+                    NoopButton(
+                        text = "Remove the start date",
+                        leadingIcon = Icons.Filled.Restore,
+                        kind = NoopButtonKind.Secondary,
+                        fullWidth = true,
+                        onClick = {
+                            val editor = NoopPrefs.of(context).edit()
+                            Baselines.clearRecoveryBaselineAnchor(editor)
+                            editor.apply()
+                            chargeAnchorSeconds = 0L
+                            vm.recalculateAllCharge()
+                        },
+                    )
+                    Text(
+                        "Removing it puts every night you have ever recorded back into the average. " +
+                            "Nothing has to be recovered — no night was ever deleted.",
+                        style = NoopType.footnote,
+                        color = Palette.textTertiary,
+                    )
+                }
                 // Rebuild the WHOLE Charge history on the current algorithm. Distinct from Recalibrate
                 // above: this does NOT move the baseline anchor or restart the build-up — it re-scores
                 // every day you have raw data for against the baseline as it stood before that night. A
@@ -1390,14 +1456,50 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
             }
         }
 
+        // Pick any past date as the baseline start. Capped at today: a future start would mean the
+        // average reaches back to nothing at all, which is not a state worth being able to reach.
+        if (showAnchorDatePicker) {
+            val cal = java.util.Calendar.getInstance().apply {
+                if (chargeAnchorSeconds > 0L) timeInMillis = chargeAnchorSeconds * 1000L
+            }
+            DisposableEffect(Unit) {
+                val dialog = android.app.DatePickerDialog(
+                    context,
+                    { _, year, month, day ->
+                        setChargeAnchor(
+                            context,
+                            java.time.LocalDate.of(year, month + 1, day)
+                                .atStartOfDay(java.time.ZoneId.systemDefault()).toEpochSecond(),
+                        )
+                        chargeAnchorSeconds = NoopPrefs.of(context)
+                            .getLong(Baselines.hrvBaselineEpochKey, 0L)
+                        showAnchorDatePicker = false
+                        vm.recalculateAllCharge()
+                    },
+                    cal.get(java.util.Calendar.YEAR),
+                    cal.get(java.util.Calendar.MONTH),
+                    cal.get(java.util.Calendar.DAY_OF_MONTH),
+                ).apply {
+                    datePicker.maxDate = System.currentTimeMillis()
+                    setOnDismissListener { showAnchorDatePicker = false }
+                }
+                dialog.show()
+                onDispose { runCatching { dialog.dismiss() } }
+            }
+        }
+
         if (showRecalibrateConfirm) {
             AlertDialog(
                 onDismissRequest = { showRecalibrateConfirm = false },
                 containerColor = Palette.surfaceOverlay,
-                title = { Text("Recalibrate your Charge baseline?", style = NoopType.title2, color = Palette.textPrimary) },
+                title = { Text("Start the baseline from tonight?", style = NoopType.title2, color = Palette.textPrimary) },
                 text = {
                     Text(
-                        "This restarts the roughly 4-night build-up for Charge and your HRV baseline. Your history stays. Use it if a bad first week, like wearing it while sick, set your baseline off.",
+                        "Charge will compare you only with nights from tonight onward, so it needs about " +
+                            "four nights before it can score again. Use this if a bad stretch - worn while " +
+                            "ill, say - set your baseline off. Nothing is deleted: every earlier night " +
+                            "stays recorded and still shows in Trends, and you can remove the start date " +
+                            "again at any time to bring them all back into the average.",
                         style = NoopType.subhead,
                         color = Palette.textSecondary,
                     )
@@ -1415,6 +1517,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                             val editor = NoopPrefs.of(context).edit()
                             Baselines.recalibrateRecoveryBaselines(editor, nowSeconds)
                             editor.apply()
+                            chargeAnchorSeconds = nowSeconds
                             showRecalibrateConfirm = false
                             // Nudge an immediate re-analyze so the change is felt now; the standing
                             // 15-min analyze loop also re-runs foldHistory regardless. No-ops cleanly
@@ -1422,11 +1525,11 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                             vm.syncNow()
                             Toast.makeText(
                                 context,
-                                "Charge baseline reset. Choop will re-learn it from tonight. Your history stays, and it takes a few nights to settle.",
+                                "Baseline start set to tonight. Your history stays; Charge takes a few nights to settle.",
                                 Toast.LENGTH_LONG,
                             ).show()
                         },
-                    ) { Text("Recalibrate", style = NoopType.body, color = Palette.accent) }
+                    ) { Text("Start from tonight", style = NoopType.body, color = Palette.accent) }
                 },
                 dismissButton = {
                     TextButton(onClick = { showRecalibrateConfirm = false }) {
@@ -2825,4 +2928,35 @@ private fun chargeRescoreStatusLine(context: android.content.Context, running: B
         .atZone(java.time.ZoneId.systemDefault())
         .format(java.time.format.DateTimeFormatter.ofPattern("d MMM, HH:mm", java.util.Locale.getDefault()))
     return "Last rebuilt $stamp — up to date with the current scoring."
+}
+
+/**
+ * Write the Charge baseline start date (epoch SECONDS, whole) to both anchor keys at once.
+ *
+ * Both keys, always: HRV re-anchors on its own epoch and resting HR / respiration / skin temp on the
+ * other, so setting one alone would leave Charge comparing its biggest term against one stretch of
+ * history and the rest against another. [Baselines.recalibrateRecoveryBaselines] is the single place
+ * that knows that, so this goes through it rather than touching the preferences directly.
+ */
+private fun setChargeAnchor(context: android.content.Context, seconds: Long) {
+    val editor = NoopPrefs.of(context).edit()
+    Baselines.recalibrateRecoveryBaselines(editor, seconds)
+    editor.apply()
+}
+
+/**
+ * The one-line answer to "how far back does my Charge comparison reach?".
+ *
+ * Says the date AND what it means, because the date alone is meaningless to anyone who has not read
+ * how the baseline works. The no-anchor case is stated positively — "every night counts" — rather
+ * than as an absence, because that IS the normal, healthy state.
+ */
+private fun baselineAnchorLine(anchorSeconds: Long): String {
+    if (anchorSeconds <= 0L) return "No start date set - every night you have recorded counts."
+    val date = java.time.Instant.ofEpochSecond(anchorSeconds)
+        .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+    val nights = java.time.temporal.ChronoUnit.DAYS.between(date, java.time.LocalDate.now())
+        .coerceAtLeast(0L)
+    val shown = date.format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy"))
+    return "Counting nights from $shown - about $nights night${if (nights == 1L) "" else "s"} so far."
 }
