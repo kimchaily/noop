@@ -310,6 +310,30 @@ interface WhoopDao : DeviceRegistryDao {
     @Query("DELETE FROM dailyMetric WHERE deviceId = :deviceId AND day >= :from AND day <= :to")
     suspend fun deleteDailyMetricsInRange(deviceId: String, from: String, to: String)
 
+    /**
+     * Clear a computed day-range and write the replacement rows AS ONE TRANSACTION.
+     *
+     * The scoring pass used to do these as two separate calls. Anything that killed the process in
+     * between — a force-quit, the system reclaiming memory, an exception — left the days deleted with
+     * nothing to put them back. That alone was recoverable, because scores are derived and the next pass
+     * would rebuild them. It stopped being recoverable once passes learned to skip unchanged days: the
+     * per-day digests are written only AFTER a successful upsert, so a crash in the gap leaves the OLD
+     * digests in place, still matching the untouched raw data. The next pass then sees "nothing changed
+     * here", skips those days, and the hole never fills.
+     *
+     * One transaction removes the gap entirely: either the range is replaced or it is left alone.
+     */
+    @Transaction
+    suspend fun replaceDailyMetricsInRange(
+        deviceId: String,
+        from: String,
+        to: String,
+        rows: List<DailyMetric>,
+    ) {
+        deleteDailyMetricsInRange(deviceId, from, to)
+        if (rows.isNotEmpty()) upsertDailyMetrics(rows)
+    }
+
     /** All cached daily metrics for a device, oldest first. Convenience for analytics windows. */
     @Query("SELECT * FROM dailyMetric WHERE deviceId = :deviceId ORDER BY day ASC")
     suspend fun days(deviceId: String): List<DailyMetric>
