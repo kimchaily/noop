@@ -105,6 +105,31 @@ object IntelligenceEngine {
      *  consumed by pass 2's universal dayOwner emit. */
     private data class OwnerRead(val owner: String, val hrRows: Int)
 
+    /**
+     * What one analyse pass actually did, for the in-app diagnostics view.
+     *
+     * Exists because "did anything get recalculated, and when?" was answerable only by reading the strap
+     * log — and only if the log happened to be on. This is the same information as the `rescore …` diag
+     * line, but structured, so the app can show it as a plain sentence.
+     *
+     * Fired ONCE per pass, and only AFTER the rows are in the store: a report emitted earlier would claim
+     * work that a crash in between never did. A pass that found nothing to do still reports, with
+     * [scored] = 0 — "nothing changed, so nothing was recomputed" is an answer, not silence.
+     *
+     * Note that Charge, Effort, Rest and the sleep staging all come out of this ONE pass. There is no
+     * separate per-area engine, so these counts describe all four at once.
+     */
+    data class PassReport(
+        /** How many trailing days the pass was allowed to look at. */
+        val windowDays: Int,
+        /** Days actually re-derived and written. */
+        val scored: Int,
+        /** Days left alone because their inputs provably could not have changed. */
+        val skipped: Int,
+        /** Earliest day the pass re-derived from, or null when nothing had changed. */
+        val fromDay: String?,
+    )
+
     /** Summary of one scored day (for logging / a future on-device intelligence screen). */
     data class Computed(
         val day: String,
@@ -211,6 +236,11 @@ object IntelligenceEngine {
         // Per-day input digests (see analyzeRecentOnCpu). Defaults reproduce the old full-window pass.
         digestGet: (String) -> String? = { null },
         digestPut: (String, String) -> Unit = { _, _ -> },
+        // Structured "what did this pass actually do" report, for the in-app diagnostics view. Fired ONCE
+        // per pass, after the rows are written (see [PassReport]). Default no-op, so nothing changes for
+        // callers that do not keep a journal. NOT the same as [diag]: that is a free-text log line for a
+        // bug report, this is the record the user reads in the app.
+        passReport: (PassReport) -> Unit = {},
     ): List<Computed> = withContext(Dispatchers.Default) {
         // Serialise the whole pass so overlapping callers never run two rescores in parallel (see
         // [analyzeGate]). The heavy scoring already ran off the caller's thread via withContext above; the
@@ -219,7 +249,7 @@ object IntelligenceEngine {
             val (out, healed) = analyzeRecentOnCpu(repo, profile, maxDays, importedDeviceId, maxHROverride,
                 nowSeconds, ownerSource, manualStepCoefficient, persistStepsCalibration, baselineEpoch,
                 recoveryEpoch, diag, useExperimentalSleepV2, sleepTraceSink, recoveryTraceSink, stepsTraceSink,
-                universalSink, workoutsTraceSink, digestGet, digestPut)
+                universalSink, workoutsTraceSink, digestGet, digestPut, passReport)
             if (healed == 0) out
             // #899 heal re-pass: the pass above deleted overlapping duplicate sleep sessions AFTER its days
             // were scored, and the read-side dedup those days consumed had no bank-recency witness (the fresh
@@ -229,7 +259,7 @@ object IntelligenceEngine {
             else analyzeRecentOnCpu(repo, profile, maxDays, importedDeviceId, maxHROverride,
                 nowSeconds, ownerSource, manualStepCoefficient, persistStepsCalibration, baselineEpoch,
                 recoveryEpoch, diag, useExperimentalSleepV2, sleepTraceSink, recoveryTraceSink, stepsTraceSink,
-                universalSink, workoutsTraceSink, digestGet, digestPut).first
+                universalSink, workoutsTraceSink, digestGet, digestPut, passReport).first
         }
     }
 
@@ -332,6 +362,8 @@ object IntelligenceEngine {
         baselineEpoch: Double = 0.0,
         recoveryEpoch: Double = 0.0,
         ownerSource: DayOwnerSource? = null,
+        // Journal hook, so a manual full rebuild shows up in the diagnostics view like any other pass.
+        passReport: (PassReport) -> Unit = {},
     ) {
         if (!force && flagGet()) return
         analyzeRecent(
@@ -348,6 +380,7 @@ object IntelligenceEngine {
             // user explicitly reset and silently undo their recalibration.
             baselineEpoch = baselineEpoch,
             recoveryEpoch = recoveryEpoch,
+            passReport = passReport,
         )
         flagSet()
     }
@@ -392,6 +425,8 @@ object IntelligenceEngine {
         // Context-aware caller opts in by supplying a persistent store.
         digestGet: (String) -> String? = { null },
         digestPut: (String, String) -> Unit = { _, _ -> },
+        // See the public overload. Fired once per pass, after the write.
+        passReport: (PassReport) -> Unit = {},
         // #899 heal re-pass: the second component of the return is how many overlapping duplicate sleep
         // sessions the heal below deleted this pass. The public wrapper re-runs ONCE when it is non-zero
         // so the affected days re-score against the cleaned store.
@@ -537,12 +572,17 @@ object IntelligenceEngine {
         // minutes to arrive back at the numbers already on screen.
         if (earliestChangedDay == null && digestByDay.isNotEmpty()) {
             diag("rescore skipped=${digestByDay.size} scored=0 reason=noInputChange")
+            passReport(PassReport(windowDays = maxDays, scored = 0, skipped = digestByDay.size, fromDay = null))
             return emptyList<Computed>() to 0
         }
         if (digestByDay.isNotEmpty()) {
             val skipped = digestByDay.keys.count { it < earliestChangedDay!! }
             diag("rescore skipped=$skipped scored=${digestByDay.size - skipped} from=$earliestChangedDay")
         }
+        // Reported at the END of the pass (below), not here: a report emitted now would claim work that a
+        // crash between here and the write never actually did.
+        val plannedSkipped =
+            if (digestByDay.isEmpty()) 0 else digestByDay.keys.count { it < earliestChangedDay!! }
 
         for (offset in 0 until maxDays) {
             val dayStart = nowLocalMidnight - offset * SECONDS_PER_DAY
@@ -1091,6 +1131,17 @@ object IntelligenceEngine {
         // actually re-derived; a skipped day keeps the digest it already had, which is still accurate
         // because its inputs are what made it skippable.
         for (d in dailies) digestByDay[d.day]?.let { digestPut(d.day, it) }
+
+        // Same reasoning as the digests: report only once the rows are actually in the store, so the
+        // journal the user reads can never claim a pass that did not land.
+        passReport(
+            PassReport(
+                windowDays = maxDays,
+                scored = dailies.size,
+                skipped = plannedSkipped,
+                fromDay = earliestChangedDay,
+            ),
+        )
 
         // ── Fitness Age (Phase 2) , weekly, keyed to the week's Saturday ──
         val fa7 = dailies.sortedBy { it.day }.takeLast(7)

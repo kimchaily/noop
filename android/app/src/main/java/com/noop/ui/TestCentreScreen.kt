@@ -52,11 +52,14 @@ import com.noop.testcentre.TestReportLink
 import kotlinx.coroutines.launch
 
 /**
- * Settings -> Test Centre (spec section 7), the Android twin of TestCentreView. Four sections: domain
- * test modes (rendered from the registry projection), diagnostic tools, export and auto-export, and
- * advanced/experimental. A NEW file because SettingsScreen.kt (132 KB) cannot grow. Section 1 renders
- * from TestCentreLayout.visibleModes; sections 2 to 4 re-host the same strap-log / recalibrate /
- * scheduled-export / experimental controls on the same bindings the Settings cards use. No em-dash.
+ * Settings -> Test Centre (spec section 7), the Android twin of TestCentreView. Five sections: domain
+ * test modes (rendered from the registry projection), what was calculated and when, diagnostic tools,
+ * export and auto-export, and advanced/experimental. A NEW file because SettingsScreen.kt (132 KB)
+ * cannot grow. Section 1 renders from TestCentreLayout.visibleModes; sections 3 to 5 re-host the same
+ * strap-log / recalibrate / scheduled-export / experimental controls on the same bindings the Settings
+ * cards use. Section 2 is the only one with no Settings twin: it reads the AnalyzeJournal, which exists
+ * because the scoring pass now skips work on purpose and "nothing happened" needed to be
+ * distinguishable from "nothing needed to happen". No em-dash.
  */
 @Composable
 fun TestCentreScreen(vm: AppViewModel) {
@@ -151,10 +154,13 @@ fun TestCentreScreen(vm: AppViewModel) {
             }
         }
 
-        // --- Section 2: Diagnostic tools ---
+        // --- Section 2: What was calculated, when ---
+        CalculationsCard(vm)
+
+        // --- Section 3: Diagnostic tools ---
         DiagnosticToolsCard(vm)
 
-        // --- Section 3: Export and auto-export ---
+        // --- Section 4: Export and auto-export ---
         ExportCard(
             vm = vm,
             onReport = {
@@ -163,7 +169,7 @@ fun TestCentreScreen(vm: AppViewModel) {
             },
         )
 
-        // --- Section 4: Advanced / experimental ---
+        // --- Section 5: Advanced / experimental ---
         AdvancedCard(vm, is5MG)
     }
 
@@ -308,6 +314,139 @@ private fun TestModeRow(
                 Text("Report", color = Palette.accent, style = NoopType.body)
             }
         }
+    }
+}
+
+/**
+ * "What was calculated, and when" — plus the two honest ways to make it happen again.
+ *
+ * The scoring pass deliberately became quiet: it now leaves alone every day whose inputs provably could
+ * not have changed. That is what stopped it re-reading three weeks of data every fifteen minutes, but it
+ * also made "nothing happened" and "nothing needed to happen" look identical from outside. This card is
+ * the difference between the two, in the app rather than in a log file nobody has switched on.
+ *
+ * ONE PASS, FOUR SCORES. Charge, Effort, Rest and the sleep staging are not separate engines — they all
+ * come out of the same per-day analysis. So there is no per-area retrigger to offer, and pretending
+ * otherwise with four buttons that all do the same thing would be a lie. The card says so, and offers
+ * the two things that genuinely differ: how far back to go.
+ */
+@Composable
+private fun CalculationsCard(vm: AppViewModel) {
+    val context = LocalContext.current
+    val backgroundActions by vm.backgroundActions.collectAsStateWithLifecycle()
+    val days by vm.recentDays.collectAsStateWithLifecycle()
+    // Re-read the journal whenever a pass finishes. SharedPreferences is not reactive, so the running-set
+    // of background actions is the trigger: it changes on every begin and every finish.
+    val entries = remember(backgroundActions, days) { AnalyzeJournal.read(context) }
+
+    val recentBusy = backgroundActions.any {
+        it.running && it.id == AppViewModel.ActionIds.RECENT_RESCORE
+    }
+    val fullBusy = backgroundActions.any {
+        it.running && it.id == AppViewModel.ActionIds.CHARGE_RESCORE
+    }
+
+    SettingsSectionTC(
+        icon = Icons.Filled.Autorenew,
+        title = "What was calculated",
+        blurb = "Choop only recalculates a day when that day's data actually moved. This is the record of what it did, and when.",
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // Coverage: how much of the visible history carries each score. A gap here is the thing worth
+            // acting on; the pass log below explains it.
+            val last30 = days.sortedByDescending { it.day }.take(30)
+            if (last30.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Coverage over the last ${last30.size} days",
+                        style = NoopType.subhead, color = Palette.textPrimary,
+                    )
+                    CoverageRow("Charge", last30.count { it.recovery != null }, last30.size)
+                    CoverageRow("Effort", last30.count { it.strain != null }, last30.size)
+                    CoverageRow("Sleep", last30.count { it.totalSleepMin != null }, last30.size)
+                    CoverageRow("HRV", last30.count { it.avgHrv != null }, last30.size)
+                    CoverageRow("Resting HR", last30.count { it.restingHr != null }, last30.size)
+                    Text(
+                        "A missing day is usually a night the strap wasn't worn or didn't detect sleep — " +
+                            "not a failed calculation. Charge is deliberately left empty rather than guessed.",
+                        style = NoopType.footnote, color = Palette.textTertiary,
+                    )
+                }
+            }
+
+            // The pass log itself.
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Recent passes", style = NoopType.subhead, color = Palette.textPrimary)
+                if (entries.isEmpty()) {
+                    Text(
+                        "Nothing recorded yet. The first entry appears after the next check, sync or edit.",
+                        style = NoopType.footnote, color = Palette.textTertiary,
+                    )
+                } else {
+                    entries.take(8).forEach { e ->
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(
+                                "${relativeSince(e.atSeconds)} · ${e.trigger.label}",
+                                style = NoopType.footnote, color = Palette.textSecondary,
+                            )
+                            Text(e.summary, style = NoopType.footnote, color = Palette.textTertiary)
+                        }
+                    }
+                }
+            }
+
+            Text(
+                "Charge, Effort, Rest and the sleep staging all come out of one pass, so recalculating " +
+                    "refreshes all four. There is nothing to trigger separately.",
+                style = NoopType.footnote, color = Palette.textTertiary,
+            )
+
+            NoopButton(
+                text = if (recentBusy) "Recalculating…" else "Recalculate the last three weeks",
+                leadingIcon = Icons.Filled.Autorenew,
+                kind = NoopButtonKind.Secondary,
+                fullWidth = true,
+                enabled = !recentBusy && !fullBusy,
+                onClick = { vm.recalculateRecent() },
+            )
+            NoopButton(
+                text = if (fullBusy) "Recalculating…" else "Recalculate my whole history",
+                leadingIcon = Icons.Filled.Autorenew,
+                kind = NoopButtonKind.Secondary,
+                fullWidth = true,
+                enabled = !recentBusy && !fullBusy,
+                onClick = { vm.recalculateAllCharge() },
+            )
+            Text(
+                "Neither touches your raw measurements or your baseline anchor, and neither deletes " +
+                    "anything you imported. Running one twice produces the same numbers.",
+                style = NoopType.footnote, color = Palette.textTertiary,
+            )
+        }
+    }
+}
+
+/** One "Charge · 27 of 30" line. Plain text on purpose — a bar chart would imply a target. */
+@Composable
+private fun CoverageRow(label: String, have: Int, total: Int) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = NoopType.footnote, color = Palette.textSecondary, modifier = Modifier.weight(1f))
+        Text(
+            "$have of $total",
+            style = NoopType.footnote,
+            color = if (have == total) Palette.textSecondary else Palette.statusWarning,
+        )
+    }
+}
+
+/** "12 minutes ago" / "3 hours ago" / "2 days ago". Coarse on purpose — the exact second means nothing. */
+private fun relativeSince(atSeconds: Long): String {
+    val secs = (System.currentTimeMillis() / 1000L - atSeconds).coerceAtLeast(0L)
+    return when {
+        secs < 90 -> "just now"
+        secs < 3_600 -> "${secs / 60} min ago"
+        secs < 48 * 3_600 -> "${secs / 3_600} h ago"
+        else -> "${secs / 86_400} days ago"
     }
 }
 

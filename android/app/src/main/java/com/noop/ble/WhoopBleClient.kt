@@ -1321,6 +1321,14 @@ class WhoopBleClient(
                             if (testCentre.active(com.noop.testcentre.TestDomain.STEPS))
                                 { s -> log(s, com.noop.testcentre.TestDomain.STEPS) }
                             else null,
+                        // Journal this pass for the in-app diagnostics view, same as the UI's 15-min loop.
+                        // Without it a sync — the most common reason scores move — would be the one trigger
+                        // the user could never see.
+                        passReport = {
+                            com.noop.ui.AnalyzeJournal.record(
+                                context, com.noop.ui.AnalyzeJournal.Trigger.OFFLOAD, it,
+                            )
+                        },
                     )
                 }.onSuccess {
                     log("Backfill: post-sync scoring pass done")
