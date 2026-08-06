@@ -52,14 +52,16 @@ import com.noop.testcentre.TestReportLink
 import kotlinx.coroutines.launch
 
 /**
- * Settings -> Test Centre (spec section 7), the Android twin of TestCentreView. Five sections: domain
- * test modes (rendered from the registry projection), what was calculated and when, diagnostic tools,
- * export and auto-export, and advanced/experimental. A NEW file because SettingsScreen.kt (132 KB)
- * cannot grow. Section 1 renders from TestCentreLayout.visibleModes; sections 3 to 5 re-host the same
- * strap-log / recalibrate / scheduled-export / experimental controls on the same bindings the Settings
- * cards use. Section 2 is the only one with no Settings twin: it reads the AnalyzeJournal, which exists
- * because the scoring pass now skips work on purpose and "nothing happened" needed to be
- * distinguishable from "nothing needed to happen". No em-dash.
+ * Settings -> Test Centre (spec section 7), the Android twin of TestCentreView. Six sections: domain
+ * test modes (rendered from the registry projection), what was calculated and when, measurements with
+ * an impossible time, diagnostic tools, export and auto-export, and advanced/experimental. A NEW file
+ * because SettingsScreen.kt (132 KB) cannot grow. Section 1 renders from TestCentreLayout.visibleModes;
+ * sections 4 to 6 re-host the same strap-log / recalibrate / scheduled-export / experimental controls on
+ * the same bindings the Settings cards use. Sections 2 and 3 have no Settings twin: section 2 reads the
+ * AnalyzeJournal (the scoring pass now skips work on purpose, so "nothing happened" had to become
+ * distinguishable from "nothing needed to happen"), and section 3 holds the ONLY button in the app that
+ * deletes a raw measurement - deliberately here, behind a count and a confirm, instead of running
+ * silently on upgrade the way it used to. No em-dash.
  */
 @Composable
 fun TestCentreScreen(vm: AppViewModel) {
@@ -157,10 +159,13 @@ fun TestCentreScreen(vm: AppViewModel) {
         // --- Section 2: What was calculated, when ---
         CalculationsCard(vm)
 
-        // --- Section 3: Diagnostic tools ---
+        // --- Section 3: Quarantined measurements ---
+        QuarantineCard(vm)
+
+        // --- Section 4: Diagnostic tools ---
         DiagnosticToolsCard(vm)
 
-        // --- Section 4: Export and auto-export ---
+        // --- Section 5: Export and auto-export ---
         ExportCard(
             vm = vm,
             onReport = {
@@ -169,7 +174,7 @@ fun TestCentreScreen(vm: AppViewModel) {
             },
         )
 
-        // --- Section 5: Advanced / experimental ---
+        // --- Section 6: Advanced / experimental ---
         AdvancedCard(vm, is5MG)
     }
 
@@ -448,6 +453,129 @@ private fun relativeSince(atSeconds: Long): String {
         secs < 48 * 3_600 -> "${secs / 3_600} h ago"
         else -> "${secs / 86_400} days ago"
     }
+}
+
+/**
+ * Measurements Choop is holding but cannot place in time — and the only button in the app that deletes
+ * a raw measurement.
+ *
+ * A strap with a confused clock stamps real readings with impossible times: 1970, or next year. Choop
+ * used to delete those rows on sight, as housekeeping. That was the wrong instinct twice over. The
+ * fault is in the CLOCK, not the reading — a heart rate stamped 1970 was really measured, just filed
+ * under a time nobody can recover — and the strap has long since forgotten it, so the delete is
+ * permanent and there is nothing to restore from.
+ *
+ * Leaving them costs nothing: a row dated 1970 or 2090 falls outside every window any score reads, so
+ * it cannot reach a number on the dashboard. So they stay, they are counted here, and removing them is
+ * a decision made by a person looking at how many there are — not a side effect of an update.
+ *
+ * (Computed rows with impossible dates are a different matter and are still cleaned automatically:
+ * they are results, re-derivable from the raw that is still there, and unlike a stray raw row they DO
+ * reach the screen and the baseline. See WhoopRepository.healImplausibleComputedRows.)
+ */
+@Composable
+private fun QuarantineCard(vm: AppViewModel) {
+    val scope = rememberCoroutineScope()
+    var findings by remember { mutableStateOf<List<com.noop.data.WhoopRepository.QuarantineFinding>?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var confirmDeleteAll by remember { mutableStateOf(false) }
+
+    // Scan once on entry, and after every delete, so the counts on screen are what is actually stored.
+    LaunchedEffect(Unit) {
+        findings = runCatching { vm.repo.scanImplausibleTimestamps() }.getOrDefault(emptyList())
+    }
+
+    SettingsSectionTC(
+        icon = Icons.Filled.Info,
+        title = "Measurements with an impossible time",
+        blurb = "Readings your strap stamped with a date that can't be real. They are kept, not deleted - they just can't be placed on any day, so no score ever sees them.",
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val list = findings
+            when {
+                list == null ->
+                    Text("Checking…", style = NoopType.footnote, color = Palette.textTertiary)
+                list.isEmpty() ->
+                    Text(
+                        "None. Every measurement Choop holds carries a time that could be real.",
+                        style = NoopType.footnote, color = Palette.textTertiary,
+                    )
+                else -> {
+                    list.forEach { f ->
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(
+                                "${f.label} · ${f.rows} reading${if (f.rows == 1L) "" else "s"}",
+                                style = NoopType.subhead, color = Palette.textPrimary,
+                            )
+                            Text(
+                                quarantineRangeLine(f.earliestTs, f.latestTs),
+                                style = NoopType.footnote, color = Palette.textTertiary,
+                            )
+                        }
+                    }
+                    Text(
+                        "Deleting these cannot be undone: your strap no longer holds them, and no backup " +
+                            "made after the delete will either. They are harmless where they are.",
+                        style = NoopType.footnote, color = Palette.statusWarning,
+                    )
+                    NoopButton(
+                        text = if (busy) "Deleting…" else "Delete these permanently",
+                        leadingIcon = Icons.Filled.Autorenew,
+                        kind = NoopButtonKind.Secondary,
+                        fullWidth = true,
+                        enabled = !busy,
+                        onClick = { confirmDeleteAll = true },
+                    )
+                }
+            }
+        }
+    }
+
+    if (confirmDeleteAll) {
+        val total = findings.orEmpty().sumOf { it.rows }
+        AlertDialog(
+            onDismissRequest = { confirmDeleteAll = false },
+            containerColor = Palette.surfaceOverlay,
+            title = {
+                Text("Delete $total measurement(s)?", style = NoopType.title2, color = Palette.textPrimary)
+            },
+            text = {
+                Text(
+                    "These are real readings with an unusable timestamp. Your strap has already forgotten " +
+                        "them, so this cannot be undone and nothing can restore them. They affect no score " +
+                        "where they are - the only thing you gain is the space they take up.",
+                    style = NoopType.subhead, color = Palette.textSecondary,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDeleteAll = false
+                    busy = true
+                    scope.launch {
+                        runCatching { vm.repo.purgeQuarantinedRaw() }
+                        findings = runCatching { vm.repo.scanImplausibleTimestamps() }.getOrDefault(emptyList())
+                        busy = false
+                    }
+                }) { Text("Delete", style = NoopType.body, color = Palette.statusWarning) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteAll = false }) {
+                    Text("Keep them", style = NoopType.body, color = Palette.textSecondary)
+                }
+            },
+        )
+    }
+}
+
+/** "Stamped 1 Jan 1970 to 3 Jan 1970" — the timestamps as stored, which is the whole point. */
+private fun quarantineRangeLine(earliest: Long?, latest: Long?): String {
+    if (earliest == null || latest == null) return "Stamped with a time that can't be real."
+    val fmt = java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy")
+    fun show(ts: Long) = java.time.Instant.ofEpochSecond(ts)
+        .atZone(java.time.ZoneId.systemDefault()).toLocalDate().format(fmt)
+    val a = show(earliest)
+    val b = show(latest)
+    return if (a == b) "All stamped $a." else "Stamped between $a and $b."
 }
 
 @Composable

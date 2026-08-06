@@ -696,4 +696,105 @@ interface WhoopDao : DeviceRegistryDao {
      *  (before [minTs]) AND computed (`-noop`), so an imported multi-year sleep history survives (v8.2.1). */
     @Query("DELETE FROM sleepSession WHERE startTs > :maxTs OR (startTs < :minTs AND deviceId LIKE '%-noop')")
     suspend fun pruneSleepSessionByTs(minTs: Long, maxTs: Long): Int
+
+    // ── Quarantine counters (#raw-quarantine) ───────────────────────────────────────────────────
+    //
+    // The exact WHERE clauses of the raw prunes above, as COUNT / MIN / MAX instead of DELETE. They
+    // exist because a raw measurement is the one thing Choop can never re-derive: a bad strap clock is
+    // the strap's fault, not the reading's, and silently destroying the readings to tidy up the clock
+    // is a trade the user never agreed to. The heal counts with these and REPORTS; only an explicit
+    // tap runs the matching DELETE.
+    //
+    // Kept literally in step with the prune clauses above — if one changes and the other does not, the
+    // quarantine view would offer to delete a different set of rows than it counted.
+
+    @Query("SELECT COUNT(*) FROM hrSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun countHrOutsideTs(minTs: Long, maxTs: Long): Long
+
+    @Query("SELECT MIN(ts) FROM hrSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun minHrOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT MAX(ts) FROM hrSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun maxHrOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT COUNT(*) FROM ppgHrSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun countPpgHrOutsideTs(minTs: Long, maxTs: Long): Long
+
+    @Query("SELECT MIN(ts) FROM ppgHrSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun minPpgHrOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT MAX(ts) FROM ppgHrSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun maxPpgHrOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT COUNT(*) FROM rrInterval WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun countRrOutsideTs(minTs: Long, maxTs: Long): Long
+
+    @Query("SELECT MIN(ts) FROM rrInterval WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun minRrOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT MAX(ts) FROM rrInterval WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun maxRrOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT COUNT(*) FROM skinTempSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun countSkinTempOutsideTs(minTs: Long, maxTs: Long): Long
+
+    @Query("SELECT MIN(ts) FROM skinTempSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun minSkinTempOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT MAX(ts) FROM skinTempSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun maxSkinTempOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT COUNT(*) FROM stepSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun countStepOutsideTs(minTs: Long, maxTs: Long): Long
+
+    @Query("SELECT MIN(ts) FROM stepSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun minStepOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT MAX(ts) FROM stepSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun maxStepOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT COUNT(*) FROM respSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun countRespOutsideTs(minTs: Long, maxTs: Long): Long
+
+    @Query("SELECT MIN(ts) FROM respSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun minRespOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT MAX(ts) FROM respSample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun maxRespOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT COUNT(*) FROM gravitySample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun countGravityOutsideTs(minTs: Long, maxTs: Long): Long
+
+    @Query("SELECT MIN(ts) FROM gravitySample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun minGravityOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT MAX(ts) FROM gravitySample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun maxGravityOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT COUNT(*) FROM spo2Sample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun countSpo2OutsideTs(minTs: Long, maxTs: Long): Long
+
+    @Query("SELECT MIN(ts) FROM spo2Sample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun minSpo2OutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT MAX(ts) FROM spo2Sample WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun maxSpo2OutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT COUNT(*) FROM event WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun countEventOutsideTs(minTs: Long, maxTs: Long): Long
+
+    @Query("SELECT MIN(ts) FROM event WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun minEventOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT MAX(ts) FROM event WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun maxEventOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT COUNT(*) FROM battery WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun countBatteryOutsideTs(minTs: Long, maxTs: Long): Long
+
+    @Query("SELECT MIN(ts) FROM battery WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun minBatteryOutsideTs(minTs: Long, maxTs: Long): Long?
+
+    @Query("SELECT MAX(ts) FROM battery WHERE ts < :minTs OR ts > :maxTs")
+    suspend fun maxBatteryOutsideTs(minTs: Long, maxTs: Long): Long?
 }
