@@ -208,6 +208,9 @@ object IntelligenceEngine {
         // detected-bout persist/drop decision to the .workouts-tagged strap log. null (the default) =
         // byte-identical default path (no lines). Mirrors the Swift workoutsTraceActive wiring.
         workoutsTraceSink: ((String) -> Unit)? = null,
+        // Per-day input digests (see analyzeRecentOnCpu). Defaults reproduce the old full-window pass.
+        digestGet: (String) -> String? = { null },
+        digestPut: (String, String) -> Unit = { _, _ -> },
     ): List<Computed> = withContext(Dispatchers.Default) {
         // Serialise the whole pass so overlapping callers never run two rescores in parallel (see
         // [analyzeGate]). The heavy scoring already ran off the caller's thread via withContext above; the
@@ -216,7 +219,7 @@ object IntelligenceEngine {
             val (out, healed) = analyzeRecentOnCpu(repo, profile, maxDays, importedDeviceId, maxHROverride,
                 nowSeconds, ownerSource, manualStepCoefficient, persistStepsCalibration, baselineEpoch,
                 recoveryEpoch, diag, useExperimentalSleepV2, sleepTraceSink, recoveryTraceSink, stepsTraceSink,
-                universalSink, workoutsTraceSink)
+                universalSink, workoutsTraceSink, digestGet, digestPut)
             if (healed == 0) out
             // #899 heal re-pass: the pass above deleted overlapping duplicate sleep sessions AFTER its days
             // were scored, and the read-side dedup those days consumed had no bank-recency witness (the fresh
@@ -226,7 +229,7 @@ object IntelligenceEngine {
             else analyzeRecentOnCpu(repo, profile, maxDays, importedDeviceId, maxHROverride,
                 nowSeconds, ownerSource, manualStepCoefficient, persistStepsCalibration, baselineEpoch,
                 recoveryEpoch, diag, useExperimentalSleepV2, sleepTraceSink, recoveryTraceSink, stepsTraceSink,
-                universalSink, workoutsTraceSink).first
+                universalSink, workoutsTraceSink, digestGet, digestPut).first
         }
     }
 
@@ -384,6 +387,11 @@ object IntelligenceEngine {
         // each detected bout emits a `detectedBout verdict=persisted|droppedOverlap …` line to the .workouts-
         // tagged strap log, so an "auto workout appeared then vanished" is explainable from an export. Swift twin.
         workoutsTraceSink: ((String) -> Unit)? = null,
+        // Per-day input digests, so a pass can skip days that provably cannot have changed. Defaults make
+        // every day look changed, reproducing the old full-window behaviour byte for byte; the
+        // Context-aware caller opts in by supplying a persistent store.
+        digestGet: (String) -> String? = { null },
+        digestPut: (String, String) -> Unit = { _, _ -> },
         // #899 heal re-pass: the second component of the return is how many overlapping duplicate sleep
         // sessions the heal below deleted this pass. The public wrapper re-runs ONCE when it is non-zero
         // so the affected days re-score against the cleaned store.
@@ -483,9 +491,45 @@ object IntelligenceEngine {
         // every day sees the exact value the per-day call would have returned: byte-identical scoring.
         val skinFamilyByOwner = HashMap<String, DeviceFamily>()
 
+        // ── Which days actually need re-deriving ───────────────────────────────────────────────────────
+        // The pass used to re-read every stream for every day in the window, every time — at 1 Hz that is
+        // over a million rows every fifteen minutes, almost all of it to recompute numbers that could not
+        // have changed. [digestGet] lets the caller supply the input digest stored when each day was last
+        // scored; a day whose digest still matches cannot produce a different result.
+        //
+        // The skip is a SUFFIX, never a per-day filter, and that distinction is the whole correctness
+        // argument: a day is scored against the nights BEFORE it, so if night N changed then every day
+        // after N must be re-derived too, even though their own data is untouched. So find the EARLIEST
+        // changed day and re-derive from there to today. In the steady state — live HR arriving for today
+        // and nothing else — that earliest day IS today, and the pass does one day instead of twenty-one.
+        //
+        // Default [digestGet] returns null, which marks every day changed and reproduces the old
+        // behaviour exactly; callers opt in by supplying a store.
+        val digestByDay = LinkedHashMap<String, String>()
+        var earliestChangedDay: String? = null
+        for (offset in maxDays - 1 downTo 0) { // oldest first, so the FIRST mismatch is the earliest
+            val dayStart = nowLocalMidnight - offset * SECONDS_PER_DAY
+            val dayKey = AnalyticsEngine.dayString(dayStart, tzOffsetSeconds)
+            val digest = repo.dayInputDigestUnion(
+                importedDeviceId, dayStart - 30 * 3_600L, dayStart + SECONDS_PER_DAY,
+            )
+            digestByDay[dayKey] = digest
+            if (earliestChangedDay == null && digestGet(dayKey) != digest) earliestChangedDay = dayKey
+        }
+        // Nothing moved anywhere in the window: every stored score is already what this pass would
+        // recompute. This is the case that used to burn the battery — a full re-read every fifteen
+        // minutes to arrive back at the numbers already on screen.
+        if (earliestChangedDay == null && digestByDay.isNotEmpty()) return emptyList<Computed>() to 0
+
         for (offset in 0 until maxDays) {
             val dayStart = nowLocalMidnight - offset * SECONDS_PER_DAY
             val day = AnalyticsEngine.dayString(dayStart, tzOffsetSeconds)
+            // Days older than the earliest change keep their stored score: their own inputs are
+            // untouched AND every night before them is untouched, so re-deriving would land on the same
+            // number. Their nightly values still reach the baseline — it reads those from the store now,
+            // not from this pass. (Skin temp is the exception and still folds over what this pass
+            // scanned; see the fold below.)
+            if (earliestChangedDay != null && day < earliestChangedDay) continue
             // Read a generous window around the night that ends on `day`; the stager finds the span.
             val from = dayStart - 30 * 3_600L
             // Sleep read-window END. For a PAST day the night may end any time before the NEXT local
@@ -948,7 +992,11 @@ object IntelligenceEngine {
         // are never touched (a BLE-only WHOOP 4.0 user has no import fallback). Rows older than the
         // window keep their old keys (cosmetic off-by-one, acceptable). yyyy-MM-dd sorts
         // chronologically, so the string range IS a date range.
-        val oldestDay = AnalyticsEngine.dayString(
+        // The delete below wipes computed rows across [oldestDay, newestDay] before re-inserting. It MUST
+        // NOT reach past what this pass actually rewrites: with the suffix skip above, days before the
+        // earliest change are deliberately not re-derived, so deleting them would erase scores nothing is
+        // going to put back. Anchor on the earliest change when there is one.
+        val oldestDay = earliestChangedDay ?: AnalyticsEngine.dayString(
             nowLocalMidnight - (maxDays - 1) * SECONDS_PER_DAY, tzOffsetSeconds,
         )
         val newestDay = AnalyticsEngine.dayString(nowLocalMidnight, tzOffsetSeconds)
@@ -1009,6 +1057,13 @@ object IntelligenceEngine {
         // this only fills the days the strap collected but no import covered.
         if (dailies.isNotEmpty()) repo.upsertDailyMetrics(dailies)
         if (restRows.isNotEmpty()) repo.upsertMetricSeries(restRows)
+
+        // Record what this pass scored against, AFTER the rows are written. Storing the digests earlier
+        // would let an interrupted pass claim days as up to date whose scores never landed, and the next
+        // pass would skip them — a stale score with nothing to trigger its repair. Written only for days
+        // actually re-derived; a skipped day keeps the digest it already had, which is still accurate
+        // because its inputs are what made it skippable.
+        for (d in dailies) digestByDay[d.day]?.let { digestPut(d.day, it) }
 
         // ── Fitness Age (Phase 2) , weekly, keyed to the week's Saturday ──
         val fa7 = dailies.sortedBy { it.day }.takeLast(7)
