@@ -685,11 +685,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // re-pollution): a wandering-clock strap re-sends bad-dated records across syncs, so a single
                 // on-upgrade pass can't be the only defence. The pending flag is cleared once the re-heal runs.
                 if (!NoopPrefs.tsHealDone(appContext) || NoopPrefs.tsHealPending(appContext)) {
-                    val purged = repository.healImplausibleTimestamps()
+                    val purged = repository.healImplausibleComputedRows()
                     if (purged > 0) {
                         ble.externalLog(
-                            "Heal #547: purged $purged row(s) with an implausible timestamp " +
-                                "(bad strap clock - far-past or future-dated); rescoring clean days.",
+                            "Heal #547: purged $purged COMPUTED row(s) dated impossibly " +
+                                "(bad strap clock - far-past or future-dated); rescoring clean days. " +
+                                "Raw rows are never deleted here - see Test Centre.",
                         )
                     }
                     NoopPrefs.setTsHealDone(appContext)
@@ -764,11 +765,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // recompute clean — not gated behind the one-shot done flag. Idempotent on a clean DB.
                 runCatching {
                     if (NoopPrefs.tsHealPending(appContext)) {
-                        val purged = repository.healImplausibleTimestamps()
+                        val purged = repository.healImplausibleComputedRows()
                         if (purged > 0) {
                             ble.externalLog(
-                                "Heal #547: purged $purged row(s) with an implausible timestamp " +
-                                    "(bad strap clock detected this sync); rescoring clean days.",
+                                "Heal #547: purged $purged COMPUTED row(s) dated impossibly " +
+                                    "(bad strap clock detected this sync); rescoring clean days. Raw " +
+                                    "rows are never deleted here - see Test Centre.",
                             )
                         }
                         NoopPrefs.setTsHealPending(appContext, false)
