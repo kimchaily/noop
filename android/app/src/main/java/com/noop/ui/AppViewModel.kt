@@ -1458,6 +1458,66 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         dayDigests.edit().putString(day, digest).apply()
     }
 
+    /**
+     * Forget every day's stored digest, so the next pass treats the whole window as changed.
+     *
+     * Needed after raw rows arrive by a path the digest can't see coming — a merge import, which adds
+     * measurements to days that may be weeks old. Clearing is always SAFE (the worst case is one
+     * unnecessary pass) whereas failing to clear is not (a stale score with nothing left to trigger
+     * its repair), so this errs deliberately in the cheap direction.
+     */
+    private fun dayDigestClear() {
+        dayDigests.edit().clear().apply()
+    }
+
+    /**
+     * Import only what's MISSING from a `.noopbak`, leaving everything already here untouched.
+     *
+     * The counterpart to the normal restore, which replaces the whole store. That is right when moving
+     * to a new phone and wrong when two installs each hold nights the other never saw — restoring
+     * either way round throws away the other's nights. See [com.noop.data.MergeImport] for why "never
+     * overwrite" is a property of the SQL rather than a rule the code has to remember.
+     *
+     * Afterwards the day digests are dropped and a full-history re-score is started: merged nights can
+     * be weeks old, and every day AFTER a changed night has to be re-derived too, which is more than
+     * the ordinary 21-day window reaches.
+     */
+    fun mergeFromBackup(uri: android.net.Uri) {
+        if (isActionRunning(ActionIds.BACKUP_MERGE)) return
+        actionBegin(ActionIds.BACKUP_MERGE, "Adding what's missing from the backup")
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { com.noop.data.MergeImport.mergeFrom(appContext, uri) }
+            }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
+                .getOrElse { com.noop.data.MergeImport.Result.Failed(it.message ?: "Something went wrong.") }
+
+            when (result) {
+                is com.noop.data.MergeImport.Result.Failed -> {
+                    actionFinish(ActionIds.BACKUP_MERGE, ok = false, detail = result.message)
+                }
+                is com.noop.data.MergeImport.Result.Merged -> {
+                    val report = result.report
+                    actionFinish(ActionIds.BACKUP_MERGE, ok = true, detail = report.summary)
+                    // Log the per-table breakdown where a bug report can carry it. Counts only — no
+                    // timestamps, no values, nothing that identifies a night.
+                    runCatching {
+                        ble.externalLog(
+                            "Merge import: " + report.tables.joinToString("; ") { t ->
+                                t.skippedReason?.let { "${t.table} skipped (${it})" }
+                                    ?: "${t.table}=+${t.added}/${t.alreadyPresent} present"
+                            },
+                        )
+                    }
+                    if (report.rowsAdded > 0) {
+                        dayDigestClear()
+                        NoopPrefs.setAnalyzeWatermark(appContext, "")
+                        recalculateAllCharge()
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Long-running actions (import / export / rescore …)
     //
     // These take a minute or more and used to report ONLY through a Toast: leave the screen and every
@@ -1559,6 +1619,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         const val RECENT_RESCORE = "recentRescore"
         const val BACKUP_EXPORT = "backupExport"
         const val BACKUP_IMPORT = "backupImport"
+        const val BACKUP_MERGE = "backupMerge"
         const val CSV_EXPORT = "csvExport"
     }
 

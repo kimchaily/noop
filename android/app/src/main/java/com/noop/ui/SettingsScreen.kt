@@ -335,6 +335,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         it.running && it.id in setOf(
             AppViewModel.ActionIds.BACKUP_EXPORT,
             AppViewModel.ActionIds.BACKUP_IMPORT,
+            AppViewModel.ActionIds.BACKUP_MERGE,
             AppViewModel.ActionIds.CSV_EXPORT,
         )
     }
@@ -530,6 +531,15 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 "$msg Re-import it via Data sources → WHOOP import, on Android or Mac."
             },
         )
+    }
+
+    // "Add missing only" — the additive counterpart to the replacing import above. Same file picker,
+    // different verb: MergeImport adds every measurement this phone lacks and cannot touch one it
+    // already has. Needs no restart, because the live database is never swapped out from under Room.
+    val mergeLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) vm.mergeFromBackup(uri)
     }
 
     val importLauncher = rememberLauncherForActivityResult(
@@ -1260,6 +1270,25 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     }
                 }
 
+                // The additive import gets its own full-width button and its own explanation: the
+                // difference between "replace everything" and "add what's missing" is the difference
+                // between losing this phone's nights and keeping them, and a shared row would hide that.
+                NoopButton(
+                    text = "Add missing data from a backup…",
+                    kind = NoopButtonKind.Secondary,
+                    fullWidth = true,
+                    enabled = !backupBusy,
+                    onClick = { mergeLauncher.launch(arrayOf("*/*")) },
+                )
+                NoteRow(
+                    icon = Icons.Filled.Info,
+                    iconTint = Palette.textTertiary,
+                    text = "Add missing data reads a backup and copies over only the measurements this " +
+                        "phone doesn't have. Nothing already here is changed or removed, and no restart " +
+                        "is needed. Use it when two Choop installs each recorded nights the other missed. " +
+                        "Where both have the same day, this phone's version stays and the scores are " +
+                        "recalculated afterwards from the raw data both now share.",
+                )
                 NoteRow(
                     icon = Icons.Filled.Info,
                     iconTint = Palette.textTertiary,
