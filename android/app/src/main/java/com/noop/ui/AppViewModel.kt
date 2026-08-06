@@ -870,6 +870,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                     .active(com.noop.testcentre.TestDomain.WORKOUTS))
                                 { line -> ble.externalLog(line, com.noop.testcentre.TestDomain.WORKOUTS) }
                             else null,
+                        // Journal what this pass did, so the diagnostics view can answer "wurde etwas neu
+                        // berechnet, und wann?" without the strap log being on. Fires after the write, and
+                        // fires even when nothing changed — "nothing needed doing" is an answer.
+                        passReport = {
+                            AnalyzeJournal.record(appContext, AnalyzeJournal.Trigger.BACKSTOP, it)
+                        },
                     )
                     // analyzeRecent now hops to Dispatchers.Default; a scope cancellation surfaces as a
                     // CancellationException that runCatching would otherwise swallow, breaking the loop's
@@ -1320,6 +1326,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // Opt-in experimental sleep staging (V2) — same flag the 15-min loop reads, so a manual
                 // re-score after an edit stages with the same engine the user chose. (V7 Pillar 3b)
                 useExperimentalSleepV2 = PuffinExperiment.from(appContext).experimentalSleepV2,
+                passReport = { AnalyzeJournal.record(appContext, AnalyzeJournal.Trigger.EDIT, it) },
             )
         }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
     }
@@ -1365,6 +1372,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         .getLong(Baselines.hrvBaselineEpochKey, 0L).toDouble(),
                     recoveryEpoch = NoopPrefs.of(appContext)
                         .getLong(Baselines.recoveryBaselineEpochKey, 0L).toDouble(),
+                    passReport = {
+                        AnalyzeJournal.record(appContext, AnalyzeJournal.Trigger.MANUAL, it)
+                    },
                 )
             }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
                 .isSuccess
@@ -1376,6 +1386,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } else {
                     "Didn't finish — your data is unchanged. Try again."
                 },
+            )
+            onDone(ok)
+        }
+    }
+
+    /**
+     * Force a full re-derive of the trailing three weeks, ignoring the "these inputs cannot have changed"
+     * shortcut. Backs the diagnostics view's "Recalculate the last three weeks".
+     *
+     * This is the honest counterpart to the skip: normally a pass leaves a day alone when its inputs are
+     * byte-for-byte what they were, which is correct and is what stopped the constant battery drain — but
+     * it also means there is no ordinary way to say "ignore that and look again". Here [digestGet] is left
+     * at its default, so every day in the window reads as changed.
+     *
+     * Only the computed ("-noop") rows are rewritten, in the usual single transaction; raw data is read,
+     * never touched. Charge, Effort, Rest and the sleep staging all come out of this one pass, so this
+     * refreshes all four — there is no separate per-area engine to trigger.
+     */
+    fun recalculateRecent(onDone: (Boolean) -> Unit = {}) {
+        if (isActionRunning(ActionIds.RECENT_RESCORE)) return
+        actionBegin(ActionIds.RECENT_RESCORE, "Recalculating the last three weeks")
+        viewModelScope.launch {
+            var report: IntelligenceEngine.PassReport? = null
+            val ok = runCatching {
+                IntelligenceEngine.analyzeRecent(
+                    repo = repository,
+                    profile = currentProfile(),
+                    importedDeviceId = deviceId,
+                    maxHROverride = profileStore.hrMaxOverride.takeIf { it > 0 }?.toDouble(),
+                    ownerSource = RegistryDayOwnerSource(noopApp.deviceRegistry),
+                    manualStepCoefficient = profileStore.stepsManualOverride,
+                    baselineEpoch = NoopPrefs.of(appContext)
+                        .getLong(Baselines.hrvBaselineEpochKey, 0L).toDouble(),
+                    recoveryEpoch = NoopPrefs.of(appContext)
+                        .getLong(Baselines.recoveryBaselineEpochKey, 0L).toDouble(),
+                    useExperimentalSleepV2 = PuffinExperiment.from(appContext).experimentalSleepV2,
+                    // Deliberately NOT passing digestGet: every day must look changed for this to be a
+                    // forced pass at all. digestPut still runs, so the next ordinary pass can skip again.
+                    digestPut = ::dayDigestPut,
+                    passReport = {
+                        report = it
+                        AnalyzeJournal.record(appContext, AnalyzeJournal.Trigger.MANUAL, it)
+                    },
+                )
+            }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
+                .isSuccess
+            actionFinish(
+                ActionIds.RECENT_RESCORE, ok,
+                if (ok) report?.let { "Recalculated ${it.scored} days." } ?: "Finished."
+                else "Didn't finish — your data is unchanged. Try again.",
             )
             onDone(ok)
         }
@@ -1496,6 +1556,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     object ActionIds {
         const val CHARGE_RESCORE = "chargeRescore"
+        const val RECENT_RESCORE = "recentRescore"
         const val BACKUP_EXPORT = "backupExport"
         const val BACKUP_IMPORT = "backupImport"
         const val CSV_EXPORT = "csvExport"
