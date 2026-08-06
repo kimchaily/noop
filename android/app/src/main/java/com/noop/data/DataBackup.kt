@@ -494,7 +494,7 @@ object DataBackup {
     /** Every table name in [file], opened READ-ONLY so the probed file is never mutated. Empty on
      *  failure. Carries [PRESERVE_ON_CORRUPTION] (#1014): without an explicit handler the framework
      *  default would DELETE the staged file when the open reports SQLITE_NOTADB/CORRUPT. */
-    private fun sqliteTableNames(file: File): Set<String> {
+    internal fun sqliteTableNames(file: File): Set<String> {
         val db = runCatching {
             SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY, PRESERVE_ON_CORRUPTION)
         }.getOrNull() ?: return emptySet()
@@ -543,7 +543,7 @@ object DataBackup {
      * probe opens the LIVE database, so a corrupt store would be silently destroyed by the very
      * check meant to protect it (#1014). Also used by the origin probe for the same reason.
      */
-    private val PRESERVE_ON_CORRUPTION = android.database.DatabaseErrorHandler { dbObj ->
+    internal val PRESERVE_ON_CORRUPTION = android.database.DatabaseErrorHandler { dbObj ->
         runCatching { dbObj.close() }
     }
 
@@ -562,7 +562,7 @@ object DataBackup {
      * recovery, never a content change. Both opens carry [PRESERVE_ON_CORRUPTION] so no probe can
      * ever delete what it probes.
      */
-    private fun sqliteQuickCheckFailure(file: File): String? {
+    internal fun sqliteQuickCheckFailure(file: File): String? {
         val db = runCatching {
             SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY, PRESERVE_ON_CORRUPTION)
         }.recoverCatching {
