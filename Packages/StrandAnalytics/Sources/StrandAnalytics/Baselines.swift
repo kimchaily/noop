@@ -300,6 +300,19 @@ public enum Baselines {
         defaults.set(now, forKey: recoveryBaselineEpochKey)
     }
 
+    /// Remove the anchor entirely, so every night ever recorded counts towards the baselines again.
+    ///
+    /// The inverse of `recalibrateRecoveryBaselines`, and the reason that one is reversible at all: an
+    /// anchor only ever changed which night the fold STARTS from, it never deleted a night. Writing 0 to
+    /// both keys therefore restores the full history exactly — there is nothing to recover, because
+    /// nothing was lost. Same two keys, so this and the anchor can never disagree about what is set.
+    /// Kotlin twin: `Baselines.clearRecoveryBaselineAnchor`.
+    /// - Parameter defaults: the store to write to (overridable for tests).
+    public static func clearRecoveryBaselineAnchor(defaults: UserDefaults = .standard) {
+        defaults.set(0.0, forKey: hrvBaselineEpochKey)
+        defaults.set(0.0, forKey: recoveryBaselineEpochKey)
+    }
+
     /// Replay an ordered sequence of nightly values (oldest first) to build state, honouring a
     /// manual recalibration `baselineEpoch` (epoch SECONDS; 0 = no recalibration).
     ///

@@ -15,6 +15,7 @@ import com.noop.analytics.IllnessWatch
 import com.noop.analytics.IntelligenceEngine
 import com.noop.analytics.V5HealthSignals
 import com.noop.analytics.RegistryDayOwnerSource
+import com.noop.analytics.ScoringFingerprint
 import com.noop.analytics.RestScorer
 import com.noop.analytics.RouteMath
 import com.noop.analytics.SleepMark
@@ -39,6 +40,7 @@ import com.noop.data.WorkoutRow
 import com.noop.ingest.HealthConnectImporter
 import com.noop.ingest.HealthConnectWriter
 import com.noop.ingest.LiftingImporter
+import com.noop.notif.ActionProgressNotifier
 import com.noop.notif.IllnessAlertNotifier
 import com.noop.notif.ScheduledReportNotifier
 import com.noop.notif.ScheduledReportPolicy
@@ -683,11 +685,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // re-pollution): a wandering-clock strap re-sends bad-dated records across syncs, so a single
                 // on-upgrade pass can't be the only defence. The pending flag is cleared once the re-heal runs.
                 if (!NoopPrefs.tsHealDone(appContext) || NoopPrefs.tsHealPending(appContext)) {
-                    val purged = repository.healImplausibleTimestamps()
+                    val purged = repository.healImplausibleComputedRows()
                     if (purged > 0) {
                         ble.externalLog(
-                            "Heal #547: purged $purged row(s) with an implausible timestamp " +
-                                "(bad strap clock - far-past or future-dated); rescoring clean days.",
+                            "Heal #547: purged $purged COMPUTED row(s) dated impossibly " +
+                                "(bad strap clock - far-past or future-dated); rescoring clean days. " +
+                                "Raw rows are never deleted here - see Test Centre.",
                         )
                     }
                     NoopPrefs.setTsHealDone(appContext)
@@ -725,11 +728,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     // stored history is brought onto the new definition exactly once per version. The old
                     // boolean fired on the build that introduced it and then swallowed every later fix.
                     flagGet = {
-                        NoopPrefs.chargeRescoreUpToDate(appContext, IntelligenceEngine.SCORING_VERSION)
+                        NoopPrefs.chargeRescoreUpToDate(appContext, ScoringFingerprint.value)
                     },
                     flagSet = {
                         NoopPrefs.setChargeRescoreCompleted(
-                            appContext, IntelligenceEngine.SCORING_VERSION,
+                            appContext, IntelligenceEngine.SCORING_VERSION, ScoringFingerprint.value,
                             System.currentTimeMillis() / 1000L,
                         )
                     },
@@ -762,11 +765,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // recompute clean — not gated behind the one-shot done flag. Idempotent on a clean DB.
                 runCatching {
                     if (NoopPrefs.tsHealPending(appContext)) {
-                        val purged = repository.healImplausibleTimestamps()
+                        val purged = repository.healImplausibleComputedRows()
                         if (purged > 0) {
                             ble.externalLog(
-                                "Heal #547: purged $purged row(s) with an implausible timestamp " +
-                                    "(bad strap clock detected this sync); rescoring clean days.",
+                                "Heal #547: purged $purged COMPUTED row(s) dated impossibly " +
+                                    "(bad strap clock detected this sync); rescoring clean days. Raw " +
+                                    "rows are never deleted here - see Test Centre.",
                             )
                         }
                         NoopPrefs.setTsHealPending(appContext, false)
@@ -813,6 +817,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         diag = { line -> ble.externalLog(line) },
                         // Opt-in experimental sleep staging (V2) — read off SharedPreferences here (the
                         // analytics layer is Context-free) and thread it into the sleep self-heal. (V7 3b)
+                        // Skip days whose inputs provably did not move (battery): in the steady state
+                        // that leaves one day instead of twenty-one.
+                        digestGet = ::dayDigestGet,
+                        digestPut = ::dayDigestPut,
                         useExperimentalSleepV2 = PuffinExperiment.from(appContext).experimentalSleepV2,
                         // Sleep & Rest test mode (Test Centre E5): when the SLEEP domain is on, route the
                         // per-day sleep gate trace into the SAME shareable strap log, tagged .sleep so it
@@ -864,6 +872,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                     .active(com.noop.testcentre.TestDomain.WORKOUTS))
                                 { line -> ble.externalLog(line, com.noop.testcentre.TestDomain.WORKOUTS) }
                             else null,
+                        // Journal what this pass did, so the diagnostics view can answer "wurde etwas neu
+                        // berechnet, und wann?" without the strap log being on. Fires after the write, and
+                        // fires even when nothing changed — "nothing needed doing" is an answer.
+                        passReport = {
+                            AnalyzeJournal.record(appContext, AnalyzeJournal.Trigger.BACKSTOP, it)
+                        },
                     )
                     // analyzeRecent now hops to Dispatchers.Default; a scope cancellation surfaces as a
                     // CancellationException that runCatching would otherwise swallow, breaking the loop's
@@ -1314,6 +1328,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // Opt-in experimental sleep staging (V2) — same flag the 15-min loop reads, so a manual
                 // re-score after an edit stages with the same engine the user chose. (V7 Pillar 3b)
                 useExperimentalSleepV2 = PuffinExperiment.from(appContext).experimentalSleepV2,
+                passReport = { AnalyzeJournal.record(appContext, AnalyzeJournal.Trigger.EDIT, it) },
             )
         }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
     }
@@ -1334,7 +1349,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * loop to catch up.
      */
     fun recalculateAllCharge(onDone: (Boolean) -> Unit = {}) {
+        if (isActionRunning(ActionIds.CHARGE_RESCORE)) return
+        actionBegin(ActionIds.CHARGE_RESCORE, "Recalculating all Charge scores")
         viewModelScope.launch {
+            val started = System.currentTimeMillis()
             val ok = runCatching {
                 IntelligenceEngine.runCausalChargeRescoreIfNeeded(
                     repo = repository,
@@ -1342,11 +1360,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     importedDeviceId = deviceId,
                     maxHROverride = profileStore.hrMaxOverride.takeIf { it > 0 }?.toDouble(),
                     flagGet = {
-                        NoopPrefs.chargeRescoreUpToDate(appContext, IntelligenceEngine.SCORING_VERSION)
+                        NoopPrefs.chargeRescoreUpToDate(appContext, ScoringFingerprint.value)
                     },
                     flagSet = {
                         NoopPrefs.setChargeRescoreCompleted(
-                            appContext, IntelligenceEngine.SCORING_VERSION,
+                            appContext, IntelligenceEngine.SCORING_VERSION, ScoringFingerprint.value,
                             System.currentTimeMillis() / 1000L,
                         )
                     },
@@ -1356,11 +1374,255 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         .getLong(Baselines.hrvBaselineEpochKey, 0L).toDouble(),
                     recoveryEpoch = NoopPrefs.of(appContext)
                         .getLong(Baselines.recoveryBaselineEpochKey, 0L).toDouble(),
+                    passReport = {
+                        AnalyzeJournal.record(appContext, AnalyzeJournal.Trigger.MANUAL, it)
+                    },
                 )
             }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
                 .isSuccess
+            val secs = ((System.currentTimeMillis() - started) / 1000L).coerceAtLeast(1L)
+            actionFinish(
+                ActionIds.CHARGE_RESCORE, ok,
+                if (ok) {
+                    "Every day re-scored against the baseline as it stood before it (${secs}s)."
+                } else {
+                    "Didn't finish — your data is unchanged. Try again."
+                },
+            )
             onDone(ok)
         }
+    }
+
+    /**
+     * Force a full re-derive of the trailing three weeks, ignoring the "these inputs cannot have changed"
+     * shortcut. Backs the diagnostics view's "Recalculate the last three weeks".
+     *
+     * This is the honest counterpart to the skip: normally a pass leaves a day alone when its inputs are
+     * byte-for-byte what they were, which is correct and is what stopped the constant battery drain — but
+     * it also means there is no ordinary way to say "ignore that and look again". Here [digestGet] is left
+     * at its default, so every day in the window reads as changed.
+     *
+     * Only the computed ("-noop") rows are rewritten, in the usual single transaction; raw data is read,
+     * never touched. Charge, Effort, Rest and the sleep staging all come out of this one pass, so this
+     * refreshes all four — there is no separate per-area engine to trigger.
+     */
+    fun recalculateRecent(onDone: (Boolean) -> Unit = {}) {
+        if (isActionRunning(ActionIds.RECENT_RESCORE)) return
+        actionBegin(ActionIds.RECENT_RESCORE, "Recalculating the last three weeks")
+        viewModelScope.launch {
+            var report: IntelligenceEngine.PassReport? = null
+            val ok = runCatching {
+                IntelligenceEngine.analyzeRecent(
+                    repo = repository,
+                    profile = currentProfile(),
+                    importedDeviceId = deviceId,
+                    maxHROverride = profileStore.hrMaxOverride.takeIf { it > 0 }?.toDouble(),
+                    ownerSource = RegistryDayOwnerSource(noopApp.deviceRegistry),
+                    manualStepCoefficient = profileStore.stepsManualOverride,
+                    baselineEpoch = NoopPrefs.of(appContext)
+                        .getLong(Baselines.hrvBaselineEpochKey, 0L).toDouble(),
+                    recoveryEpoch = NoopPrefs.of(appContext)
+                        .getLong(Baselines.recoveryBaselineEpochKey, 0L).toDouble(),
+                    useExperimentalSleepV2 = PuffinExperiment.from(appContext).experimentalSleepV2,
+                    // Deliberately NOT passing digestGet: every day must look changed for this to be a
+                    // forced pass at all. digestPut still runs, so the next ordinary pass can skip again.
+                    digestPut = ::dayDigestPut,
+                    passReport = {
+                        report = it
+                        AnalyzeJournal.record(appContext, AnalyzeJournal.Trigger.MANUAL, it)
+                    },
+                )
+            }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
+                .isSuccess
+            actionFinish(
+                ActionIds.RECENT_RESCORE, ok,
+                if (ok) report?.let { "Recalculated ${it.scored} days." } ?: "Finished."
+                else "Didn't finish — your data is unchanged. Try again.",
+            )
+            onDone(ok)
+        }
+    }
+
+    /**
+     * Per-day input digests for the analyze pass, in their own preferences file.
+     *
+     * A day whose digest is unchanged cannot score differently, so the pass skips re-deriving it. Kept
+     * out of the main preferences file because the entries are per-day and accumulate (~365 a year);
+     * mixing them into settings would bloat a file the app reads on every launch.
+     */
+    private val dayDigests by lazy {
+        appContext.getSharedPreferences("noop.dayDigests", android.content.Context.MODE_PRIVATE)
+    }
+
+    private fun dayDigestGet(day: String): String? = dayDigests.getString(day, null)
+
+    private fun dayDigestPut(day: String, digest: String) {
+        dayDigests.edit().putString(day, digest).apply()
+    }
+
+    /**
+     * Forget every day's stored digest, so the next pass treats the whole window as changed.
+     *
+     * Needed after raw rows arrive by a path the digest can't see coming — a merge import, which adds
+     * measurements to days that may be weeks old. Clearing is always SAFE (the worst case is one
+     * unnecessary pass) whereas failing to clear is not (a stale score with nothing left to trigger
+     * its repair), so this errs deliberately in the cheap direction.
+     */
+    private fun dayDigestClear() {
+        dayDigests.edit().clear().apply()
+    }
+
+    /**
+     * Import only what's MISSING from a `.noopbak`, leaving everything already here untouched.
+     *
+     * The counterpart to the normal restore, which replaces the whole store. That is right when moving
+     * to a new phone and wrong when two installs each hold nights the other never saw — restoring
+     * either way round throws away the other's nights. See [com.noop.data.MergeImport] for why "never
+     * overwrite" is a property of the SQL rather than a rule the code has to remember.
+     *
+     * Afterwards the day digests are dropped and a full-history re-score is started: merged nights can
+     * be weeks old, and every day AFTER a changed night has to be re-derived too, which is more than
+     * the ordinary 21-day window reaches.
+     */
+    fun mergeFromBackup(uri: android.net.Uri) {
+        if (isActionRunning(ActionIds.BACKUP_MERGE)) return
+        actionBegin(ActionIds.BACKUP_MERGE, "Adding what's missing from the backup")
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { com.noop.data.MergeImport.mergeFrom(appContext, uri) }
+            }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
+                .getOrElse { com.noop.data.MergeImport.Result.Failed(it.message ?: "Something went wrong.") }
+
+            when (result) {
+                is com.noop.data.MergeImport.Result.Failed -> {
+                    actionFinish(ActionIds.BACKUP_MERGE, ok = false, detail = result.message)
+                }
+                is com.noop.data.MergeImport.Result.Merged -> {
+                    val report = result.report
+                    actionFinish(ActionIds.BACKUP_MERGE, ok = true, detail = report.summary)
+                    // Log the per-table breakdown where a bug report can carry it. Counts only — no
+                    // timestamps, no values, nothing that identifies a night.
+                    runCatching {
+                        ble.externalLog(
+                            "Merge import: " + report.tables.joinToString("; ") { t ->
+                                t.skippedReason?.let { "${t.table} skipped (${it})" }
+                                    ?: "${t.table}=+${t.added}/${t.alreadyPresent} present"
+                            },
+                        )
+                    }
+                    if (report.rowsAdded > 0) {
+                        dayDigestClear()
+                        NoopPrefs.setAnalyzeWatermark(appContext, "")
+                        recalculateAllCharge()
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Long-running actions (import / export / rescore …)
+    //
+    // These take a minute or more and used to report ONLY through a Toast: leave the screen and every
+    // trace that something was running was gone, and if the Toast was missed there was no second chance
+    // to learn whether it worked. The state lives HERE, on the ViewModel, precisely so it survives
+    // navigating away and coming back — a screen-local flag cannot.
+    //
+    // A finished action is NOT removed automatically. It stays until dismissed, so the outcome is still
+    // there when you come back to look.
+
+    /** One long-running action, from start until the user dismisses its result. */
+    data class BackgroundAction(
+        val id: String,
+        val label: String,
+        val running: Boolean = true,
+        val ok: Boolean = true,
+        val detail: String? = null,
+    )
+
+    private val _backgroundActions = MutableStateFlow<List<BackgroundAction>>(emptyList())
+
+    /** Running actions, plus finished ones the user has not dismissed yet. */
+    val backgroundActions: StateFlow<List<BackgroundAction>> = _backgroundActions.asStateFlow()
+
+    /** True while [id] is running — the button reads this so its disabled state survives navigation. */
+    fun isActionRunning(id: String): Boolean =
+        _backgroundActions.value.any { it.id == id && it.running }
+
+    /**
+     * Mark [id] as running. Replaces any earlier entry for the same id, so re-running an action
+     * clears its previous result rather than stacking a second banner for the same thing.
+     */
+    fun actionBegin(id: String, label: String) {
+        _backgroundActions.value = _backgroundActions.value.filterNot { it.id == id } +
+            BackgroundAction(id = id, label = label)
+        ActionProgressNotifier.onRunning(appContext, id, label)
+    }
+
+    /**
+     * Record the outcome. The entry STAYS (running = false) until [dismissAction] — that is the whole
+     * point: a result you were not looking at when it landed is still there when you come back.
+     */
+    fun actionFinish(id: String, ok: Boolean, detail: String? = null) {
+        var label: String? = null
+        _backgroundActions.value = _backgroundActions.value.map {
+            if (it.id == id) {
+                label = it.label
+                it.copy(running = false, ok = ok, detail = detail)
+            } else {
+                it
+            }
+        }
+        label?.let { ActionProgressNotifier.onFinished(appContext, id, it, ok, detail) }
+    }
+
+    /**
+     * Run [work] on the IO dispatcher as a tracked background action.
+     *
+     * Deliberately on [viewModelScope], NOT on a screen's `rememberCoroutineScope()`: a composable scope
+     * is cancelled the moment the screen leaves composition, so navigating away mid-export used to kill
+     * the export. The ViewModel outlives every screen, so the work — and its banner — survives.
+     *
+     * [work] returns the success line shown in the banner/notification. A thrown exception becomes a
+     * failure with its message; cancellation is rethrown untouched so a real teardown still tears down.
+     */
+    fun runAction(
+        id: String,
+        label: String,
+        work: suspend () -> String,
+        onDone: (Boolean) -> Unit = {},
+    ) {
+        if (isActionRunning(id)) return
+        actionBegin(id, label)
+        viewModelScope.launch {
+            val result = runCatching { withContext(Dispatchers.IO) { work() } }
+                .onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
+            actionFinish(
+                id, result.isSuccess,
+                result.getOrElse { it.message?.takeIf(String::isNotBlank) ?: "Something went wrong." },
+            )
+            onDone(result.isSuccess)
+        }
+    }
+
+    /** Drop a finished action's banner. Running actions ignore this — there is nothing to acknowledge yet. */
+    fun dismissAction(id: String) {
+        val finished = _backgroundActions.value.any { it.id == id && !it.running }
+        if (!finished) return
+        _backgroundActions.value = _backgroundActions.value.filterNot { it.id == id }
+        ActionProgressNotifier.cancel(appContext, id)
+    }
+
+    /**
+     * Stable ids for the actions above. A plain nested object, NOT the companion: [AppViewModel]
+     * already has one (private, holding the loop cadences), and Kotlin allows exactly one per class.
+     */
+    object ActionIds {
+        const val CHARGE_RESCORE = "chargeRescore"
+        const val RECENT_RESCORE = "recentRescore"
+        const val BACKUP_EXPORT = "backupExport"
+        const val BACKUP_IMPORT = "backupImport"
+        const val BACKUP_MERGE = "backupMerge"
+        const val CSV_EXPORT = "csvExport"
     }
 
     /** Re-read every source + the dismissed markers and republish [workouts]. */

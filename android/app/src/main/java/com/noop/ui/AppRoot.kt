@@ -34,7 +34,10 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Explore
@@ -57,9 +60,11 @@ import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.NavigationDrawerItem
@@ -100,6 +105,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -477,6 +483,16 @@ fun AppRoot(
             if (isPreviewChannel) {
                 PreviewChannelBand(modifier = Modifier.align(Alignment.TopCenter))
             }
+            // Long-running actions (import · export · full Charge rescore) report HERE, above the
+            // NavHost, for the same reason the preview band does: it has to survive every navigation.
+            // A Toast in Settings vanished in seconds and only existed while that screen did, so an
+            // action you walked away from left no trace at all.
+            BackgroundActionBanners(
+                viewModel = viewModel,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(inner),
+            )
             }
         }
 
@@ -598,6 +614,94 @@ fun AppRoot(
             ) {
                 Surface(modifier = Modifier.fillMaxSize(), color = Palette.surfaceBase) {
                     WhatsNewSheet(onClose = { showWhatsNew = false })
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Background action banners
+//
+// The in-app half of the long-running-action feedback (the other half is [ActionProgressNotifier]).
+// Deliberately the RELIABLE half: it needs no notification permission, so even with notifications
+// denied there is always somewhere to see that an import/export/rescore is running and how it ended.
+//
+// Sticky by design. A finished action stays until the user taps the ✕ — that is the fix for "I
+// triggered something and never found out whether it worked". Running actions have no ✕: there is
+// nothing to acknowledge yet, and dismissing one would not stop the work.
+//
+// Sits at the BOTTOM (above the tab bar) rather than the top: the top strip already belongs to the
+// preview build band, and a bottom banner is where Android users look for transient status anyway.
+
+/** Every running action plus every finished-but-undismissed one, newest last. Renders nothing when empty. */
+@Composable
+private fun BackgroundActionBanners(viewModel: AppViewModel, modifier: Modifier = Modifier) {
+    val actions by viewModel.backgroundActions.collectAsStateWithLifecycle()
+    if (actions.isEmpty()) return
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        for (action in actions) {
+            BackgroundActionBanner(action) { viewModel.dismissAction(action.id) }
+        }
+    }
+}
+
+@Composable
+private fun BackgroundActionBanner(
+    action: AppViewModel.BackgroundAction,
+    onDismiss: () -> Unit,
+) {
+    // Colour carries the outcome at a glance: accent while working, still-accent on success, the
+    // warning tint on failure. Never red-on-red — a failed export is a "try again", not an alarm.
+    val tint = when {
+        action.running -> Palette.accent
+        action.ok -> Palette.accent
+        else -> Palette.statusWarning
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Palette.surfaceRaised.copy(alpha = 0.96f),
+        contentColor = Palette.textPrimary,
+        shape = RoundedCornerShape(14.dp),
+        shadowElevation = 6.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (action.running) {
+                CircularProgressIndicator(color = tint, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+            } else {
+                Icon(
+                    imageVector = if (action.ok) Icons.Filled.CheckCircle else Icons.Filled.ErrorOutline,
+                    contentDescription = null,
+                    tint = tint,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(action.label, style = NoopType.subhead, color = Palette.textPrimary)
+                val detail = action.detail
+                    ?: if (action.running) "Running… you can keep using Choop." else null
+                if (detail != null) {
+                    Text(detail, style = NoopType.footnote, color = Palette.textSecondary)
+                }
+            }
+            // No dismiss while running: there is nothing to acknowledge yet, and hiding the banner
+            // would not stop the work — it would just recreate the "did anything happen?" problem.
+            if (!action.running) {
+                IconButton(onClick = onDismiss, modifier = Modifier.size(40.dp)) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Dismiss",
+                        tint = Palette.textTertiary,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
         }
