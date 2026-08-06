@@ -262,6 +262,15 @@ class WhoopRepository(private val dao: WhoopDao) {
     suspend fun deleteComputedDailyInRange(deviceId: String, from: String, to: String) =
         dao.deleteDailyMetricsInRange(deviceId, from, to)
 
+    /** Atomic clear-and-rewrite of a computed day range. See [WhoopDao.replaceDailyMetricsInRange] for
+     *  why the two halves must not be separable. */
+    suspend fun replaceComputedDailyInRange(
+        deviceId: String,
+        from: String,
+        to: String,
+        rows: List<DailyMetric>,
+    ) = dao.replaceDailyMetricsInRange(deviceId, from, to, rows)
+
     /** Hand-correct the bed (onset) / wake (end) time of an existing sleep session, DURABLY , port
      *  of iOS PR #395 (Repository.editSleepTimes + MetricsCache.applySleepEdit).
      *

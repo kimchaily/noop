@@ -1072,13 +1072,17 @@ object IntelligenceEngine {
             }
         }
 
-        repo.deleteComputedDailyInRange(computedId, oldestDay, newestDay)
+        // ONE transaction: clear the range and write the replacements together. Two separate calls left a
+        // window where a force-quit deleted the days and nothing put them back — and because the per-day
+        // digests are only written after a successful upsert, the next pass would find them unchanged,
+        // skip those days, and leave the hole permanently.
+
 
         // Persist the computed scores under the dedicated "-noop" source so the WHOLE
         // dashboard (Today / Recovery / Strain / Sleep / Trends) reads them. The repository
         // merges these UNDER any imported "my-whoop" rows, so a real WHOOP import always wins;
         // this only fills the days the strap collected but no import covered.
-        if (dailies.isNotEmpty()) repo.upsertDailyMetrics(dailies)
+        repo.replaceComputedDailyInRange(computedId, oldestDay, newestDay, dailies)
         if (restRows.isNotEmpty()) repo.upsertMetricSeries(restRows)
 
         // Record what this pass scored against, AFTER the rows are written. Storing the digests earlier
