@@ -155,47 +155,53 @@ fun DataSourcesScreen(vm: AppViewModel) {
     }
 
     // Whole-store backup: export to a user-created document; import from a picked one.
+    //
+    // [busy] still covers this screen's FILE importers (their result refreshes screen-local counts, so
+    // they stay screen-scoped). The whole-store backup pair below moved to the ViewModel, so its running
+    // state is OR-ed in from there — otherwise leaving and returning would show idle buttons for an
+    // export that is still running.
     var busy by remember { mutableStateOf(false) }
+    val backgroundActions by vm.backgroundActions.collectAsStateWithLifecycle()
+    val backupBusy = backgroundActions.any {
+        it.running && (
+            it.id == AppViewModel.ActionIds.BACKUP_EXPORT ||
+                it.id == AppViewModel.ActionIds.BACKUP_IMPORT
+            )
+    }
     var restartNeeded by remember { mutableStateOf(false) }
     // ah-delete (#616): drives the "Remove Apple Health imported data" confirm dialog.
     var confirmDeleteApple by remember { mutableStateOf(false) }
 
+    // Whole-store backup runs through vm.runAction, exactly like the Settings door: on the ViewModel
+    // scope so navigating away can't kill it, with a sticky banner + notification instead of a Toast
+    // that a multi-minute export outlives. Same action ids, so both doors share one busy state.
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/octet-stream"),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        busy = true
-        scope.launch {
-            val message = withContext(Dispatchers.IO) {
-                runCatching { DataBackup.exportTo(context, uri) }
-                    .fold({ "Backup saved." }, { "Backup failed: ${it.message}" })
-            }
-            busy = false
-            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
-        }
+        vm.runAction(
+            AppViewModel.ActionIds.BACKUP_EXPORT, "Exporting backup",
+            work = { DataBackup.exportTo(context, uri); "Backup saved." },
+        )
     }
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        busy = true
-        scope.launch {
-            val result = withContext(Dispatchers.IO) { DataBackup.importFrom(context, uri) }
-            busy = false
-            when (result) {
-                is DataBackup.ImportResult.NeedsRestart -> {
-                    restartNeeded = true
-                    Toast.makeText(
-                        context,
-                        "Imported. Fully close and reopen Choop to load it.",
-                        Toast.LENGTH_LONG,
-                    ).show()
+        vm.runAction(
+            AppViewModel.ActionIds.BACKUP_IMPORT, "Importing backup",
+            work = {
+                when (val result = DataBackup.importFrom(context, uri)) {
+                    is DataBackup.ImportResult.NeedsRestart ->
+                        "Imported. Fully close and reopen Choop to load it."
+                    // A RESULT, not a throw — turn it into one so the banner reads as a failure.
+                    is DataBackup.ImportResult.Failed -> throw IllegalStateException(result.message)
                 }
-                is DataBackup.ImportResult.Failed ->
-                    Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
-            }
-        }
+            },
+            // The restart notice is this screen's own banner and only makes sense on success.
+            onDone = { ok -> if (ok) restartNeeded = true },
+        )
     }
 
     suspend fun refreshCounts() {
@@ -836,18 +842,25 @@ fun DataSourcesScreen(vm: AppViewModel) {
                 BackupButton(
                     label = "Export…",
                     icon = Icons.Filled.FileDownload,
-                    enabled = !busy,
+                    enabled = !busy && !backupBusy,
                     modifier = Modifier.weight(1f),
                 ) { exportLauncher.launch("noop-backup-${java.time.LocalDate.now()}.noopbak") }
                 BackupButton(
                     label = "Import…",
                     icon = Icons.Filled.FileUpload,
-                    enabled = !busy,
+                    enabled = !busy && !backupBusy,
                     modifier = Modifier.weight(1f),
                 ) { importLauncher.launch(arrayOf("*/*")) }
             }
-            if (busy) {
-                Text("Working…", style = NoopType.footnote, color = Palette.textTertiary)
+            if (busy || backupBusy) {
+                Text(
+                    if (backupBusy) {
+                        "Working… you can leave this screen; the banner above the tab bar keeps you posted."
+                    } else {
+                        "Working…"
+                    },
+                    style = NoopType.footnote, color = Palette.textTertiary,
+                )
             }
             if (restartNeeded) {
                 Text(

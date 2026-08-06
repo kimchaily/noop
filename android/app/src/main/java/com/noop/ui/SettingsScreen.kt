@@ -327,7 +327,23 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     // this screen never edits the profile anymore.
     val profile = remember { ProfileStore.from(context) }
 
-    var backupBusy by remember { mutableStateOf(false) }
+    // Long-running actions, read from the ViewModel rather than a screen-local flag: a local flag is lost
+    // the moment you navigate away, so coming back to Settings mid-export showed idle buttons for work
+    // that was still running. This survives, because the state does.
+    val backgroundActions by vm.backgroundActions.collectAsStateWithLifecycle()
+    val backupBusy = backgroundActions.any {
+        it.running && it.id in setOf(
+            AppViewModel.ActionIds.BACKUP_EXPORT,
+            AppViewModel.ActionIds.BACKUP_IMPORT,
+            AppViewModel.ActionIds.CSV_EXPORT,
+        )
+    }
+    // True while the full-history Charge rescore is running, so the button disables + reads
+    // "Recalculating…" instead of letting an impatient second tap queue another multi-minute pass.
+    // Read from the ViewModel for the same reason as [backupBusy]: it has to survive navigation.
+    val recalculatingCharge = backgroundActions.any {
+        it.running && it.id == AppViewModel.ActionIds.CHARGE_RESCORE
+    }
 
     // Re-scan must request the runtime Bluetooth permission before scanning — without this the
     // button calls connect() directly and silently no-ops on Android 12+ when the permission was
@@ -360,9 +376,6 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     // that feeds Charge from tonight onward; the standing analyze loop picks it up on its next pass.
     // Fixes a baseline poisoned by a bad first week (worn sick, or early nights that anchored too high).
     var showRecalibrateConfirm by remember { mutableStateOf(false) }
-    // True while the full-history Charge rescore is running, so the button disables + reads "Recalculating…"
-    // instead of letting an impatient second tap queue another multi-minute pass.
-    var recalculatingCharge by remember { mutableStateOf(false) }
 
     // Whether the "Advanced" disclosure (experimental probes, diagnostics, raw-sensor export, Trends
     // report) is expanded. Default FALSE so a first-run user lands on the everyday sections instead of
@@ -486,75 +499,55 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     var showDayCycleBackground by remember { mutableStateOf(NoopPrefs.showDayCycleBackground(context)) }
 
     // SAF launchers — CreateDocument for export, OpenDocument for import.
+    //
+    // Each hands the actual work to vm.runAction, which runs it on the ViewModel scope and publishes a
+    // sticky banner + system notification. That matters twice over: the work no longer dies when this
+    // screen leaves composition (a `rememberCoroutineScope()` is cancelled on exit, so navigating away
+    // mid-export used to silently kill it), and the outcome is still readable minutes later instead of
+    // living and dying with a Toast.
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
     ) { uri ->
-        if (uri == null) { backupBusy = false; return@rememberLauncherForActivityResult }
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { DataBackup.exportTo(context, uri) }
-            }
-            backupBusy = false
-            result.fold(
-                onSuccess = {
-                    Toast.makeText(
-                        context,
-                        "Backup exported. Copy this file to your new phone and use Import there to restore everything.",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                },
-                onFailure = { e ->
-                    Toast.makeText(context, "Backup problem: ${e.message}", Toast.LENGTH_LONG).show()
-                },
-            )
-        }
+        if (uri == null) return@rememberLauncherForActivityResult
+        vm.runAction(
+            AppViewModel.ActionIds.BACKUP_EXPORT, "Exporting backup",
+            work = {
+                DataBackup.exportTo(context, uri)
+                "Backup exported. Copy this file to your new phone and use Import there to restore everything."
+            },
+        )
     }
 
     // CSV export — the 4-CSV WHOOP-format zip Choop's own importers re-import (Android + Mac).
     val csvExportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
     ) { uri ->
-        if (uri == null) { backupBusy = false; return@rememberLauncherForActivityResult }
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { WhoopCsvExporter.exportZip(context, uri, vm.repo) }
-            }
-            backupBusy = false
-            result.fold(
-                onSuccess = { msg ->
-                    Toast.makeText(
-                        context,
-                        "$msg Re-import it via Data sources → WHOOP import, on Android or Mac.",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                },
-                onFailure = { e ->
-                    Toast.makeText(context, "CSV export problem: ${e.message}", Toast.LENGTH_LONG).show()
-                },
-            )
-        }
+        if (uri == null) return@rememberLauncherForActivityResult
+        vm.runAction(
+            AppViewModel.ActionIds.CSV_EXPORT, "Exporting CSV",
+            work = {
+                val msg = WhoopCsvExporter.exportZip(context, uri, vm.repo)
+                "$msg Re-import it via Data sources → WHOOP import, on Android or Mac."
+            },
+        )
     }
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        if (uri == null) { backupBusy = false; return@rememberLauncherForActivityResult }
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                DataBackup.importFrom(context, uri)
-            }
-            backupBusy = false
-            when (result) {
-                is DataBackup.ImportResult.NeedsRestart -> Toast.makeText(
-                    context,
-                    "Backup imported. Fully close and reopen Choop for it to take effect.",
-                    Toast.LENGTH_LONG,
-                ).show()
-                is DataBackup.ImportResult.Failed -> Toast.makeText(
-                    context, result.message, Toast.LENGTH_LONG,
-                ).show()
-            }
-        }
+        if (uri == null) return@rememberLauncherForActivityResult
+        vm.runAction(
+            AppViewModel.ActionIds.BACKUP_IMPORT, "Importing backup",
+            work = {
+                // importFrom reports failure by RESULT, not by throwing, so turn a Failed into a throw —
+                // that's what runAction reads to mark the banner red.
+                when (val result = DataBackup.importFrom(context, uri)) {
+                    is DataBackup.ImportResult.NeedsRestart ->
+                        "Backup imported. Fully close and reopen Choop for it to take effect."
+                    is DataBackup.ImportResult.Failed -> throw IllegalStateException(result.message)
+                }
+            },
+        )
     }
 
     ScreenScaffold(
@@ -1225,7 +1218,6 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         enabled = !backupBusy,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            backupBusy = true
                             exportLauncher.launch("noop-backup-${java.time.LocalDate.now()}.noopbak")
                         },
                     )
@@ -1236,7 +1228,6 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         enabled = !backupBusy,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            backupBusy = true
                             importLauncher.launch(arrayOf("*/*"))
                         },
                     )
@@ -1247,7 +1238,6 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         enabled = !backupBusy,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            backupBusy = true
                             csvExportLauncher.launch("noop-export-${java.time.LocalDate.now()}.zip")
                         },
                     )
@@ -1263,7 +1253,10 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                             strokeWidth = 2.dp,
                             modifier = Modifier.size(18.dp),
                         )
-                        Text("Working…", style = NoopType.footnote, color = Palette.textSecondary)
+                        Text(
+                            "Working… you can leave this screen; the banner above the tab bar keeps you posted.",
+                            style = NoopType.footnote, color = Palette.textSecondary,
+                        )
                     }
                 }
 
@@ -1361,21 +1354,9 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     fullWidth = true,
                     enabled = !recalculatingCharge,
                     modifier = Modifier.semantics { contentDescription = "Recalculate all Charge scores" },
-                    onClick = {
-                        recalculatingCharge = true
-                        vm.recalculateAllCharge { ok ->
-                            recalculatingCharge = false
-                            Toast.makeText(
-                                context,
-                                if (ok) {
-                                    "Charge recalculated across your history."
-                                } else {
-                                    "Couldn't finish recalculating. Choop will catch up on its own."
-                                },
-                                Toast.LENGTH_LONG,
-                            ).show()
-                        }
-                    },
+                    // No Toast here: vm.recalculateAllCharge publishes a sticky banner + notification that
+                    // outlives this screen, which a Toast could never do for a multi-minute pass.
+                    onClick = { vm.recalculateAllCharge() },
                 )
             }
         }

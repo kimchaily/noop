@@ -40,6 +40,7 @@ import com.noop.data.WorkoutRow
 import com.noop.ingest.HealthConnectImporter
 import com.noop.ingest.HealthConnectWriter
 import com.noop.ingest.LiftingImporter
+import com.noop.notif.ActionProgressNotifier
 import com.noop.notif.IllnessAlertNotifier
 import com.noop.notif.ScheduledReportNotifier
 import com.noop.notif.ScheduledReportPolicy
@@ -1339,7 +1340,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * loop to catch up.
      */
     fun recalculateAllCharge(onDone: (Boolean) -> Unit = {}) {
+        if (isActionRunning(ActionIds.CHARGE_RESCORE)) return
+        actionBegin(ActionIds.CHARGE_RESCORE, "Recalculating all Charge scores")
         viewModelScope.launch {
+            val started = System.currentTimeMillis()
             val ok = runCatching {
                 IntelligenceEngine.runCausalChargeRescoreIfNeeded(
                     repo = repository,
@@ -1364,6 +1368,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
                 .isSuccess
+            val secs = ((System.currentTimeMillis() - started) / 1000L).coerceAtLeast(1L)
+            actionFinish(
+                ActionIds.CHARGE_RESCORE, ok,
+                if (ok) {
+                    "Every day re-scored against the baseline as it stood before it (${secs}s)."
+                } else {
+                    "Didn't finish — your data is unchanged. Try again."
+                },
+            )
             onDone(ok)
         }
     }
@@ -1383,6 +1396,109 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun dayDigestPut(day: String, digest: String) {
         dayDigests.edit().putString(day, digest).apply()
+    }
+
+    // MARK: - Long-running actions (import / export / rescore …)
+    //
+    // These take a minute or more and used to report ONLY through a Toast: leave the screen and every
+    // trace that something was running was gone, and if the Toast was missed there was no second chance
+    // to learn whether it worked. The state lives HERE, on the ViewModel, precisely so it survives
+    // navigating away and coming back — a screen-local flag cannot.
+    //
+    // A finished action is NOT removed automatically. It stays until dismissed, so the outcome is still
+    // there when you come back to look.
+
+    /** One long-running action, from start until the user dismisses its result. */
+    data class BackgroundAction(
+        val id: String,
+        val label: String,
+        val running: Boolean = true,
+        val ok: Boolean = true,
+        val detail: String? = null,
+    )
+
+    private val _backgroundActions = MutableStateFlow<List<BackgroundAction>>(emptyList())
+
+    /** Running actions, plus finished ones the user has not dismissed yet. */
+    val backgroundActions: StateFlow<List<BackgroundAction>> = _backgroundActions.asStateFlow()
+
+    /** True while [id] is running — the button reads this so its disabled state survives navigation. */
+    fun isActionRunning(id: String): Boolean =
+        _backgroundActions.value.any { it.id == id && it.running }
+
+    /**
+     * Mark [id] as running. Replaces any earlier entry for the same id, so re-running an action
+     * clears its previous result rather than stacking a second banner for the same thing.
+     */
+    fun actionBegin(id: String, label: String) {
+        _backgroundActions.value = _backgroundActions.value.filterNot { it.id == id } +
+            BackgroundAction(id = id, label = label)
+        ActionProgressNotifier.onRunning(appContext, id, label)
+    }
+
+    /**
+     * Record the outcome. The entry STAYS (running = false) until [dismissAction] — that is the whole
+     * point: a result you were not looking at when it landed is still there when you come back.
+     */
+    fun actionFinish(id: String, ok: Boolean, detail: String? = null) {
+        var label: String? = null
+        _backgroundActions.value = _backgroundActions.value.map {
+            if (it.id == id) {
+                label = it.label
+                it.copy(running = false, ok = ok, detail = detail)
+            } else {
+                it
+            }
+        }
+        label?.let { ActionProgressNotifier.onFinished(appContext, id, it, ok, detail) }
+    }
+
+    /**
+     * Run [work] on the IO dispatcher as a tracked background action.
+     *
+     * Deliberately on [viewModelScope], NOT on a screen's `rememberCoroutineScope()`: a composable scope
+     * is cancelled the moment the screen leaves composition, so navigating away mid-export used to kill
+     * the export. The ViewModel outlives every screen, so the work — and its banner — survives.
+     *
+     * [work] returns the success line shown in the banner/notification. A thrown exception becomes a
+     * failure with its message; cancellation is rethrown untouched so a real teardown still tears down.
+     */
+    fun runAction(
+        id: String,
+        label: String,
+        work: suspend () -> String,
+        onDone: (Boolean) -> Unit = {},
+    ) {
+        if (isActionRunning(id)) return
+        actionBegin(id, label)
+        viewModelScope.launch {
+            val result = runCatching { withContext(Dispatchers.IO) { work() } }
+                .onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
+            actionFinish(
+                id, result.isSuccess,
+                result.getOrElse { it.message?.takeIf(String::isNotBlank) ?: "Something went wrong." },
+            )
+            onDone(result.isSuccess)
+        }
+    }
+
+    /** Drop a finished action's banner. Running actions ignore this — there is nothing to acknowledge yet. */
+    fun dismissAction(id: String) {
+        val finished = _backgroundActions.value.any { it.id == id && !it.running }
+        if (!finished) return
+        _backgroundActions.value = _backgroundActions.value.filterNot { it.id == id }
+        ActionProgressNotifier.cancel(appContext, id)
+    }
+
+    /**
+     * Stable ids for the actions above. A plain nested object, NOT the companion: [AppViewModel]
+     * already has one (private, holding the loop cadences), and Kotlin allows exactly one per class.
+     */
+    object ActionIds {
+        const val CHARGE_RESCORE = "chargeRescore"
+        const val BACKUP_EXPORT = "backupExport"
+        const val BACKUP_IMPORT = "backupImport"
+        const val CSV_EXPORT = "csvExport"
     }
 
     /** Re-read every source + the dismissed markers and republish [workouts]. */
