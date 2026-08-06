@@ -236,7 +236,9 @@ class WhoopRepository(private val dao: WhoopDao) {
      * window moves, not a wrong number forever.
      */
     suspend fun dayInputDigest(deviceId: String, from: Long, to: Long): String =
-        "${dao.hrDayDigest(deviceId, from, to)}|${dao.gravityDayDigest(deviceId, from, to)}"
+        "${dao.hrDayDigest(deviceId, from, to)}" +
+            "|${dao.rrDayDigest(deviceId, from, to)}" +
+            "|${dao.gravityDayDigest(deviceId, from, to)}"
 
     /** [dayInputDigest] across BOTH strap lineages. A day's raw can sit under either id (the "Make
      *  active" split), so a digest over one alone would call a day unchanged while the other lineage

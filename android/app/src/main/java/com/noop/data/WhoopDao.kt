@@ -591,6 +591,15 @@ interface WhoopDao : DeviceRegistryDao {
             "gravitySample WHERE deviceId = :deviceId AND ts BETWEEN :from AND :to",
     )
     suspend fun gravityDayDigest(deviceId: String, from: Long, to: Long): String
+
+    /** The R-R twin of [hrDayDigest]. HRV is computed from R-R INTERVALS, not from the HR series, and it
+     *  is the dominant Charge driver at weight 0.55 — a digest that watched HR alone could call a night
+     *  unchanged while the very numbers the score rests on had moved. */
+    @Query(
+        "SELECT COUNT(*) || ':' || COALESCE(MIN(ts), 0) || ':' || COALESCE(MAX(ts), 0) || ':' || " +
+            "COALESCE(SUM(rrMs), 0) FROM rrInterval WHERE deviceId = :deviceId AND ts BETWEEN :from AND :to",
+    )
+    suspend fun rrDayDigest(deviceId: String, from: Long, to: Long): String
     @Query("SELECT COUNT(*) FROM rrInterval") suspend fun countRr(): Int
     @Query("SELECT COUNT(*) FROM event") suspend fun countEvents(): Int
     @Query("SELECT COUNT(*) FROM battery") suspend fun countBattery(): Int
