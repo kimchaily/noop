@@ -241,8 +241,13 @@ class WhoopRepository(private val dao: WhoopDao) {
     /** [dayInputDigest] across BOTH strap lineages. A day's raw can sit under either id (the "Make
      *  active" split), so a digest over one alone would call a day unchanged while the other lineage
      *  gained rows — the same blind spot that let pre-switch nights vanish from the baseline. */
-    suspend fun dayInputDigestUnion(activeDeviceId: String, from: Long, to: Long): String =
-        importedSourceIds(activeDeviceId).joinToString("|") { dayInputDigest(it, from, to) }
+    suspend fun dayInputDigestUnion(activeDeviceId: String, from: Long, to: Long): String {
+        // Plain loop, not joinToString: its lambda is not a suspend context, so the per-id query cannot
+        // be called from inside it.
+        val parts = ArrayList<String>(2)
+        for (id in importedSourceIds(activeDeviceId)) parts.add(dayInputDigest(id, from, to))
+        return parts.joinToString("|")
+    }
 
     // MARK: - Server-derived caches (latest value wins on conflict)
 
