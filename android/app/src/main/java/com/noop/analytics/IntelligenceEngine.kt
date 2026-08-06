@@ -505,12 +505,28 @@ object IntelligenceEngine {
         //
         // Default [digestGet] returns null, which marks every day changed and reproduces the old
         // behaviour exactly; callers opt in by supplying a store.
+        // Everything OUTSIDE a day's raw data that still changes its score, folded into every digest so a
+        // change to any of it invalidates the whole window at once:
+        //   - the ALGORITHM, or a scoring change with unchanged raw data would leave every digest matching
+        //     and stale scores served indefinitely;
+        //   - the PROFILE, because weight / age / sex / max-HR feed Effort and the calorie estimate, and
+        //     none of them move a single raw row;
+        //   - the max-HR override and the manual step coefficient, same reason.
+        val passDigestPrefix = ScoringFingerprint.value + "|" +
+            "${profile.weightKg}/${profile.heightCm}/${profile.age}/${profile.sex}/" +
+            "${profile.stepTicksPerStep}/${maxHROverride ?: 0.0}/${manualStepCoefficient ?: 0.0}|"
+
         val digestByDay = LinkedHashMap<String, String>()
         var earliestChangedDay: String? = null
         for (offset in maxDays - 1 downTo 0) { // oldest first, so the FIRST mismatch is the earliest
             val dayStart = nowLocalMidnight - offset * SECONDS_PER_DAY
             val dayKey = AnalyticsEngine.dayString(dayStart, tzOffsetSeconds)
-            val digest = repo.dayInputDigestUnion(
+            // The ALGORITHM is part of the digest, not just the inputs. Otherwise a scoring change with
+            // unchanged raw data leaves every digest matching, the pass skips every day, and stale scores
+            // are served indefinitely — the fix would depend entirely on the separate full-history rebuild
+            // happening to run. Folding the fingerprint in means a formula change invalidates every day by
+            // itself, through the same mechanism, with nothing else to remember.
+            val digest = passDigestPrefix + repo.dayInputDigestUnion(
                 importedDeviceId, dayStart - 30 * 3_600L, dayStart + SECONDS_PER_DAY,
             )
             digestByDay[dayKey] = digest
@@ -519,7 +535,14 @@ object IntelligenceEngine {
         // Nothing moved anywhere in the window: every stored score is already what this pass would
         // recompute. This is the case that used to burn the battery — a full re-read every fifteen
         // minutes to arrive back at the numbers already on screen.
-        if (earliestChangedDay == null && digestByDay.isNotEmpty()) return emptyList<Computed>() to 0
+        if (earliestChangedDay == null && digestByDay.isNotEmpty()) {
+            diag("rescore skipped=${digestByDay.size} scored=0 reason=noInputChange")
+            return emptyList<Computed>() to 0
+        }
+        if (digestByDay.isNotEmpty()) {
+            val skipped = digestByDay.keys.count { it < earliestChangedDay!! }
+            diag("rescore skipped=$skipped scored=${digestByDay.size - skipped} from=$earliestChangedDay")
+        }
 
         for (offset in 0 until maxDays) {
             val dayStart = nowLocalMidnight - offset * SECONDS_PER_DAY
