@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "8.2.36"
+    const val CURRENT_VERSION = "8.2.37"
 
     data class Release(
         val version: String,
@@ -36,6 +36,17 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "8.2.37",
+            title = "Tapping a graph now tells you when, not just how much",
+            date = "August 2026",
+            items = listOf(
+                "**Every graph you can tap now names the moment, not just the value.** Touching or dragging along a chart used to show the reading on its own — a bare \"72.1\" — leaving you to work out from the three labels underneath which point you were actually on. It now reads **72.1 · 17:20**: the value, and the exact time or date of the point under your finger. This covers Today's heart rate, every Trends chart, the Explore hero, both Sleep trends (hours asleep and sleep debt) and the sleep metric sheets.",
+                "**On the two graphs with no dates underneath them, this is the only way to know when.** The Vital Signs detail — breathing rate, blood oxygen, resting heart rate, HRV, skin temperature — and the Stress trend draw a line with no date axis at all, so a tapped reading could only ever be placed by counting points. Both now name the day.",
+                "**On the heart-rate graph, the time comes from the reading itself.** Not from its position in the line, so on a day the strap was off for a stretch the time beside the value is still the true wall clock, and it stays true after you pinch to zoom.",
+                "**The labels under a graph now reach both ends of it.** The right-hand one sat about two-thirds of the way along, well short of the edge, even though it describes the very last point on the curve — so the axis read as if it were mislabelled. The first label now sits hard left, the last hard right, and anything between them is centred.",
+            ),
+        ),
         Release(
             version = "8.2.36",
             title = "Choop shows what it calculated, keeps what it measured, and stops recomputing what cannot have changed",
