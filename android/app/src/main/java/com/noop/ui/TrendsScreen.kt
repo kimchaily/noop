@@ -763,6 +763,9 @@ private fun ChartWithAxes(
     val maxV = values.max()
     val avgV = values.average()
     val minV = values.min()
+    // One "d MMM" label per plotted sample for the chart's tap/scrub read-out (the axis row below
+    // shows only first/mid/last). Same reformatting as those ticks, so the two always agree.
+    val axisDates = remember(dates) { dates.map { prettyAxisDate(it) } }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier.height(IntrinsicSize.Min),
@@ -801,6 +804,9 @@ private fun ChartWithAxes(
                         // #463: the pinpoint label goes through the SAME formatter as the axis column,
                         // so a tapped Effort day can't print the stored 0-100 value beside a 0-21 axis.
                         formatValue = formatY,
+                        // …and names the tapped DAY beside the value, in the same "d MMM" wording as
+                        // the first/mid/last ticks below, so a scrub reads as a full coordinate.
+                        xLabels = axisDates,
                     )
                     GlowEndCap(values = values, tipColor = tipColor)
                 }

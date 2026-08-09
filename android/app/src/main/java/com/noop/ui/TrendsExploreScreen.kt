@@ -212,6 +212,12 @@ private val knownSeriesMetrics: Map<String, MetricSpec> = mapOf(
 
 private data class SeriesPoint(val day: String, val value: Double)
 
+/** ISO "yyyy-MM-dd" → "d MMM" for the hero chart's tap read-out (the same wording as its x-axis
+ *  ticks); an unparseable key falls back to its raw string so a non-ISO day never blanks the label. */
+private fun exploreDayLabel(day: String): String =
+    runCatching { LocalDate.parse(day).format(DateTimeFormatter.ofPattern("d MMM", Locale.US)) }
+        .getOrDefault(day)
+
 /** Lightweight ordinal day index for slicing windows without date parsing. The series is
  *  already sorted ascending by day (YYYY-MM-DD), so the trailing N entries are the window;
  *  we slice by RELATIVE-TO-LATEST count, matching the macOS day-distance window closely
@@ -642,6 +648,9 @@ private fun HeroChartCard(
                 val avgV = values.average()
                 val minV = values.min()
                 val fmtY: (Double) -> String = { v -> metric.format(v).substringBefore(' ').take(7) }
+                // One "d MMM" label per reading for the line's tap read-out, in the same wording as
+                // the first/mid/last ticks under the chart (which can't name the scrubbed day).
+                val axisDays = remember(windowed) { windowed.map { exploreDayLabel(it.day) } }
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
                         modifier = Modifier.height(IntrinsicSize.Min),
@@ -664,6 +673,7 @@ private fun HeroChartCard(
                                 color = metric.accent,
                                 fill = true,
                                 selectionEnabled = true,
+                                xLabels = axisDays,
                             )
                             ExploreGlowEndCap(values = values, tipColor = metric.accent)
                         }

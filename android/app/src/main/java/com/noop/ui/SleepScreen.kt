@@ -2486,6 +2486,9 @@ private fun DrawScope.drawRoundRectFill(color: Color, frac: Float) {
 private fun DurationTrend(m: SleepModel) {
     val pts = m.trendHours
     val avg = pts.averageOrNull()
+    // One "d MMM" label per night for the charts' tap read-out, matching the DateAxisRow wording
+    // below them (that row only names first/mid/last, so the tapped night was otherwise a guess).
+    val trendDayLabels = remember(m.trendDates) { m.trendDates.map(::shortDayLabel) }
     Column(verticalArrangement = Arrangement.spacedBy(Metrics.gap)) {
         SectionHeader("Trend", overline = "Sleep", trailing = "Last 14 days")
         ChartCard(
@@ -2513,6 +2516,7 @@ private fun DurationTrend(m: SleepModel) {
                         color = Palette.restColor,
                         fill = true,
                         selectionEnabled = true,
+                        xLabels = trendDayLabels,
                     )
                     DateAxisRow(m.trendDates)
                 }
@@ -2544,6 +2548,7 @@ private fun DurationTrend(m: SleepModel) {
                             .semantics { contentDescription = "Sleep debt trend chart" },
                         color = Palette.metricRose,
                         selectionEnabled = true,
+                        xLabels = trendDayLabels,
                     )
                     DateAxisRow(m.trendDates)
                 }
@@ -3882,6 +3887,9 @@ private fun SleepMetricDetailSheetContent(vm: AppViewModel, key: String) {
                     color = spec.color,
                     fill = true,
                     selectionEnabled = true,
+                    // Name the tapped night beside its value, in the same "d MMM" wording as the
+                    // first/mid/last ticks below.
+                    xLabels = remember(dates) { dates.map(::shortDayLabel) },
                 )
             }
             Row(modifier = Modifier.fillMaxWidth()) {

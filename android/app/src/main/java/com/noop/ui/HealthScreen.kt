@@ -1912,6 +1912,9 @@ fun VitalDetailScreen(vm: AppViewModel, key: String) {
                     color = detail.color,
                     fill = true,
                     selectionEnabled = true, // the Vital Signs detail chart is meant to be tappable
+                    // This chart carries no date axis at all, so the tapped reading's day is the only
+                    // way to place it in time — "d MMM", the same wording the trend axes use elsewhere.
+                    xLabels = remember(filteredPoints) { filteredPoints.map { shortVitalDayLabel(it.first) } },
                 )
                 Box(
                     modifier = Modifier
@@ -1981,6 +1984,12 @@ private fun missingVitalsTitle(offset: Int): String = when (offset) {
     1 -> "We didn't get yesterday's data"
     else -> "We didn't get data from 2 days ago"
 }
+
+/** ISO "yyyy-MM-dd" → "d MMM" for the Vital Signs chart's tap read-out; an unparseable key falls back
+ *  to its raw string so a non-ISO day never blanks the label. */
+private fun shortVitalDayLabel(day: String): String =
+    runCatching { LocalDate.parse(day).format(DateTimeFormatter.ofPattern("d MMM", Locale.US)) }
+        .getOrDefault(day)
 
 private fun asOfLabel(day: String?): String? {
     if (day.isNullOrBlank()) return null

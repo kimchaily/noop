@@ -5050,6 +5050,14 @@ private fun OverviewHRChart(
     var plotH by remember { mutableStateOf(0f) }
     val density = LocalDensity.current
 
+    // Per-bucket HH:mm labels for the line's tap/scrub read-out — the same real-timestamp → local
+    // wall-clock conversion the x-axis row uses, one label per plotted sample.
+    val hrTimeLabels = remember(buckets) {
+        val zone = ZoneId.systemDefault()
+        val hhmm = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
+        buckets.map { Instant.ofEpochSecond(it.bucket).atZone(zone).format(hhmm) }
+    }
+
     // ── time → x helpers ──
     // Fractional list index for a wall-clock unix-seconds time, interpolating between bucket
     // timestamps; null when the time falls outside the loaded buckets.
@@ -5135,12 +5143,16 @@ private fun OverviewHRChart(
 
         // 1) The HR line (unchanged shared component, tap-to-inspect intact). Sits OVER the sleep band
         // (above) and UNDER the dashed rules + glow end-cap + marker pills (below), mirroring iOS.
+        // The pinpoint label carries the tapped bucket's WALL-CLOCK time beside the bpm, read from the
+        // bucket's real timestamp exactly like the HH:mm axis row below the chart (never idx*5 from
+        // midnight, #544), so scrubbing answers "when" as well as "how much".
         LineChart(
             values = bpm,
             modifier = Modifier.fillMaxSize(),
             color = Palette.metricRose,
             fill = true,
             selectionEnabled = true,
+            xLabels = hrTimeLabels,
         )
 
         // 2) Wake divider + dashed rules + glow end-cap, drawn in one Canvas ON TOP of the line.
