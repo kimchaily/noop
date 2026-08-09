@@ -221,6 +221,36 @@ class WhoopRepository(private val dao: WhoopDao) {
      *  moves it (count or maxTs), so a real change always rescores; mirrors Swift WhoopStore.hrFingerprint. */
     suspend fun hrFingerprint(): String = "${dao.countHr()}:${dao.maxHrTs()}"
 
+    /**
+     * Digest of everything a single day's scoring reads from raw, for [deviceId] over [from]..[to].
+     *
+     * Purpose: decide whether a day needs re-deriving at all. The engine used to re-read ~10 streams for
+     * every day in its window on every pass — at 1 Hz that is over a million rows every fifteen minutes,
+     * essentially all of it to recompute numbers that could not have changed. This answers "did this
+     * day's inputs move?" from index-backed aggregates, without transferring a row.
+     *
+     * Covers HR (the dominant driver, with a value checksum so a corrected re-import is not mistaken for
+     * no change) and gravity (staging reads motion, so it can shift a night's HRV without touching HR).
+     * Deliberately NOT a full hash of every stream: this is a change DETECTOR guarding a recomputation,
+     * and its failure mode is bounded — a missed change means one stale day until anything else in the
+     * window moves, not a wrong number forever.
+     */
+    suspend fun dayInputDigest(deviceId: String, from: Long, to: Long): String =
+        "${dao.hrDayDigest(deviceId, from, to)}" +
+            "|${dao.rrDayDigest(deviceId, from, to)}" +
+            "|${dao.gravityDayDigest(deviceId, from, to)}"
+
+    /** [dayInputDigest] across BOTH strap lineages. A day's raw can sit under either id (the "Make
+     *  active" split), so a digest over one alone would call a day unchanged while the other lineage
+     *  gained rows — the same blind spot that let pre-switch nights vanish from the baseline. */
+    suspend fun dayInputDigestUnion(activeDeviceId: String, from: Long, to: Long): String {
+        // Plain loop, not joinToString: its lambda is not a suspend context, so the per-id query cannot
+        // be called from inside it.
+        val parts = ArrayList<String>(2)
+        for (id in importedSourceIds(activeDeviceId)) parts.add(dayInputDigest(id, from, to))
+        return parts.joinToString("|")
+    }
+
     // MARK: - Server-derived caches (latest value wins on conflict)
 
     suspend fun upsertDailyMetrics(days: List<DailyMetric>) = dao.upsertDailyMetrics(days)
@@ -231,6 +261,15 @@ class WhoopRepository(private val dao: WhoopDao) {
      *  the recompute window before re-upserting LOCAL-keyed rows. Imported rows are never touched. */
     suspend fun deleteComputedDailyInRange(deviceId: String, from: String, to: String) =
         dao.deleteDailyMetricsInRange(deviceId, from, to)
+
+    /** Atomic clear-and-rewrite of a computed day range. See [WhoopDao.replaceDailyMetricsInRange] for
+     *  why the two halves must not be separable. */
+    suspend fun replaceComputedDailyInRange(
+        deviceId: String,
+        from: String,
+        to: String,
+        rows: List<DailyMetric>,
+    ) = dao.replaceDailyMetricsInRange(deviceId, from, to, rows)
 
     /** Hand-correct the bed (onset) / wake (end) time of an existing sleep session, DURABLY , port
      *  of iOS PR #395 (Repository.editSleepTimes + MetricsCache.applySleepEdit).
@@ -318,47 +357,112 @@ class WhoopRepository(private val dao: WhoopDao) {
         dao.deleteSleepSession(session.deviceId, session.startTs)
     }
 
+    /** One stream's worth of measurements whose timestamp cannot be real, left in place. */
+    data class QuarantineFinding(
+        /** The table, named as the user sees the signal ("Heart rate", "Skin temperature", …). */
+        val label: String,
+        /** Stable token for the delete call — never shown. */
+        val stream: String,
+        val rows: Long,
+        val earliestTs: Long?,
+        val latestTs: Long?,
+    )
+
     /**
-     * #547 one-time heal: purge rows polluted by a bad-strap-clock timestamp. pikapik's WHOOP 4.0 emitted
-     * records whose `unix` decoded to garbage (far-past / a 2027 spike / a future date) which entered the
-     * DB verbatim before the ingest gate existed. This (a) deletes raw stream rows (HR/PPG-HR/RR/skinTemp/
-     * step/resp/gravity/spo2/event/battery) whose `ts` is implausible, and (b) deletes COMPUTED daily-metric
-     * + sleep-session rows whose day/ts is future or implausibly old , across EVERY device id, since the bad
-     * raw rows sit under the strap id and the bad computed rows under the "-noop" id. The caller then runs a
-     * normal analyzeRecent rescore so the real days recompute cleanly (the repeated 721-minute block is gone
-     * once its garbage rows are purged). Idempotent: a re-run matches nothing.
+     * #547, second thoughts: find raw rows a bad strap clock stamped with an impossible time — WITHOUT
+     * deleting them.
      *
-     * Returns the TOTAL number of rows deleted (for the heal log). Bounds default to the ingest-gate
-     * constants; [nowSec] / [today] / [minDay] are injectable so a test pins the boundary deterministically.
+     * The original heal deleted them outright, and that was the wrong instinct. A raw measurement is the
+     * one thing Choop can never re-derive: the strap has already forgotten it, so a delete here is
+     * permanent. And the fault is in the CLOCK, not in the reading — a heart rate stamped 1970 is still
+     * a real heart rate that was really measured, just filed under a time nobody can recover.
+     *
+     * Leaving them costs nothing, because a row dated 1970 or 2090 falls outside every window any score
+     * ever reads: it cannot reach a number on the dashboard. So they sit there, counted and shown, and
+     * only an explicit tap removes them ([purgeQuarantinedRaw]).
+     *
+     * Bounds default to the ingest-gate constants; [nowSec] is injectable so a test pins the boundary.
      */
-    suspend fun healImplausibleTimestamps(
+    suspend fun scanImplausibleTimestamps(
+        nowSec: Long = System.currentTimeMillis() / 1000L,
+        minTs: Long = com.noop.protocol.MIN_PLAUSIBLE_UNIX,
+        futureMargin: Long = com.noop.protocol.FUTURE_MARGIN,
+    ): List<QuarantineFinding> {
+        val maxTs = nowSec + futureMargin
+        val out = ArrayList<QuarantineFinding>()
+        suspend fun add(
+            label: String,
+            stream: String,
+            count: suspend (Long, Long) -> Long,
+            min: suspend (Long, Long) -> Long?,
+            max: suspend (Long, Long) -> Long?,
+        ) {
+            val n = count(minTs, maxTs)
+            if (n > 0) out += QuarantineFinding(label, stream, n, min(minTs, maxTs), max(minTs, maxTs))
+        }
+        add("Heart rate", STREAM_HR, dao::countHrOutsideTs, dao::minHrOutsideTs, dao::maxHrOutsideTs)
+        add("Heart rate (from PPG)", STREAM_PPG, dao::countPpgHrOutsideTs, dao::minPpgHrOutsideTs, dao::maxPpgHrOutsideTs)
+        add("Beat-to-beat intervals", STREAM_RR, dao::countRrOutsideTs, dao::minRrOutsideTs, dao::maxRrOutsideTs)
+        add("Skin temperature", STREAM_SKIN, dao::countSkinTempOutsideTs, dao::minSkinTempOutsideTs, dao::maxSkinTempOutsideTs)
+        add("Steps", STREAM_STEP, dao::countStepOutsideTs, dao::minStepOutsideTs, dao::maxStepOutsideTs)
+        add("Respiration", STREAM_RESP, dao::countRespOutsideTs, dao::minRespOutsideTs, dao::maxRespOutsideTs)
+        add("Motion", STREAM_GRAVITY, dao::countGravityOutsideTs, dao::minGravityOutsideTs, dao::maxGravityOutsideTs)
+        add("Blood oxygen (raw)", STREAM_SPO2, dao::countSpo2OutsideTs, dao::minSpo2OutsideTs, dao::maxSpo2OutsideTs)
+        add("Strap events", STREAM_EVENT, dao::countEventOutsideTs, dao::minEventOutsideTs, dao::maxEventOutsideTs)
+        add("Battery", STREAM_BATTERY, dao::countBatteryOutsideTs, dao::minBatteryOutsideTs, dao::maxBatteryOutsideTs)
+        return out
+    }
+
+    /**
+     * Delete the quarantined raw rows of [streams] (all of them when empty). The ONLY path in Choop that
+     * removes a raw measurement, and it is reached only by a user tapping a button next to a count of
+     * exactly what will go.
+     */
+    suspend fun purgeQuarantinedRaw(
+        streams: Set<String> = emptySet(),
+        nowSec: Long = System.currentTimeMillis() / 1000L,
+        minTs: Long = com.noop.protocol.MIN_PLAUSIBLE_UNIX,
+        futureMargin: Long = com.noop.protocol.FUTURE_MARGIN,
+    ): Int {
+        val maxTs = nowSec + futureMargin
+        fun wanted(s: String) = streams.isEmpty() || s in streams
+        var deleted = 0
+        if (wanted(STREAM_HR)) deleted += dao.pruneHrByTs(minTs, maxTs)
+        if (wanted(STREAM_PPG)) deleted += dao.prunePpgHrByTs(minTs, maxTs)
+        if (wanted(STREAM_RR)) deleted += dao.pruneRrByTs(minTs, maxTs)
+        if (wanted(STREAM_SKIN)) deleted += dao.pruneSkinTempByTs(minTs, maxTs)
+        if (wanted(STREAM_STEP)) deleted += dao.pruneStepByTs(minTs, maxTs)
+        if (wanted(STREAM_RESP)) deleted += dao.pruneRespByTs(minTs, maxTs)
+        if (wanted(STREAM_GRAVITY)) deleted += dao.pruneGravityByTs(minTs, maxTs)
+        if (wanted(STREAM_SPO2)) deleted += dao.pruneSpo2ByTs(minTs, maxTs)
+        if (wanted(STREAM_EVENT)) deleted += dao.pruneEventByTs(minTs, maxTs)
+        if (wanted(STREAM_BATTERY)) deleted += dao.pruneBatteryByTs(minTs, maxTs)
+        return deleted
+    }
+
+    /**
+     * #547 heal, narrowed to what is safe to delete without asking: the COMPUTED rows.
+     *
+     * A daily-metric or sleep-session row dated in the future or implausibly far back is not a
+     * measurement — it is a result Choop derived from one, and it can be derived again from the raw data
+     * that is still there. It also cannot simply be left alone the way a stray raw row can: the Charge
+     * baseline folds the stored computed history, and the dashboard reads by day key, so a row dated 2090
+     * genuinely reaches the screen and the score.
+     *
+     * The RAW half of the old heal is gone from here on purpose — see [scanImplausibleTimestamps]. The
+     * caller then runs a normal rescore so the real days recompute cleanly. Idempotent: a re-run matches
+     * nothing. Returns the number of computed rows deleted, for the heal log.
+     */
+    suspend fun healImplausibleComputedRows(
         nowSec: Long = System.currentTimeMillis() / 1000L,
         today: String = java.time.LocalDate.now().toString(),
         minTs: Long = com.noop.protocol.MIN_PLAUSIBLE_UNIX,
         futureMargin: Long = com.noop.protocol.FUTURE_MARGIN,
     ): Int {
         val maxTs = nowSec + futureMargin
-        // The far-past floor day (local day of MIN_PLAUSIBLE_UNIX). A computed (`-noop`) row before this
-        // can't legitimately predate Choop, so it is bad-clock garbage and is purged; the prune queries
-        // apply this floor ONLY to `-noop` rows so a WHOOP CSV import (bare "my-whoop", REAL dates going
-        // back years) is never touched (v8.2.1). A day after `today` is future-dated and always purged.
         val minDay = java.time.Instant.ofEpochSecond(minTs)
             .atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString()
         var deleted = 0
-        // (a) raw streams (all keyed by ts)
-        deleted += dao.pruneHrByTs(minTs, maxTs)
-        deleted += dao.prunePpgHrByTs(minTs, maxTs)
-        deleted += dao.pruneRrByTs(minTs, maxTs)
-        deleted += dao.pruneSkinTempByTs(minTs, maxTs)
-        deleted += dao.pruneStepByTs(minTs, maxTs)
-        deleted += dao.pruneRespByTs(minTs, maxTs)
-        deleted += dao.pruneGravityByTs(minTs, maxTs)
-        deleted += dao.pruneSpo2ByTs(minTs, maxTs)
-        deleted += dao.pruneEventByTs(minTs, maxTs)
-        deleted += dao.pruneBatteryByTs(minTs, maxTs)
-        // (b) computed daily metrics (by day key) + sleep sessions (by startTs). The prune queries apply
-        // the far-past floor ONLY to `-noop` computed rows, so a multi-year import (bare "my-whoop")
-        // survives; future rows are always purged (v8.2.1).
         deleted += dao.pruneDailyMetricByDay(today, minDay)
         deleted += dao.pruneSleepSessionByTs(minTs, maxTs)
         return deleted
@@ -1348,6 +1452,19 @@ class WhoopRepository(private val dao: WhoopDao) {
     suspend fun latestBattery(deviceId: String): BatterySample? = dao.latestBattery(deviceId)
 
     companion object {
+        // Stable tokens naming each raw stream in the quarantine view's delete call. Never shown to a
+        // user — the finding carries its own human label — so they can stay short and must stay stable.
+        const val STREAM_HR = "hr"
+        const val STREAM_PPG = "ppgHr"
+        const val STREAM_RR = "rr"
+        const val STREAM_SKIN = "skinTemp"
+        const val STREAM_STEP = "step"
+        const val STREAM_RESP = "resp"
+        const val STREAM_GRAVITY = "gravity"
+        const val STREAM_SPO2 = "spo2"
+        const val STREAM_EVENT = "event"
+        const val STREAM_BATTERY = "battery"
+
         /** Default row cap on range reads. Matches the Swift call sites' bounded scans. */
         const val DEFAULT_LIMIT = 100_000
 

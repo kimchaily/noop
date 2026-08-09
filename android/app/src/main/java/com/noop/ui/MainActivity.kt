@@ -724,6 +724,12 @@ object NoopPrefs {
      */
     const val KEY_CHARGE_RESCORE_VERSION = "noop.chargeRescore.completedVersion"
 
+    /** The [com.noop.analytics.ScoringFingerprint] the last COMPLETED full-history rescore ran at.
+     *  Empty = never. This is what actually gates the rebuild now: the fingerprint is DERIVED from the
+     *  scorers' own output, so a change to the algorithm moves it without anyone having to remember to
+     *  bump anything. [KEY_CHARGE_RESCORE_VERSION] stays for the human-readable audit trail. */
+    const val KEY_CHARGE_RESCORE_FINGERPRINT = "noop.chargeRescore.completedFingerprint"
+
     /** When that rescore completed (epoch SECONDS, 0 = never). Surfaced in Settings so "did it actually
      *  run?" is answerable from the app instead of inferred from how long ago the update was. */
     const val KEY_CHARGE_RESCORE_AT = "noop.chargeRescore.completedAt"
@@ -734,13 +740,23 @@ object NoopPrefs {
     fun chargeRescoreCompletedAt(context: Context): Long =
         of(context).getLong(KEY_CHARGE_RESCORE_AT, 0L)
 
-    /** True when the stored history has already been scored at [version] or later. */
-    fun chargeRescoreUpToDate(context: Context, version: Int): Boolean =
-        chargeRescoreCompletedVersion(context) >= version
+    fun chargeRescoreCompletedFingerprint(context: Context): String =
+        of(context).getString(KEY_CHARGE_RESCORE_FINGERPRINT, "").orEmpty()
 
-    fun setChargeRescoreCompleted(context: Context, version: Int, atSeconds: Long) {
+    /**
+     * True when the stored history was already rebuilt by the algorithm currently in the app.
+     *
+     * Gated on the DERIVED fingerprint, not on a hand-maintained number: a scoring change moves the
+     * fingerprint by itself, so a rebuild can no longer be skipped because someone forgot to bump a
+     * constant — which is precisely how weeks-old days ended up stranded on a superseded algorithm.
+     */
+    fun chargeRescoreUpToDate(context: Context, fingerprint: String): Boolean =
+        chargeRescoreCompletedFingerprint(context) == fingerprint
+
+    fun setChargeRescoreCompleted(context: Context, version: Int, fingerprint: String, atSeconds: Long) {
         of(context).edit()
             .putInt(KEY_CHARGE_RESCORE_VERSION, version)
+            .putString(KEY_CHARGE_RESCORE_FINGERPRINT, fingerprint)
             .putLong(KEY_CHARGE_RESCORE_AT, atSeconds)
             .apply()
     }

@@ -69,6 +69,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -95,7 +96,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.noop.BuildConfig
 import com.noop.analytics.Baselines
-import com.noop.analytics.IntelligenceEngine
+import com.noop.analytics.ScoringFingerprint
 import com.noop.analytics.Zones
 import com.noop.ble.PuffinExperiment
 import com.noop.ble.WhoopModel
@@ -327,7 +328,24 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     // this screen never edits the profile anymore.
     val profile = remember { ProfileStore.from(context) }
 
-    var backupBusy by remember { mutableStateOf(false) }
+    // Long-running actions, read from the ViewModel rather than a screen-local flag: a local flag is lost
+    // the moment you navigate away, so coming back to Settings mid-export showed idle buttons for work
+    // that was still running. This survives, because the state does.
+    val backgroundActions by vm.backgroundActions.collectAsStateWithLifecycle()
+    val backupBusy = backgroundActions.any {
+        it.running && it.id in setOf(
+            AppViewModel.ActionIds.BACKUP_EXPORT,
+            AppViewModel.ActionIds.BACKUP_IMPORT,
+            AppViewModel.ActionIds.BACKUP_MERGE,
+            AppViewModel.ActionIds.CSV_EXPORT,
+        )
+    }
+    // True while the full-history Charge rescore is running, so the button disables + reads
+    // "Recalculating…" instead of letting an impatient second tap queue another multi-minute pass.
+    // Read from the ViewModel for the same reason as [backupBusy]: it has to survive navigation.
+    val recalculatingCharge = backgroundActions.any {
+        it.running && it.id == AppViewModel.ActionIds.CHARGE_RESCORE
+    }
 
     // Re-scan must request the runtime Bluetooth permission before scanning — without this the
     // button calls connect() directly and silently no-ops on Android 12+ when the permission was
@@ -360,9 +378,13 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     // that feeds Charge from tonight onward; the standing analyze loop picks it up on its next pass.
     // Fixes a baseline poisoned by a bad first week (worn sick, or early nights that anchored too high).
     var showRecalibrateConfirm by remember { mutableStateOf(false) }
-    // True while the full-history Charge rescore is running, so the button disables + reads "Recalculating…"
-    // instead of letting an impatient second tap queue another multi-minute pass.
-    var recalculatingCharge by remember { mutableStateOf(false) }
+    // The Charge baseline start date, mirrored into snapshot state because SharedPreferences is not
+    // reactive: every button below writes the pref AND this, so the status line can never disagree
+    // with what is actually stored.
+    var chargeAnchorSeconds by remember {
+        mutableStateOf(NoopPrefs.of(context).getLong(Baselines.hrvBaselineEpochKey, 0L))
+    }
+    var showAnchorDatePicker by remember { mutableStateOf(false) }
 
     // Whether the "Advanced" disclosure (experimental probes, diagnostics, raw-sensor export, Trends
     // report) is expanded. Default FALSE so a first-run user lands on the everyday sections instead of
@@ -486,75 +508,64 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     var showDayCycleBackground by remember { mutableStateOf(NoopPrefs.showDayCycleBackground(context)) }
 
     // SAF launchers — CreateDocument for export, OpenDocument for import.
+    //
+    // Each hands the actual work to vm.runAction, which runs it on the ViewModel scope and publishes a
+    // sticky banner + system notification. That matters twice over: the work no longer dies when this
+    // screen leaves composition (a `rememberCoroutineScope()` is cancelled on exit, so navigating away
+    // mid-export used to silently kill it), and the outcome is still readable minutes later instead of
+    // living and dying with a Toast.
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
     ) { uri ->
-        if (uri == null) { backupBusy = false; return@rememberLauncherForActivityResult }
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { DataBackup.exportTo(context, uri) }
-            }
-            backupBusy = false
-            result.fold(
-                onSuccess = {
-                    Toast.makeText(
-                        context,
-                        "Backup exported. Copy this file to your new phone and use Import there to restore everything.",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                },
-                onFailure = { e ->
-                    Toast.makeText(context, "Backup problem: ${e.message}", Toast.LENGTH_LONG).show()
-                },
-            )
-        }
+        if (uri == null) return@rememberLauncherForActivityResult
+        vm.runAction(
+            AppViewModel.ActionIds.BACKUP_EXPORT, "Exporting backup",
+            work = {
+                DataBackup.exportTo(context, uri)
+                "Backup exported. Copy this file to your new phone and use Import there to restore everything."
+            },
+        )
     }
 
     // CSV export — the 4-CSV WHOOP-format zip Choop's own importers re-import (Android + Mac).
     val csvExportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
     ) { uri ->
-        if (uri == null) { backupBusy = false; return@rememberLauncherForActivityResult }
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { WhoopCsvExporter.exportZip(context, uri, vm.repo) }
-            }
-            backupBusy = false
-            result.fold(
-                onSuccess = { msg ->
-                    Toast.makeText(
-                        context,
-                        "$msg Re-import it via Data sources → WHOOP import, on Android or Mac.",
-                        Toast.LENGTH_LONG,
-                    ).show()
-                },
-                onFailure = { e ->
-                    Toast.makeText(context, "CSV export problem: ${e.message}", Toast.LENGTH_LONG).show()
-                },
-            )
-        }
+        if (uri == null) return@rememberLauncherForActivityResult
+        vm.runAction(
+            AppViewModel.ActionIds.CSV_EXPORT, "Exporting CSV",
+            work = {
+                val msg = WhoopCsvExporter.exportZip(context, uri, vm.repo)
+                "$msg Re-import it via Data sources → WHOOP import, on Android or Mac."
+            },
+        )
+    }
+
+    // "Add missing only" — the additive counterpart to the replacing import above. Same file picker,
+    // different verb: MergeImport adds every measurement this phone lacks and cannot touch one it
+    // already has. Needs no restart, because the live database is never swapped out from under Room.
+    val mergeLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) vm.mergeFromBackup(uri)
     }
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
-        if (uri == null) { backupBusy = false; return@rememberLauncherForActivityResult }
-        scope.launch {
-            val result = withContext(Dispatchers.IO) {
-                DataBackup.importFrom(context, uri)
-            }
-            backupBusy = false
-            when (result) {
-                is DataBackup.ImportResult.NeedsRestart -> Toast.makeText(
-                    context,
-                    "Backup imported. Fully close and reopen Choop for it to take effect.",
-                    Toast.LENGTH_LONG,
-                ).show()
-                is DataBackup.ImportResult.Failed -> Toast.makeText(
-                    context, result.message, Toast.LENGTH_LONG,
-                ).show()
-            }
-        }
+        if (uri == null) return@rememberLauncherForActivityResult
+        vm.runAction(
+            AppViewModel.ActionIds.BACKUP_IMPORT, "Importing backup",
+            work = {
+                // importFrom reports failure by RESULT, not by throwing, so turn a Failed into a throw —
+                // that's what runAction reads to mark the banner red.
+                when (val result = DataBackup.importFrom(context, uri)) {
+                    is DataBackup.ImportResult.NeedsRestart ->
+                        "Backup imported. Fully close and reopen Choop for it to take effect."
+                    is DataBackup.ImportResult.Failed -> throw IllegalStateException(result.message)
+                }
+            },
+        )
     }
 
     ScreenScaffold(
@@ -1225,7 +1236,6 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         enabled = !backupBusy,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            backupBusy = true
                             exportLauncher.launch("noop-backup-${java.time.LocalDate.now()}.noopbak")
                         },
                     )
@@ -1236,7 +1246,6 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         enabled = !backupBusy,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            backupBusy = true
                             importLauncher.launch(arrayOf("*/*"))
                         },
                     )
@@ -1247,7 +1256,6 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         enabled = !backupBusy,
                         modifier = Modifier.weight(1f),
                         onClick = {
-                            backupBusy = true
                             csvExportLauncher.launch("noop-export-${java.time.LocalDate.now()}.zip")
                         },
                     )
@@ -1263,10 +1271,32 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                             strokeWidth = 2.dp,
                             modifier = Modifier.size(18.dp),
                         )
-                        Text("Working…", style = NoopType.footnote, color = Palette.textSecondary)
+                        Text(
+                            "Working… you can leave this screen; the banner above the tab bar keeps you posted.",
+                            style = NoopType.footnote, color = Palette.textSecondary,
+                        )
                     }
                 }
 
+                // The additive import gets its own full-width button and its own explanation: the
+                // difference between "replace everything" and "add what's missing" is the difference
+                // between losing this phone's nights and keeping them, and a shared row would hide that.
+                NoopButton(
+                    text = "Add missing data from a backup…",
+                    kind = NoopButtonKind.Secondary,
+                    fullWidth = true,
+                    enabled = !backupBusy,
+                    onClick = { mergeLauncher.launch(arrayOf("*/*")) },
+                )
+                NoteRow(
+                    icon = Icons.Filled.Info,
+                    iconTint = Palette.textTertiary,
+                    text = "Add missing data reads a backup and copies over only the measurements this " +
+                        "phone doesn't have. Nothing already here is changed or removed, and no restart " +
+                        "is needed. Use it when two Choop installs each recorded nights the other missed. " +
+                        "Where both have the same day, this phone's version stays and the scores are " +
+                        "recalculated afterwards from the raw data both now share.",
+                )
                 NoteRow(
                     icon = Icons.Filled.Info,
                     iconTint = Palette.textTertiary,
@@ -1318,22 +1348,81 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
             blurb = "Charge is Choop's daily readiness score, learned from your own HRV, resting heart rate and more over time. Your history stays.",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // THE ANCHOR, made visible and reversible. It used to be a one-way button: tapping
+                // Recalibrate silently wrote "now" into two preference keys, and afterwards there was no
+                // way to see what it had done, move it, or undo it — a Charge that stayed low for weeks
+                // was indistinguishable from a Charge that was low because of one bad Tuesday. The
+                // anchor never deletes a night; it only moves where the average STARTS, so showing it and
+                // letting it be moved or removed costs nothing and can lose nothing.
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("Recalibrate Charge baseline", style = NoopType.subhead, color = Palette.textPrimary)
+                    Text("Baseline start", style = NoopType.subhead, color = Palette.textPrimary)
                     Text(
-                        "Restarts the roughly 4-night build-up for Charge and your HRV baseline from tonight. Use it if a bad first week set your baseline off. Your history stays.",
+                        baselineAnchorLine(chargeAnchorSeconds),
+                        style = NoopType.footnote,
+                        color = Palette.textSecondary,
+                    )
+                    Text(
+                        "Charge compares each night with your own recent nights. The start date says how " +
+                            "far back that comparison reaches. Nights before it are still recorded and " +
+                            "still shown; they just don't count towards the average.",
                         style = NoopType.footnote,
                         color = Palette.textTertiary,
                     )
                 }
                 NoopButton(
-                    text = "Recalibrate Charge baseline",
+                    text = "Start from tonight",
                     leadingIcon = Icons.Filled.Autorenew,
                     kind = NoopButtonKind.Secondary,
                     fullWidth = true,
                     modifier = Modifier.semantics { contentDescription = "Recalibrate Charge baseline" },
                     onClick = { showRecalibrateConfirm = true },
                 )
+                NoopButton(
+                    text = "Start from a date…",
+                    leadingIcon = Icons.Filled.Autorenew,
+                    kind = NoopButtonKind.Secondary,
+                    fullWidth = true,
+                    onClick = { showAnchorDatePicker = true },
+                )
+                NoopButton(
+                    text = "Use only the last 30 nights",
+                    leadingIcon = Icons.Filled.Autorenew,
+                    kind = NoopButtonKind.Secondary,
+                    fullWidth = true,
+                    onClick = {
+                        // Not a separate mechanism — "seed from recent nights" IS the anchor placed 30
+                        // days back. Saying it in one sentence beats a second concept doing the same job.
+                        setChargeAnchor(
+                            context,
+                            java.time.LocalDate.now().minusDays(30)
+                                .atStartOfDay(java.time.ZoneId.systemDefault()).toEpochSecond(),
+                        )
+                        chargeAnchorSeconds = NoopPrefs.of(context)
+                            .getLong(Baselines.hrvBaselineEpochKey, 0L)
+                        vm.recalculateAllCharge()
+                    },
+                )
+                if (chargeAnchorSeconds > 0L) {
+                    NoopButton(
+                        text = "Remove the start date",
+                        leadingIcon = Icons.Filled.Restore,
+                        kind = NoopButtonKind.Secondary,
+                        fullWidth = true,
+                        onClick = {
+                            val editor = NoopPrefs.of(context).edit()
+                            Baselines.clearRecoveryBaselineAnchor(editor)
+                            editor.apply()
+                            chargeAnchorSeconds = 0L
+                            vm.recalculateAllCharge()
+                        },
+                    )
+                    Text(
+                        "Removing it puts every night you have ever recorded back into the average. " +
+                            "Nothing has to be recovered — no night was ever deleted.",
+                        style = NoopType.footnote,
+                        color = Palette.textTertiary,
+                    )
+                }
                 // Rebuild the WHOLE Charge history on the current algorithm. Distinct from Recalibrate
                 // above: this does NOT move the baseline anchor or restart the build-up — it re-scores
                 // every day you have raw data for against the baseline as it stood before that night. A
@@ -1361,22 +1450,42 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     fullWidth = true,
                     enabled = !recalculatingCharge,
                     modifier = Modifier.semantics { contentDescription = "Recalculate all Charge scores" },
-                    onClick = {
-                        recalculatingCharge = true
-                        vm.recalculateAllCharge { ok ->
-                            recalculatingCharge = false
-                            Toast.makeText(
-                                context,
-                                if (ok) {
-                                    "Charge recalculated across your history."
-                                } else {
-                                    "Couldn't finish recalculating. Choop will catch up on its own."
-                                },
-                                Toast.LENGTH_LONG,
-                            ).show()
-                        }
-                    },
+                    // No Toast here: vm.recalculateAllCharge publishes a sticky banner + notification that
+                    // outlives this screen, which a Toast could never do for a multi-minute pass.
+                    onClick = { vm.recalculateAllCharge() },
                 )
+            }
+        }
+
+        // Pick any past date as the baseline start. Capped at today: a future start would mean the
+        // average reaches back to nothing at all, which is not a state worth being able to reach.
+        if (showAnchorDatePicker) {
+            val cal = java.util.Calendar.getInstance().apply {
+                if (chargeAnchorSeconds > 0L) timeInMillis = chargeAnchorSeconds * 1000L
+            }
+            DisposableEffect(Unit) {
+                val dialog = android.app.DatePickerDialog(
+                    context,
+                    { _, year, month, day ->
+                        setChargeAnchor(
+                            context,
+                            java.time.LocalDate.of(year, month + 1, day)
+                                .atStartOfDay(java.time.ZoneId.systemDefault()).toEpochSecond(),
+                        )
+                        chargeAnchorSeconds = NoopPrefs.of(context)
+                            .getLong(Baselines.hrvBaselineEpochKey, 0L)
+                        showAnchorDatePicker = false
+                        vm.recalculateAllCharge()
+                    },
+                    cal.get(java.util.Calendar.YEAR),
+                    cal.get(java.util.Calendar.MONTH),
+                    cal.get(java.util.Calendar.DAY_OF_MONTH),
+                ).apply {
+                    datePicker.maxDate = System.currentTimeMillis()
+                    setOnDismissListener { showAnchorDatePicker = false }
+                }
+                dialog.show()
+                onDispose { runCatching { dialog.dismiss() } }
             }
         }
 
@@ -1384,10 +1493,14 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
             AlertDialog(
                 onDismissRequest = { showRecalibrateConfirm = false },
                 containerColor = Palette.surfaceOverlay,
-                title = { Text("Recalibrate your Charge baseline?", style = NoopType.title2, color = Palette.textPrimary) },
+                title = { Text("Start the baseline from tonight?", style = NoopType.title2, color = Palette.textPrimary) },
                 text = {
                     Text(
-                        "This restarts the roughly 4-night build-up for Charge and your HRV baseline. Your history stays. Use it if a bad first week, like wearing it while sick, set your baseline off.",
+                        "Charge will compare you only with nights from tonight onward, so it needs about " +
+                            "four nights before it can score again. Use this if a bad stretch - worn while " +
+                            "ill, say - set your baseline off. Nothing is deleted: every earlier night " +
+                            "stays recorded and still shows in Trends, and you can remove the start date " +
+                            "again at any time to bring them all back into the average.",
                         style = NoopType.subhead,
                         color = Palette.textSecondary,
                     )
@@ -1405,6 +1518,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                             val editor = NoopPrefs.of(context).edit()
                             Baselines.recalibrateRecoveryBaselines(editor, nowSeconds)
                             editor.apply()
+                            chargeAnchorSeconds = nowSeconds
                             showRecalibrateConfirm = false
                             // Nudge an immediate re-analyze so the change is felt now; the standing
                             // 15-min analyze loop also re-runs foldHistory regardless. No-ops cleanly
@@ -1412,11 +1526,11 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                             vm.syncNow()
                             Toast.makeText(
                                 context,
-                                "Charge baseline reset. Choop will re-learn it from tonight. Your history stays, and it takes a few nights to settle.",
+                                "Baseline start set to tonight. Your history stays; Charge takes a few nights to settle.",
                                 Toast.LENGTH_LONG,
                             ).show()
                         },
-                    ) { Text("Recalibrate", style = NoopType.body, color = Palette.accent) }
+                    ) { Text("Start from tonight", style = NoopType.body, color = Palette.accent) }
                 },
                 dismissButton = {
                     TextButton(onClick = { showRecalibrateConfirm = false }) {
@@ -2804,9 +2918,8 @@ private fun AttributionRow(repo: String, note: String) {
  */
 private fun chargeRescoreStatusLine(context: android.content.Context, running: Boolean): String {
     if (running) return "Recalculating your history now…"
-    val done = NoopPrefs.chargeRescoreCompletedVersion(context)
     val at = NoopPrefs.chargeRescoreCompletedAt(context)
-    if (done < IntelligenceEngine.SCORING_VERSION) {
+    if (!NoopPrefs.chargeRescoreUpToDate(context, ScoringFingerprint.value)) {
         // Either never run, or run at an older scoring version — both mean older days may still carry
         // numbers the current algorithm would not produce.
         return "Your history has not been rebuilt for the current scoring yet."
@@ -2816,4 +2929,35 @@ private fun chargeRescoreStatusLine(context: android.content.Context, running: B
         .atZone(java.time.ZoneId.systemDefault())
         .format(java.time.format.DateTimeFormatter.ofPattern("d MMM, HH:mm", java.util.Locale.getDefault()))
     return "Last rebuilt $stamp — up to date with the current scoring."
+}
+
+/**
+ * Write the Charge baseline start date (epoch SECONDS, whole) to both anchor keys at once.
+ *
+ * Both keys, always: HRV re-anchors on its own epoch and resting HR / respiration / skin temp on the
+ * other, so setting one alone would leave Charge comparing its biggest term against one stretch of
+ * history and the rest against another. [Baselines.recalibrateRecoveryBaselines] is the single place
+ * that knows that, so this goes through it rather than touching the preferences directly.
+ */
+private fun setChargeAnchor(context: android.content.Context, seconds: Long) {
+    val editor = NoopPrefs.of(context).edit()
+    Baselines.recalibrateRecoveryBaselines(editor, seconds)
+    editor.apply()
+}
+
+/**
+ * The one-line answer to "how far back does my Charge comparison reach?".
+ *
+ * Says the date AND what it means, because the date alone is meaningless to anyone who has not read
+ * how the baseline works. The no-anchor case is stated positively — "every night counts" — rather
+ * than as an absence, because that IS the normal, healthy state.
+ */
+private fun baselineAnchorLine(anchorSeconds: Long): String {
+    if (anchorSeconds <= 0L) return "No start date set - every night you have recorded counts."
+    val date = java.time.Instant.ofEpochSecond(anchorSeconds)
+        .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+    val nights = java.time.temporal.ChronoUnit.DAYS.between(date, java.time.LocalDate.now())
+        .coerceAtLeast(0L)
+    val shown = date.format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy"))
+    return "Counting nights from $shown - about $nights night${if (nights == 1L) "" else "s"} so far."
 }

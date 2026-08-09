@@ -462,4 +462,17 @@ object Baselines {
         editor.putLong(hrvBaselineEpochKey, nowSeconds)
         editor.putLong(recoveryBaselineEpochKey, nowSeconds)
     }
+
+    /**
+     * Remove the anchor entirely, so every night ever recorded counts towards the baselines again.
+     *
+     * The inverse of [recalibrateRecoveryBaselines], and the reason that one is reversible at all: an
+     * anchor only ever changed which night the fold STARTS from, it never deleted a night. Writing 0 to
+     * both keys therefore restores the full history exactly — there is nothing to recover, because
+     * nothing was lost. Same two keys, so this and the anchor can never disagree about what is set.
+     */
+    fun clearRecoveryBaselineAnchor(editor: android.content.SharedPreferences.Editor) {
+        editor.putLong(hrvBaselineEpochKey, 0L)
+        editor.putLong(recoveryBaselineEpochKey, 0L)
+    }
 }
