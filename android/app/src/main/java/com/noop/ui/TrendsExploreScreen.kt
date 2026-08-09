@@ -39,7 +39,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.noop.data.DailyMetric
@@ -679,21 +678,10 @@ private fun HeroChartCard(
                         }
                     }
                     val days = windowed.map { it.day }
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        listOf(days.first(), days.getOrNull(days.lastIndex / 2), days.last()).forEach { d ->
-                            Text(
-                                d?.let {
-                                    runCatching { LocalDate.parse(it).format(DateTimeFormatter.ofPattern("d MMM", Locale.US)) }
-                                        .getOrDefault(it)
-                                }.orEmpty(),
-                                style = NoopType.footnote,
-                                color = Palette.textTertiary,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
+                    ChartXAxisRow(
+                        listOf(days.first(), days.getOrNull(days.lastIndex / 2), days.last())
+                            .map { d -> d?.let(::exploreDayLabel).orEmpty() },
+                    )
                 }
             } else {
                 Box(

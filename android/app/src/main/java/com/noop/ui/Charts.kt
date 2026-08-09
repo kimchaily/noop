@@ -5,9 +5,11 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -30,6 +32,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.util.Locale
@@ -386,6 +390,45 @@ fun LineChart(
                     }
                 },
         )
+    }
+}
+
+// MARK: - Chart x-axis tick row
+
+/**
+ * The tick row under a chart: [labels] spread across the FULL axis width — the first flush left, the
+ * last flush right, any in between centred on their slot.
+ *
+ * Every label gets an equal weighted slot; what changed is the alignment INSIDE it. Each label used to
+ * be start-aligned in its slot, so with the usual three ticks the last one began at two-thirds width
+ * and floated well short of the right edge — it read as a mislabelled axis, since that tick describes
+ * the curve's final sample, which sits exactly at the right edge. Aligning the ends outward pins the
+ * first and last labels to the axis they annotate; the equal slots keep every label inside its own
+ * share of the width, so none can collide with or clip its neighbour.
+ */
+@Composable
+fun ChartXAxisRow(
+    labels: List<String>,
+    modifier: Modifier = Modifier,
+) {
+    if (labels.isEmpty()) return
+    Row(modifier = modifier.fillMaxWidth()) {
+        labels.forEachIndexed { i, label ->
+            Text(
+                text = label,
+                style = NoopType.footnote,
+                color = Palette.textTertiary,
+                // Single-label rows take the `0` branch and stay left-aligned, as before.
+                textAlign = when (i) {
+                    0 -> TextAlign.Start
+                    labels.lastIndex -> TextAlign.End
+                    else -> TextAlign.Center
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 

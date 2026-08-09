@@ -39,7 +39,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -813,18 +812,12 @@ private fun ChartWithAxes(
             }
         }
         if (dates.size >= 2) {
-            Row(modifier = Modifier.fillMaxWidth()) {
-                listOf(dates.first(), dates.getOrNull(dates.lastIndex / 2), dates.last()).forEach { d ->
-                    Text(
-                        prettyAxisDate(d),
-                        style = NoopType.footnote,
-                        color = Palette.textTertiary,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+            // First / mid / last, spread across the full axis width — the last tick describes the
+            // curve's final sample, so it sits flush right rather than two-thirds along.
+            ChartXAxisRow(
+                listOf(dates.first(), dates.getOrNull(dates.lastIndex / 2), dates.last())
+                    .map { prettyAxisDate(it) },
+            )
         }
     }
 }

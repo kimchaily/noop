@@ -4851,7 +4851,7 @@ private fun HeartRateTrendCard(
             // the day had a gap and the labels drifted out of step with the time-positioned markers
             // (an evening workout read as if it sat earlier in the day) (#544). The line/markers are
             // already placed by real timestamp, so labelling by real timestamp makes the axis agree.
-            Row(modifier = Modifier.fillMaxWidth()) {
+            run {
                 val zone = ZoneId.systemDefault()
                 val hhmm = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
                 // #829 - the axis reads the RENDERED subset, so a zoomed window's ticks describe the
@@ -4868,9 +4868,9 @@ private fun HeartRateTrendCard(
                         if (selectedDay == today && hrZoom == null) "Now" else bucketToTime(visBuckets.size - 1),
                     )
                 } else listOf("Start", "", "Now")
-                xLabels.forEach { lbl ->
-                    Text(lbl, style = NoopType.footnote, color = Palette.textTertiary, modifier = Modifier.weight(1f))
-                }
+                // Spread across the full axis: the start tick flush left, "Now" flush right on the
+                // curve's final sample, the midpoint centred (see ChartXAxisRow).
+                ChartXAxisRow(xLabels)
             }
             Box(
                 modifier = Modifier
