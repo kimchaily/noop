@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "8.2.35"
+    const val CURRENT_VERSION = "8.2.36"
 
     data class Release(
         val version: String,
@@ -36,6 +36,22 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "8.2.36",
+            title = "Choop shows what it calculated, keeps what it measured, and stops recomputing what cannot have changed",
+            date = "August 2026",
+            items = listOf(
+                "**Choop no longer recalculates your scores every fifteen minutes for nothing.** While your strap was streaming, every check re-read three weeks of raw heart-rate data — well over a million readings — to arrive back at the numbers already on your screen. It now checks first whether a day's data actually moved, and re-derives only from the earliest day that did. On an ordinary day, with only today's readings arriving, that is **one day instead of twenty-one**, and when nothing moved at all it stops immediately. Less work means less battery.",
+                "**Correctness is unchanged, and deliberately so.** A day is scored against the nights *before* it, so if an older night gains data every day after it is recalculated too — never just the one that changed. Anything that genuinely alters a day still does: a night finishing its upload hours later, a sleep you edit by hand, a fresh import.",
+                "**The rebuild of your history can no longer be forgotten.** Until now, \"does the stored history need rebuilding after a scoring change?\" was a number a developer had to remember to update — and it was missed twice, which is why days weeks back stayed on an old algorithm while recent ones moved on. Choop now works this out for itself by checking its own scoring against a fixed reference, so a change to how Charge is calculated brings your whole history along automatically.",
+                "**Backups, exports and recalculations now tell you what they are doing.** These take a minute or more, and until now the only sign was a message that flashed up on the screen you started them from — leave that screen and every trace was gone. A banner above the tab bar now follows the job wherever you go in the app, and **stays there with the result until you dismiss it**. If notifications are allowed you also get one on your phone, so a job you walked away from still reaches you.",
+                "**Leaving the screen no longer cancels the export.** Backing up, importing and exporting CSV were tied to the screen that started them, so navigating away silently killed the job itself — not just its progress spinner. They now run independently of any screen, and their buttons correctly show as busy when you come back.",
+                "**You can see what Choop calculated and when.** Now that it deliberately skips work, \"nothing happened\" and \"nothing needed to happen\" looked identical from outside. Test Centre → **What was calculated** shows how much of the last 30 days carries each score, and the recent passes in plain words: \"12 min ago · After a strap sync — recalculated 1 day, from 6 Aug onward\". Two buttons rebuild the last three weeks or your whole history.",
+                "**A new import that only fills in the gaps.** Two Choop installs can each hold nights the other never saw. The existing import replaces everything, so restoring either way round threw away the other's nights. **Add missing data from a backup** copies over only the measurements this phone lacks, cannot change or remove one that is already here, and needs no restart.",
+                "**Your Charge baseline start date is now visible and reversible.** \"Recalibrate\" was a one-way button that silently set the baseline to start from today, with nothing afterwards to show it had happened. Settings → Charge now says how far back the comparison reaches and roughly how many nights that is, and lets you start from tonight, from a date you pick, from the last 30 nights, or remove the start date entirely and count every night again.",
+                "**Choop no longer deletes measurements to tidy up your strap's clock.** A strap with a confused clock stamps real readings with impossible times, and Choop used to delete those readings on every update. The fault is in the clock, not the reading — and your strap has long since forgotten it, so that delete was permanent. They are now kept and listed in Test Centre with their count, and removing them is your decision, not an update's side effect.",
+            ),
+        ),
         Release(
             version = "8.2.35",
             title = "Charge stops changing after the day is over",
