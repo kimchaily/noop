@@ -2486,6 +2486,9 @@ private fun DrawScope.drawRoundRectFill(color: Color, frac: Float) {
 private fun DurationTrend(m: SleepModel) {
     val pts = m.trendHours
     val avg = pts.averageOrNull()
+    // One "d MMM" label per night for the charts' tap read-out, matching the DateAxisRow wording
+    // below them (that row only names first/mid/last, so the tapped night was otherwise a guess).
+    val trendDayLabels = remember(m.trendDates) { m.trendDates.map(::shortDayLabel) }
     Column(verticalArrangement = Arrangement.spacedBy(Metrics.gap)) {
         SectionHeader("Trend", overline = "Sleep", trailing = "Last 14 days")
         ChartCard(
@@ -2513,6 +2516,7 @@ private fun DurationTrend(m: SleepModel) {
                         color = Palette.restColor,
                         fill = true,
                         selectionEnabled = true,
+                        xLabels = trendDayLabels,
                     )
                     DateAxisRow(m.trendDates)
                 }
@@ -2544,6 +2548,7 @@ private fun DurationTrend(m: SleepModel) {
                             .semantics { contentDescription = "Sleep debt trend chart" },
                         color = Palette.metricRose,
                         selectionEnabled = true,
+                        xLabels = trendDayLabels,
                     )
                     DateAxisRow(m.trendDates)
                 }
@@ -2593,18 +2598,8 @@ private fun DateAxisRow(days: List<String>) {
         days.getOrNull(days.lastIndex / 2),
         days.lastOrNull(),
     ).map { it?.let(::shortDayLabel).orEmpty() }
-    Row(modifier = Modifier.fillMaxWidth()) {
-        labels.forEach { label ->
-            Text(
-                text = label,
-                style = NoopType.footnote,
-                color = Palette.textTertiary,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
+    // Spread across the full axis: first night flush left, latest flush right (see ChartXAxisRow).
+    ChartXAxisRow(labels)
 }
 
 // MARK: - ChartCard / ChartFooter (local — mirror the macOS ChartCard the screen used)
@@ -3695,17 +3690,16 @@ internal fun SleepConsistencyCard(sleeps: List<SleepSession>) {
                     },
             ) {}
 
-            // X-axis day labels (first, mid, last).
-            Row(modifier = Modifier.fillMaxWidth().padding(start = 52.dp)) {
-                val xLabels = listOf(
+            // X-axis day labels (first, mid, last), spread across the full plot width — the start
+            // padding keeps the row clear of the y-axis gutter the canvas draws.
+            ChartXAxisRow(
+                labels = listOf(
                     timings.firstOrNull()?.label.orEmpty(),
                     timings.getOrNull(timings.size / 2)?.label.orEmpty(),
                     timings.lastOrNull()?.label.orEmpty(),
-                )
-                xLabels.forEach { lbl ->
-                    Text(lbl, style = NoopType.footnote, color = Palette.textTertiary, modifier = Modifier.weight(1f))
-                }
-            }
+                ),
+                modifier = Modifier.padding(start = 52.dp),
+            )
 
             Row(horizontalArrangement = Arrangement.spacedBy(Metrics.space14)) {
                 LegendDot("Typical bedtime  $typicalBedLabel", Palette.metricPurple)
@@ -3882,17 +3876,15 @@ private fun SleepMetricDetailSheetContent(vm: AppViewModel, key: String) {
                     color = spec.color,
                     fill = true,
                     selectionEnabled = true,
+                    // Name the tapped night beside its value, in the same "d MMM" wording as the
+                    // first/mid/last ticks below.
+                    xLabels = remember(dates) { dates.map(::shortDayLabel) },
                 )
             }
-            Row(modifier = Modifier.fillMaxWidth()) {
-                listOf(dates.first(), dates.getOrNull(dates.lastIndex / 2), dates.last()).forEach { d ->
-                    Text(
-                        d?.let { runCatching { LocalDate.parse(it).format(DateTimeFormatter.ofPattern("d MMM", Locale.US)) }.getOrDefault(it) }.orEmpty(),
-                        style = NoopType.footnote, color = Palette.textTertiary,
-                        modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
+            ChartXAxisRow(
+                listOf(dates.first(), dates.getOrNull(dates.lastIndex / 2), dates.last())
+                    .map { d -> d?.let(::shortDayLabel).orEmpty() },
+            )
             Hairline()
             Row(modifier = Modifier.fillMaxWidth()) {
                 listOf("Min" to minV, "Avg" to avgV, "Max" to maxV).forEach { (lbl, v) ->

@@ -39,7 +39,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.noop.data.DailyMetric
@@ -211,6 +210,12 @@ private val knownSeriesMetrics: Map<String, MetricSpec> = mapOf(
 // MARK: - A loaded series point (day string + value), oldest first.
 
 private data class SeriesPoint(val day: String, val value: Double)
+
+/** ISO "yyyy-MM-dd" → "d MMM" for the hero chart's tap read-out (the same wording as its x-axis
+ *  ticks); an unparseable key falls back to its raw string so a non-ISO day never blanks the label. */
+private fun exploreDayLabel(day: String): String =
+    runCatching { LocalDate.parse(day).format(DateTimeFormatter.ofPattern("d MMM", Locale.US)) }
+        .getOrDefault(day)
 
 /** Lightweight ordinal day index for slicing windows without date parsing. The series is
  *  already sorted ascending by day (YYYY-MM-DD), so the trailing N entries are the window;
@@ -642,6 +647,9 @@ private fun HeroChartCard(
                 val avgV = values.average()
                 val minV = values.min()
                 val fmtY: (Double) -> String = { v -> metric.format(v).substringBefore(' ').take(7) }
+                // One "d MMM" label per reading for the line's tap read-out, in the same wording as
+                // the first/mid/last ticks under the chart (which can't name the scrubbed day).
+                val axisDays = remember(windowed) { windowed.map { exploreDayLabel(it.day) } }
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
                         modifier = Modifier.height(IntrinsicSize.Min),
@@ -664,26 +672,16 @@ private fun HeroChartCard(
                                 color = metric.accent,
                                 fill = true,
                                 selectionEnabled = true,
+                                xLabels = axisDays,
                             )
                             ExploreGlowEndCap(values = values, tipColor = metric.accent)
                         }
                     }
                     val days = windowed.map { it.day }
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        listOf(days.first(), days.getOrNull(days.lastIndex / 2), days.last()).forEach { d ->
-                            Text(
-                                d?.let {
-                                    runCatching { LocalDate.parse(it).format(DateTimeFormatter.ofPattern("d MMM", Locale.US)) }
-                                        .getOrDefault(it)
-                                }.orEmpty(),
-                                style = NoopType.footnote,
-                                color = Palette.textTertiary,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
+                    ChartXAxisRow(
+                        listOf(days.first(), days.getOrNull(days.lastIndex / 2), days.last())
+                            .map { d -> d?.let(::exploreDayLabel).orEmpty() },
+                    )
                 }
             } else {
                 Box(

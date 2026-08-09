@@ -5,9 +5,11 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -30,6 +32,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.util.Locale
@@ -214,8 +218,15 @@ fun LineChart(
     // the 0-21 scale) pass their axis formatter so the label can't leak the stored scale as a bare
     // unconverted number. Default null keeps every other caller byte-identical.
     formatValue: ((Double) -> String)? = null,
+    // X-axis read-out for the pinpoint label: the label for each plotted sample (a time for an
+    // intraday curve, a date for a daily trend), aligned index-for-index with the RAW [values] list.
+    // The chart drops non-finite holes before plotting, so the labels are re-aligned to the surviving
+    // samples here (see alignLabelsToFiniteValues) rather than in every caller. Null/short lists simply
+    // omit the x half of the label, so callers that don't pass it are unchanged.
+    xLabels: List<String>? = null,
 ) {
     val cleanValues = remember(values) { values.filter { it.isFinite() } }
+    val cleanXLabels = remember(values, xLabels) { alignLabelsToFiniteValues(values, xLabels) }
     var selectedIndex by remember(cleanValues) { mutableIntStateOf(-1) }
     val interactiveModifier = if (selectionEnabled) {
         Modifier
@@ -368,13 +379,56 @@ fun LineChart(
                             drawCircle(color = Palette.surfaceBase.copy(alpha = StrandAlpha.chartShadow), radius = 9f, center = p)
                             drawCircle(color = color, radius = 4.5f, center = p)
                             drawContext.canvas.nativeCanvas.apply {
-                                val label = lineChartSelectionLabel(cleanValues[selectedIndex], formatValue)
+                                val label = lineChartSelectionLabel(
+                                    cleanValues[selectedIndex],
+                                    formatValue,
+                                    cleanXLabels?.getOrNull(selectedIndex),
+                                )
                                 drawText(label, 8f, 32f, markerPaint)
                             }
                         }
                     }
                 },
         )
+    }
+}
+
+// MARK: - Chart x-axis tick row
+
+/**
+ * The tick row under a chart: [labels] spread across the FULL axis width — the first flush left, the
+ * last flush right, any in between centred on their slot.
+ *
+ * Every label gets an equal weighted slot; what changed is the alignment INSIDE it. Each label used to
+ * be start-aligned in its slot, so with the usual three ticks the last one began at two-thirds width
+ * and floated well short of the right edge — it read as a mislabelled axis, since that tick describes
+ * the curve's final sample, which sits exactly at the right edge. Aligning the ends outward pins the
+ * first and last labels to the axis they annotate; the equal slots keep every label inside its own
+ * share of the width, so none can collide with or clip its neighbour.
+ */
+@Composable
+fun ChartXAxisRow(
+    labels: List<String>,
+    modifier: Modifier = Modifier,
+) {
+    if (labels.isEmpty()) return
+    Row(modifier = modifier.fillMaxWidth()) {
+        labels.forEachIndexed { i, label ->
+            Text(
+                text = label,
+                style = NoopType.footnote,
+                color = Palette.textTertiary,
+                // Single-label rows take the `0` branch and stay left-aligned, as before.
+                textAlign = when (i) {
+                    0 -> TextAlign.Start
+                    labels.lastIndex -> TextAlign.End
+                    else -> TextAlign.Center
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
 
@@ -439,9 +493,30 @@ private fun nearestIndexForX(count: Int, width: Float, x: Float): Int {
 }
 
 /** The tap/drag pinpoint label: the caller's display formatter when supplied (#463), else the raw
- *  near-integer-collapsing default. Split out so the fallback choice is JVM-testable. */
-internal fun lineChartSelectionLabel(value: Double, formatValue: ((Double) -> String)?): String =
-    formatValue?.invoke(value) ?: formatLineValue(value)
+ *  near-integer-collapsing default — followed by the sample's x-axis read-out (the time or date the
+ *  tapped point sits at) when the caller supplied one. Split out so both choices are JVM-testable.
+ *
+ *  A tapped point used to answer only "how much"; the "when" had to be eyeballed against the three
+ *  ticks under the chart. With an x label the read-out is a full coordinate: "72.1 · 17:20". */
+internal fun lineChartSelectionLabel(
+    value: Double,
+    formatValue: ((Double) -> String)?,
+    xLabel: String? = null,
+): String {
+    val valueText = formatValue?.invoke(value) ?: formatLineValue(value)
+    val xText = xLabel?.trim().orEmpty()
+    return if (xText.isEmpty()) valueText else "$valueText · $xText"
+}
+
+/** Re-align caller-supplied x-axis labels (indexed against the RAW value list) to the finite-only
+ *  subset the charts actually plot, so a series with non-finite holes still labels the right sample.
+ *  A missing label becomes "" (the label then just omits its x half). Null in → null out. */
+internal fun alignLabelsToFiniteValues(values: List<Double>, labels: List<String>?): List<String>? {
+    if (labels == null) return null
+    return values.indices.mapNotNull { i ->
+        if (values[i].isFinite()) labels.getOrNull(i).orEmpty() else null
+    }
+}
 
 private fun formatLineValue(value: Double): String {
     if (!value.isFinite()) return "-"
@@ -473,6 +548,9 @@ fun BarChart(
     modifier: Modifier,
     color: Color = Palette.accent,
     selectionEnabled: Boolean = false,
+    // X-axis read-out for the tapped bar's label, aligned index-for-index with [values]. Non-finite
+    // bars are zeroed rather than dropped here, so the indices line up with no re-alignment needed.
+    xLabels: List<String>? = null,
 ) {
     val cleanValues = remember(values) { values.map { if (it.isFinite() && it > 0.0) it else 0.0 } }
     var selectedIndex by remember(cleanValues) { mutableIntStateOf(-1) }
@@ -572,7 +650,15 @@ fun BarChart(
                         }
                         if (selectionEnabled && selectedIndex in clean.indices) {
                             drawContext.canvas.nativeCanvas.apply {
-                                drawText(formatLineValue(clean[selectedIndex]), 8f, 32f, barLabelPaint)
+                                // Selection is only ever on for the un-downsampled path (see above),
+                                // so `clean` is `cleanValues` here and the label index maps straight
+                                // onto the caller's x labels.
+                                val label = lineChartSelectionLabel(
+                                    clean[selectedIndex],
+                                    null,
+                                    xLabels?.getOrNull(selectedIndex),
+                                )
+                                drawText(label, 8f, 32f, barLabelPaint)
                             }
                         }
                     }

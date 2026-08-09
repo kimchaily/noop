@@ -58,6 +58,8 @@ import com.noop.analytics.DaytimeStress
 import com.noop.analytics.HrvFreqDomain
 import com.noop.analytics.StressIndex
 import com.noop.data.DailyMetric
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.exp
 import kotlin.math.roundToInt
@@ -948,7 +950,11 @@ private fun MarkerTile(
 @Composable
 private fun StressTrendSection(model: StressModel, modifier: Modifier = Modifier) {
     var range by remember { mutableStateOf(StressRange.Month) }
-    val points = remember(model, range) { model.windowedTrend(range) }
+    val trendPoints = remember(model, range) { model.windowedTrendPoints(range) }
+    val points = remember(trendPoints) { trendPoints.map { it.value } }
+    // "d MMM" per day for the chart's tap read-out — this card has no x-axis row at all, so the day
+    // is otherwise unknowable from a scrub.
+    val trendDayLabels = remember(trendPoints) { trendPoints.map { stressDayLabel(it.day) } }
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(Metrics.gap)) {
         SectionHeader("Stress Trend", overline = "History", trailing = range.label)
@@ -980,6 +986,7 @@ private fun StressTrendSection(model: StressModel, modifier: Modifier = Modifier
                         color = StressRamp.STEADY,
                         fill = true,
                         selectionEnabled = true,
+                        xLabels = trendDayLabels,
                     )
                     HorizontalDivider(color = Palette.hairline)
                     Row(modifier = Modifier.fillMaxWidth()) {
@@ -1162,6 +1169,12 @@ internal enum class StressRange(val label: String, val days: Int?) {
     All("ALL", null),
 }
 
+/** ISO "yyyy-MM-dd" → "d MMM" for the trend chart's tap read-out; an unparseable key falls back to
+ *  its raw string so a non-ISO day never blanks the label. */
+private fun stressDayLabel(day: String): String =
+    runCatching { LocalDate.parse(day).format(DateTimeFormatter.ofPattern("d MMM", Locale.US)) }
+        .getOrDefault(day)
+
 // MARK: - Stress model (transparent: stored value OR z-score derivation)
 
 // #753: `internal` (was file-private) so Today's pinned Stress card can build the SAME model the detail
@@ -1186,12 +1199,15 @@ internal class StressModel private constructor(
 
     /** The full daily proxy trend, sliced to the selected trailing window (count-based,
      *  matching the day budget). Falls back to ALL when the trailing slice has < 2 points. */
-    fun windowedTrend(range: StressRange): List<Double> {
-        val all = fullTrend.map { it.value }
-        val days = range.days ?: return all
-        val slice = fullTrend.takeLast(days).map { it.value }
-        return if (slice.size >= 2) slice else all
+    fun windowedTrendPoints(range: StressRange): List<TrendPoint> {
+        val days = range.days ?: return fullTrend
+        val slice = fullTrend.takeLast(days)
+        return if (slice.size >= 2) slice else fullTrend
     }
+
+    /** The windowed trend's values alone — the same slice as [windowedTrendPoints], so a chart can
+     *  plot these and label them with that call's day strings without the two drifting apart. */
+    fun windowedTrend(range: StressRange): List<Double> = windowedTrendPoints(range).map { it.value }
 
     companion object {
         /** Build from oldest→newest daily metrics plus any stored "stress" series.
