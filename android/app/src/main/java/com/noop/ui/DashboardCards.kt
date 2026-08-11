@@ -4,16 +4,20 @@ import android.content.Context
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.DirectionsRun
 import androidx.compose.material.icons.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Hexagon
+import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.MonitorHeart
+import androidx.compose.material.icons.filled.MonitorWeight
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.WaterDrop
+import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.ui.graphics.vector.ImageVector
 import org.json.JSONArray
 
@@ -56,6 +60,15 @@ enum class DashboardCard(
     CALORIES("calories", "Calories", "Active energy", "kcal", Icons.Filled.LocalFireDepartment),
     HYDRATION("hydration", "Hydration", "Today's fluid", "", Icons.Filled.WaterDrop),
 
+    // The four scores/readings the Key-Metrics grid carried but this dashboard did not. Same story as the
+    // six that went the other way (see [KeyMetric]): both lists render values Today already loads, so which
+    // list a metric landed in was an accident of history. Raws are byte-identical to the matching [KeyMetric]
+    // raw, so one metric means one id on every surface and every OS.
+    CHARGE("charge", "Recovery", "Charge score", "%", Icons.Filled.BatteryChargingFull),
+    EFFORT("effort", "Strain", "Effort score", "%", Icons.Filled.Whatshot),
+    REST("rest", "Rest", "Sleep performance", "%", Icons.Filled.Hotel),
+    WEIGHT("weight", "Weight", "Latest reading", "", Icons.Filled.MonitorWeight),
+
     // Optional, default-OFF (task #43): a tap-through to the Coupled view (the WHOOP-style day read). Unlike
     // every other card it carries NO metric value of its own, it is a navigation row that opens the full
     // CoupledScreen. It is NOT in [defaultSelection], so a fresh install never shows it until the user adds
@@ -66,13 +79,13 @@ enum class DashboardCard(
         fun fromRaw(raw: String?): DashboardCard? = entries.firstOrNull { it.raw == raw }
 
         /**
-         * The default set when the user hasn't customised the dashboard: the original Stress / Fitness age /
-         * Vitality trio plus HRV + Resting HR (per the task's "sensible default"). Cards with no value yet
-         * simply render a dash, so the default set is safe on a fresh install. Mirrors iOS defaultSelection.
+         * The default set when the user hasn't customised the dashboard: every card that carries a VALUE, in
+         * canonical order. [COUPLED] is excluded — it is a navigation row, not a reading (#43), and stays
+         * opt-in. Cards with no value yet simply render a dash, so a full default is safe on a fresh install.
+         * A user who already saved a selection keeps it untouched (their stored string wins); only an unset
+         * selection reads this.
          */
-        val defaultSelection: List<DashboardCard> = listOf(
-            STRESS, FITNESS_AGE, VITALITY, HRV, RESTING_HR,
-        )
+        val defaultSelection: List<DashboardCard> = entries.filter { it != COUPLED }
 
         /** Canonical order used to list the disabled remainder in the editor (matches iOS allCases order). */
         val canonicalOrder: List<DashboardCard> = entries.toList()

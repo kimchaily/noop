@@ -4,6 +4,7 @@ import com.noop.data.AppleDaily
 import com.noop.data.DailyMetric
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -467,5 +468,267 @@ class TodayMetricTilesTest {
         assertEquals("2026-06-18", vitals?.day)
         assertEquals(50.0, vitals?.avgHrv)
         assertEquals(55, vitals?.restingHr)
+    }
+
+    // Row builders for the six reads the Key-Metrics grid gained from the Your-cards dashboard.
+    private fun sleepMinutesDay(day: String, totalSleepMin: Double?) =
+        DailyMetric(deviceId = "my-whoop", day = day, totalSleepMin = totalSleepMin)
+
+    private fun skinTempDay(day: String, devC: Double?) =
+        DailyMetric(deviceId = "my-whoop", day = day, skinTempDevC = devC)
+
+    // MARK: - One metric, one id, two surfaces (Key Metrics ⟷ Your cards)
+    //
+    // The two Today sections were independent registries over the SAME already-loaded values, so which
+    // section a metric appeared in was an accident of history rather than a data limit. They now cover the
+    // same metrics, and a metric's persisted id is shared, which is what lets a card find its score read.
+
+    @Test
+    fun everyMetricThatExistsOnBothSurfaces_sharesOnePersistedId() {
+        // The raws are the join between the two registries (DashboardCard.scoreRead looks a card's tile up
+        // by raw). If a future metric is added to one side under a different spelling, the join breaks
+        // silently — a card would simply stop finding its read — so pin the overlap here.
+        val tileRaws = KeyMetric.entries.map { it.raw }.toSet()
+        val cardRaws = DashboardCard.entries.map { it.raw }.toSet()
+        // Coupled is a navigation row, not a reading, so it has no tile twin. Everything else pairs up.
+        assertEquals(cardRaws - setOf("coupled"), tileRaws)
+        // And the pairing resolves in both directions.
+        for (card in DashboardCard.entries.filter { it != DashboardCard.COUPLED }) {
+            assertNotNull("no tile for card ${card.raw}", KeyMetric.fromRaw(card.raw))
+        }
+        for (metric in KeyMetric.entries) {
+            assertNotNull("no card for tile ${metric.raw}", DashboardCard.fromRaw(metric.raw))
+        }
+    }
+
+    @Test
+    fun keyMetricRaws_areStableAndUnique() {
+        // The raws are the persisted layout AND the backup/restore contract with the iOS enum. Renaming one
+        // silently drops that tile from every saved layout, so pin the exact set.
+        assertEquals(
+            listOf(
+                "charge", "effort", "rest", "hrv", "restingHr", "bloodOxygen", "respiratory",
+                "steps", "weight", "calories", "sleep", "stress", "skinTemp", "vitality",
+                "fitnessAge", "hydration",
+            ),
+            KeyMetric.entries.map { it.raw },
+        )
+        assertEquals(KeyMetric.entries.size, KeyMetric.entries.map { it.raw }.toSet().size)
+    }
+
+    @Test
+    fun newMetricsAreOnByDefault_butASavedLayoutIsNeverOverwritten() {
+        // On by default: an unset layout lists every tile, so the six that came over from the dashboard
+        // show without a trip to the editor.
+        assertEquals(KeyMetric.entries.toList(), KeyMetricPrefs.decodeEnabled(null))
+        assertTrue(KeyMetric.SLEEP in KeyMetricPrefs.decodeEnabled(""))
+        assertTrue(KeyMetric.STRESS in KeyMetricPrefs.decodeEnabled(null))
+        // …but a user who already saved a layout keeps exactly what they chose — the new tiles do NOT
+        // reappear in a customised grid.
+        val saved = KeyMetricPrefs.decodeEnabled("hrv,steps")
+        assertEquals(listOf(KeyMetric.HRV, KeyMetric.STEPS), saved)
+
+        // Same contract on the dashboard: unset = every card that carries a value; Coupled stays opt-in.
+        val defaults = DashboardCardPrefs.decodeEnabled(null)
+        assertEquals(DashboardCard.entries.filter { it != DashboardCard.COUPLED }, defaults)
+        assertFalse(DashboardCard.COUPLED in defaults)
+        assertEquals(listOf(DashboardCard.SLEEP), DashboardCardPrefs.decodeEnabled("""["sleep"]"""))
+    }
+
+    // MARK: - Day-aware card subtitles
+
+    @Test
+    fun cardSubtitles_areUnchangedForToday() {
+        // The dashboard now renders for any selected day, but today must read exactly as it always has.
+        for (card in DashboardCard.entries) {
+            assertEquals(card.subtitle, dashboardCardSubtitle(card, isToday = true))
+        }
+    }
+
+    @Test
+    fun cardSubtitles_stopSayingTodayOnAPastDay() {
+        // The three today-worded subtitles would misdate a row three weeks back.
+        assertEquals("That day", dashboardCardSubtitle(DashboardCard.STEPS, isToday = false))
+        assertEquals("That night", dashboardCardSubtitle(DashboardCard.SLEEP, isToday = false))
+        assertEquals("That day's fluid", dashboardCardSubtitle(DashboardCard.HYDRATION, isToday = false))
+    }
+
+    @Test
+    fun cardSubtitles_dayNeutralOnesPassThroughUnchanged() {
+        // Everything else was already day-neutral; a past day must not reword it.
+        val dayNeutral = DashboardCard.entries -
+            setOf(DashboardCard.STEPS, DashboardCard.SLEEP, DashboardCard.HYDRATION)
+        for (card in dayNeutral) {
+            assertEquals(card.subtitle, dashboardCardSubtitle(card, isToday = false))
+        }
+    }
+
+    @Test
+    fun noCardSubtitle_saysTodayOrLastNightOnAPastDay() {
+        // The rule that matters, stated once: after the day gate was lifted, no subtitle on a scrolled-back
+        // day may claim to describe today. Catches a future card added with today-worded copy.
+        for (card in DashboardCard.entries) {
+            val s = dashboardCardSubtitle(card, isToday = false).lowercase()
+            assertFalse("'${card.raw}' still says today: $s", s.contains("today"))
+            assertFalse("'${card.raw}' still says last night: $s", s.contains("last night"))
+        }
+    }
+
+    // MARK: - The four score reads shared by tile and card
+
+    @Test
+    fun chargeRead_prefersTheDaysOwnScore_thenCalibration_thenTheCarriedValue() {
+        val scored = chargeRead(recDay("2026-06-19", 71.0), recoveryCalibration = null, lastScoredCharge = null)
+        assertEquals("71", scored.value)
+        assertEquals("%", scored.unit)
+        assertEquals(0.71, scored.frac!!, 1e-9)
+
+        // Mid-calibration the tile shows "n/N" — and must NOT append a percent sign to a fraction.
+        val calibrating = chargeRead(recDay("2026-06-19", null), recoveryCalibration = 3, lastScoredCharge = null)
+        assertEquals("", calibrating.unit)
+        assertTrue(calibrating.value.startsWith("3/"))
+        assertNull(calibrating.frac)
+
+        val carried = chargeRead(
+            recDay("2026-06-19", null),
+            recoveryCalibration = null,
+            lastScoredCharge = LastCharge(value = 64.0, caption = "18 Jun"),
+        )
+        assertEquals("64", carried.value)
+        assertEquals("%", carried.unit)
+    }
+
+    @Test
+    fun chargeRead_withNothingToShow_isNoDataAndAnEmptyVessel() {
+        val none = chargeRead(null, recoveryCalibration = null, lastScoredCharge = null)
+        assertEquals("No Data", none.value)
+        assertEquals("", none.unit)
+        assertNull(none.frac)
+    }
+
+    @Test
+    fun restRead_scoresAndFillsTogether_orReadsNoData() {
+        val rested = restRead(82.0)
+        assertEquals("82", rested.value)
+        assertEquals("%", rested.unit)
+        assertEquals(0.82, rested.frac!!, 1e-9)
+
+        val none = restRead(null)
+        assertEquals("No Data", none.value)
+        assertEquals("", none.unit)
+        assertNull(none.frac)
+    }
+
+    @Test
+    fun weightRead_hasNoVesselFill_andFollowsTheUnitToggle() {
+        // A body weight has no goal to fill toward, so the vessel stays empty rather than half-full.
+        val metric = weightRead(74.5, profileWeightKg = 90.0, unitSystem = UnitSystem.METRIC)
+        assertNull(metric.frac)
+        assertEquals("", metric.unit)
+        assertEquals(weightTile(74.5, 90.0, UnitSystem.METRIC).value, metric.value)
+
+        val imperial = weightRead(74.5, profileWeightKg = 90.0, unitSystem = UnitSystem.IMPERIAL)
+        assertEquals(weightTile(74.5, 90.0, UnitSystem.IMPERIAL).value, imperial.value)
+    }
+
+    @Test
+    fun scoreReads_areLookedUpByASharedRaw_soACardFindsItsTile() {
+        // The mechanism the Your-cards rows use to render the SAME read the tile renders.
+        val reads = mapOf(
+            KeyMetric.CHARGE to chargeRead(recDay("2026-06-19", 71.0), null, null),
+            KeyMetric.REST to restRead(82.0),
+        )
+        assertEquals("71", DashboardCard.CHARGE.scoreRead(reads)?.value)
+        assertEquals("82", DashboardCard.REST.scoreRead(reads)?.value)
+        // A card with no score read (a vital, or a score the caller didn't resolve) falls through to null so
+        // the row keeps its own resolution instead of silently blanking.
+        assertNull(DashboardCard.HRV.scoreRead(reads))
+        assertNull(DashboardCard.EFFORT.scoreRead(reads))
+    }
+
+    // MARK: - The six reads the grid gained, shared with the card rows
+
+    @Test
+    fun sleepRead_formatsHoursAndMinutes_andFillsAgainstAnEightHourNight() {
+        val mv = MetricReads.sleep(sleepMinutesDay("2026-06-19", 432.0), null)
+        assertEquals("7h 12m", mv.number)
+        assertEquals("", mv.unit)
+        assertEquals(0.9, mv.frac!!, 1e-9)
+        // A long night fills the vessel without overflowing it.
+        assertEquals(1.0, MetricReads.sleep(sleepMinutesDay("2026-06-19", 600.0), null).frac!!, 1e-9)
+        assertNull(MetricReads.sleep(null, null).number)
+    }
+
+    @Test
+    fun sleepRead_fallsBackToTheCarriedNight() {
+        // Right after the logical-day rollover today's row carries no sleep yet; the tile and the card both
+        // read the carried night rather than blanking.
+        val mv = MetricReads.sleep(sleepMinutesDay("2026-06-19", null), sleepMinutesDay("2026-06-18", 420.0))
+        assertEquals("7h 0m", mv.number)
+    }
+
+    @Test
+    fun skinTempRead_isSignedSoADropReadsHonestly() {
+        assertEquals("+0.3°", MetricReads.skinTemp(skinTempDay("2026-06-19", 0.3), null).number)
+        assertEquals("-0.4°", MetricReads.skinTemp(skinTempDay("2026-06-19", -0.4), null).number)
+        // A deviation has no natural ceiling, so there is no vessel to fill.
+        assertNull(MetricReads.skinTemp(skinTempDay("2026-06-19", 0.3), null).frac)
+        assertNull(MetricReads.skinTemp(null, null).number)
+    }
+
+    @Test
+    fun stressRead_roundsAndFillsAgainstThree_andNullMeansCalibrating() {
+        val mv = MetricReads.stress(2.4)
+        assertEquals("2", mv.number)
+        assertEquals(0.8, mv.frac!!, 1e-9)
+        // Null is NOT "no data" — Stress is baseline-relative and the caller substitutes "Calibrating".
+        assertNull(MetricReads.stress(null).number)
+        assertNull(MetricReads.stress(null).frac)
+    }
+
+    @Test
+    fun vitalityAndFitnessAgeReads_roundToWholeUnits() {
+        assertEquals("87", MetricReads.vitality(86.6).number)
+        assertEquals(0.87, MetricReads.vitality(87.0).frac!!, 1e-9)
+
+        val fa = MetricReads.fitnessAge(31.4)
+        assertEquals("31", fa.number)
+        assertEquals("yrs", fa.unit)
+        // Fixed half-fill: younger is better, so a ceiling would read backwards.
+        assertEquals(0.5, fa.frac!!, 1e-9)
+        assertNull(MetricReads.fitnessAge(null).frac)
+    }
+
+    @Test
+    fun hydrationRead_alwaysResolves_becauseTheGoalIsAlwaysDerivable() {
+        assertEquals("1.2 / 3.2 L", MetricReads.hydration(1200.0, 3200).number)
+        // A fresh day reads zero rather than "No Data".
+        assertEquals("0.0 / 3.2 L", MetricReads.hydration(0.0, 3200).number)
+        assertNull(MetricReads.hydration(1200.0, 3200).frac)
+    }
+
+    // MARK: - Tile navigation matches its card row
+
+    @Test
+    fun everyTileWithACardDestination_landsOnTheSameScreen() {
+        // A tile and its row must not disagree about where the metric lives.
+        for (metric in KeyMetric.entries) {
+            val card = DashboardCard.fromRaw(metric.raw) ?: continue
+            assertEquals(
+                "tile ${metric.raw} and its card open different details",
+                dashboardCardMetricKey(card),
+                keyMetricDetailKey(metric),
+            )
+        }
+    }
+
+    @Test
+    fun scoreTilesAndScoreCards_bothHaveNoMetricDetail() {
+        // Charge / Effort / Rest reach their explainer through the hero ring's ⓘ and Weight has no trend
+        // page, so neither surface may promise one (the card row drops its chevron on the strength of this).
+        for (m in listOf(KeyMetric.CHARGE, KeyMetric.EFFORT, KeyMetric.REST, KeyMetric.WEIGHT)) {
+            assertNull(keyMetricDetailKey(m))
+            assertNull(dashboardCardMetricKey(DashboardCard.fromRaw(m.raw)!!))
+        }
     }
 }
