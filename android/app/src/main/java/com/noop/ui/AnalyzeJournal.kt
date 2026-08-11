@@ -104,10 +104,10 @@ object AnalyzeJournal {
     // Pipe-separated, because a day key is "YYYY-MM-DD" and a trigger token is [a-z]+ — neither can
     // contain a pipe or a newline, so no escaping is needed and a hand-read line stays hand-readable.
 
-    private fun encode(e: Entry): String =
+    internal fun encode(e: Entry): String =
         "${e.atSeconds}|${e.trigger.token}|${e.windowDays}|${e.scored}|${e.skipped}|${e.fromDay ?: ""}"
 
-    private fun decode(line: String): Entry? {
+    internal fun decode(line: String): Entry? {
         val p = line.split("|")
         if (p.size < 6) return null
         return Entry(

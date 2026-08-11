@@ -186,6 +186,69 @@ object MergeImport {
      *  simply adds them again. */
     private const val BATCH = 10_000
 
+    /**
+     * What to do with one table, decided PURELY from the two schemas — no database, no rows.
+     *
+     * Split out because this is where every safety decision lives: whether a table can be merged at
+     * all, and which columns may be copied. The copy itself is one `INSERT OR IGNORE`, whose behaviour
+     * is SQLite's rather than ours. Android's SQLite is a throwing stub on the plain JVM, so the copy
+     * cannot be unit-tested here — but these decisions can, and they are the part that could be got
+     * wrong. (Same split the integrity gate already uses: `DataBackup.quickCheckVerdict` is pure and
+     * pinned, while the `PRAGMA` around it is not.)
+     */
+    sealed interface TablePlan {
+        /** Copy [columns] (present in both schemas) from this table. */
+        data class Copy(val table: String, val columns: List<String>) : TablePlan
+
+        /** Copy nothing, and tell the user [reason] rather than guessing. */
+        data class Skip(val table: String, val reason: String) : TablePlan
+    }
+
+    /** One column as `PRAGMA table_info` describes it. [pk] is 0 for a non-key column. */
+    data class Column(val name: String, val type: String, val pk: Int)
+
+    /**
+     * Decide what to do with [table], given the live schema's [liveColumns] and the column names the
+     * backup has for it ([backupColumns], empty when the backup lacks the table).
+     *
+     * [liveHasTable] false means this build has no such table at all — a backup from a newer version.
+     */
+    fun planTable(
+        table: String,
+        liveColumns: List<Column>,
+        backupColumns: Set<String>,
+        liveHasTable: Boolean = true,
+    ): TablePlan {
+        if (!liveHasTable) {
+            return TablePlan.Skip(
+                table, "this version of Choop has no such table - the backup is from a newer build",
+            )
+        }
+        val shared = liveColumns.filter { it.name in backupColumns }
+        val keyCols = liveColumns.filter { it.pk > 0 }
+        val reason = when {
+            keyCols.isEmpty() ->
+                "its rows carry no natural identity, so a duplicate couldn't be told from a new row"
+            // A lone INTEGER primary key IS the rowid: the same real row can hold a different number in
+            // each store, so copying the numbers across would collide by accident and discard rows that
+            // are genuinely new.
+            keyCols.size == 1 && keyCols[0].type.equals("INTEGER", ignoreCase = true) ->
+                "its rows are numbered per install, so the same row can carry different numbers here"
+            keyCols.any { it.name !in backupColumns } ->
+                "the backup is missing " +
+                    keyCols.filter { it.name !in backupColumns }.joinToString { it.name } +
+                    ", which identifies a row"
+            shared.isEmpty() -> "the backup shares no columns with this version"
+            else -> null
+        }
+        return if (reason != null) TablePlan.Skip(table, reason)
+        else TablePlan.Copy(table, shared.map { it.name })
+    }
+
+    /** True for a table this merge never touches or reports (Room bookkeeping, SQLite internals). */
+    fun isHousekeeping(table: String): Boolean =
+        table in HOUSEKEEPING || table.startsWith("sqlite_")
+
     private fun copyMissing(
         db: SupportSQLiteDatabase,
         backup: android.database.sqlite.SQLiteDatabase,
@@ -195,41 +258,17 @@ object MergeImport {
         val results = ArrayList<TableResult>()
 
         for (table in backupTables.sorted()) {
-            if (table in HOUSEKEEPING || table.startsWith("sqlite_")) continue
-            if (table !in liveTables) {
-                results += TableResult(
-                    table, 0, 0,
-                    "this version of Choop has no such table - the backup is from a newer build",
-                )
-                continue
+            if (isHousekeeping(table)) continue
+            val plan = planTable(
+                table = table,
+                liveColumns = if (table in liveTables) liveColumns(db, table) else emptyList(),
+                backupColumns = backupColumns(backup, table),
+                liveHasTable = table in liveTables,
+            )
+            results += when (plan) {
+                is TablePlan.Skip -> TableResult(table, 0, 0, plan.reason)
+                is TablePlan.Copy -> copyTable(db, backup, table, plan.columns)
             }
-
-            val liveCols = liveColumns(db, table)
-            val bakCols = backupColumns(backup, table)
-            val shared = liveCols.filter { it.name in bakCols }
-            val keyCols = liveCols.filter { it.pk > 0 }
-
-            val skip = when {
-                keyCols.isEmpty() ->
-                    "its rows carry no natural identity, so a duplicate couldn't be told from a new row"
-                // A lone INTEGER primary key IS the rowid: the same real row can hold a different
-                // number in each store, so copying the numbers across would collide by accident and
-                // discard rows that are genuinely new.
-                keyCols.size == 1 && keyCols[0].type.equals("INTEGER", ignoreCase = true) ->
-                    "its rows are numbered per install, so the same row can carry different numbers here"
-                keyCols.any { it.name !in bakCols } ->
-                    "the backup is missing " +
-                        keyCols.filter { it.name !in bakCols }.joinToString { it.name } +
-                        ", which identifies a row"
-                shared.isEmpty() -> "the backup shares no columns with this version"
-                else -> null
-            }
-            if (skip != null) {
-                results += TableResult(table, 0, 0, skip)
-                continue
-            }
-
-            results += copyTable(db, backup, table, shared.map { it.name })
         }
         return Report(results)
     }
@@ -285,8 +324,6 @@ object MergeImport {
     }
 
     // ── Schema probes ───────────────────────────────────────────────────────────────────────────
-
-    private data class Column(val name: String, val type: String, val pk: Int)
 
     private fun liveColumns(db: SupportSQLiteDatabase, table: String): List<Column> {
         val out = ArrayList<Column>()
