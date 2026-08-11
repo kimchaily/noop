@@ -1321,6 +1321,18 @@ class WhoopBleClient(
                             if (testCentre.active(com.noop.testcentre.TestDomain.STEPS))
                                 { s -> log(s, com.noop.testcentre.TestDomain.STEPS) }
                             else null,
+                        // Skip days whose inputs provably did not move — the SAME store the UI's 15-min
+                        // loop uses. Omitting it here was the whole battery optimisation missing from its
+                        // most important path: this pass runs under the foreground service and keeps going
+                        // when Android freezes the app, so on a normal day it is the one that runs most,
+                        // and it was re-deriving all 21 days on every sync while the backstop did one.
+                        //
+                        // Correctness is unchanged by adding it: a sync that just wrote new raw rows moves
+                        // those days' digests, so exactly those days (and every day after them, since a day
+                        // is scored against the nights before it) are re-derived. Steady state — a sync
+                        // carrying only today's readings — becomes one day instead of twenty-one.
+                        digestGet = { day -> com.noop.ui.DayDigestStore.get(context, day) },
+                        digestPut = { day, digest -> com.noop.ui.DayDigestStore.put(context, day, digest) },
                         // Journal this pass for the in-app diagnostics view, same as the UI's 15-min loop.
                         // Without it a sync — the most common reason scores move — would be the one trigger
                         // the user could never see.

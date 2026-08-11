@@ -692,6 +692,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                 "(bad strap clock - far-past or future-dated); rescoring clean days. " +
                                 "Raw rows are never deleted here - see Test Centre.",
                         )
+                        // The heal DELETED computed rows whose digests still say "already scored". A
+                        // pass consulting those digests would skip exactly the days it just emptied, so
+                        // drop them and let the next pass rebuild.
+                        DayDigestStore.clear(appContext)
                     }
                     NoopPrefs.setTsHealDone(appContext)
                     NoopPrefs.setTsHealPending(appContext, false)
@@ -772,6 +776,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                     "(bad strap clock detected this sync); rescoring clean days. Raw " +
                                     "rows are never deleted here - see Test Centre.",
                             )
+                            // Same reason as the on-upgrade heal: rows were deleted, so the digests
+                            // that call those days current have to go with them.
+                            DayDigestStore.clear(appContext)
                         }
                         NoopPrefs.setTsHealPending(appContext, false)
                     }
@@ -1306,6 +1313,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * is rethrown so a ViewModel teardown mid-edit isn't swallowed (matches the loop's #125 handling).
      */
     private suspend fun rescoreAfterEdit() {
+        // Invalidate BEFORE the pass, not after. A hand edit changes a COMPUTED sleep session, so the
+        // day's raw digest is unchanged — meaning if this pass dies halfway (it swallows failures by
+        // design), every later pass would look at an unchanged digest, skip the day, and leave the
+        // correction unapplied forever. Clearing first means a failure is repaired by the next ordinary
+        // pass instead of persisting. The cost is one full window on the next pass, after a hand edit,
+        // which is rare.
+        //
+        // This is also why the pass below must NOT read digests: the edit itself is invisible to them.
+        DayDigestStore.clear(appContext)
         runCatching {
             IntelligenceEngine.analyzeRecent(
                 repo = repository,
@@ -1328,6 +1344,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // Opt-in experimental sleep staging (V2) — same flag the 15-min loop reads, so a manual
                 // re-score after an edit stages with the same engine the user chose. (V7 Pillar 3b)
                 useExperimentalSleepV2 = PuffinExperiment.from(appContext).experimentalSleepV2,
+                // Write digests but never read them (see above): this pass forces the full window, and
+                // recording what it computed lets the NEXT ordinary pass go back to skipping.
+                digestPut = ::dayDigestPut,
                 passReport = { AnalyzeJournal.record(appContext, AnalyzeJournal.Trigger.EDIT, it) },
             )
         }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
@@ -1443,34 +1462,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /**
-     * Per-day input digests for the analyze pass, in their own preferences file.
-     *
-     * A day whose digest is unchanged cannot score differently, so the pass skips re-deriving it. Kept
-     * out of the main preferences file because the entries are per-day and accumulate (~365 a year);
-     * mixing them into settings would bloat a file the app reads on every launch.
-     */
-    private val dayDigests by lazy {
-        appContext.getSharedPreferences("noop.dayDigests", android.content.Context.MODE_PRIVATE)
-    }
+    // The per-day input digests moved to [DayDigestStore] so the post-sync pass in the BLE client can
+    // consult them too. While they lived here, only this ViewModel's 15-minute backstop could skip
+    // work — and the backstop is the pass that stops running when Android freezes the app, so the
+    // optimisation was absent from the path that runs most.
+    private fun dayDigestGet(day: String): String? = DayDigestStore.get(appContext, day)
 
-    private fun dayDigestGet(day: String): String? = dayDigests.getString(day, null)
-
-    private fun dayDigestPut(day: String, digest: String) {
-        dayDigests.edit().putString(day, digest).apply()
-    }
-
-    /**
-     * Forget every day's stored digest, so the next pass treats the whole window as changed.
-     *
-     * Needed after raw rows arrive by a path the digest can't see coming — a merge import, which adds
-     * measurements to days that may be weeks old. Clearing is always SAFE (the worst case is one
-     * unnecessary pass) whereas failing to clear is not (a stale score with nothing left to trigger
-     * its repair), so this errs deliberately in the cheap direction.
-     */
-    private fun dayDigestClear() {
-        dayDigests.edit().clear().apply()
-    }
+    private fun dayDigestPut(day: String, digest: String) = DayDigestStore.put(appContext, day, digest)
 
     /**
      * Import only what's MISSING from a `.noopbak`, leaving everything already here untouched.
@@ -1511,7 +1509,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         )
                     }
                     if (report.rowsAdded > 0) {
-                        dayDigestClear()
+                        DayDigestStore.clear(appContext)
                         NoopPrefs.setAnalyzeWatermark(appContext, "")
                         recalculateAllCharge()
                     }
