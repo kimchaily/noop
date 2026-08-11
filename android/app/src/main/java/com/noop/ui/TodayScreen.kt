@@ -391,18 +391,25 @@ fun TodayScreen(
     // The pinned "Your cards" values (Stress / Fitness age / Vitality), surfaced on Today so the buried
     // Explore features sit on the home screen (#582). The same merged resolvedSeries reads their detail
     // screens use; null simply renders a dash on that card. Mirror the iOS Today lane's stressToday /
-    // fitnessAgeToday / vitalityToday loads (last resolved value over all history). Loaded off the main
-    // thread; re-read as the data grows.
+    // fitnessAgeToday / vitalityToday loads. Loaded off the main thread; re-read as the data grows.
     // #849: seed from the ViewModel cache so a re-mount restores the pinned-card numbers instead of flashing
     // dashes while the heavy history-wide read is (now) skipped for unchanged data.
+    //
+    // These three follow the SELECTED DAY, not just today. They used to read "the newest value anywhere in
+    // history", which was correct while the cards only ever rendered at offset 0 — but the dashboard now
+    // renders for any day, and an unbounded read would stamp today's Stress / Fitness Age / Vitality onto a
+    // day three weeks back. The resolution below is the same one each detail screen uses; only its upper
+    // bound moves to the selected day.
     var stressToday by remember { mutableStateOf(viewModel.todayStressCache) }
     var fitnessAgeToday by remember { mutableStateOf(viewModel.todayFitnessAgeCache) }
     var vitalityToday by remember { mutableStateOf(viewModel.todayVitalityCache) }
-    LaunchedEffect(days) {
+    LaunchedEffect(days, selectedDayKey) {
         // #849 re-mount guard: skip the whole-history scan when `days` is content-identical to the last load
         // (data class hashCode is a stable structural signature). The marker + cached values live on the
         // long-lived ViewModel, so a tab-return / post-import re-mount restores the numbers without re-reading.
-        val sig = days.hashCode()
+        // The day is part of the signature now: the same `days` on a DIFFERENT selected day is a different
+        // answer, so caching on `days` alone would freeze yesterday's numbers onto every other day.
+        val sig = 31 * days.hashCode() + selectedDayKey.hashCode()
         if (viewModel.todayCardsLoadedSig == sig) return@LaunchedEffect
         // Read each pinned card from the SAME source its own detail screen reads, the proven path that
         // already shows real numbers there (and the resolution iOS's exploreSeries uses). Stress is derived
@@ -419,21 +426,31 @@ fun TodayScreen(
         // StressScreen does (day → value, clamped 0–3) and feeding the same `days` ties the two together; both
         // recompute off `days`, so the pinned card stays in sync. null (no usable signal) keeps the honest
         // "Calibrating" placeholder, matching StressScreen's empty state.
+        //
+        // Per-day: StressModel.build treats the LAST row of the list it is given as "the day", and the 30 days
+        // before it as that day's baseline. Truncating `days` at the selected day therefore re-uses the exact
+        // same model, scored against the window that day actually had — no second stress calculation, and a
+        // past day is measured against its own past rather than against today's.
         stressToday = runCatching {
             val stored = viewModel.repo.metricSeries("my-whoop", "stress", "0000-01-01", "9999-12-31")
                 .associate { it.day to it.value.coerceIn(0.0, 3.0) }
-            StressModel.build(days, stored)?.score
+            StressModel.build(days.filter { it.day <= selectedDayKey }, stored)?.score
         }.getOrNull()
         // IDENTITY FUSION: Fitness Age / Vitality live ONLY under the engine's computed namespace, which
         // splits in two after a "Make active" onto a strap's real id. Read every computed lineage and take
         // the newest point by day, so the weekly score doesn't vanish (or freeze at the pre-switch value)
         // the moment the engine starts writing under the new id. Single-WHOOP ⇒ one id ⇒ unchanged read.
-        suspend fun latestComputed(key: String): Double? =
-            WhoopRepository.computedSourceIdsFor(viewModel.activeStrapId)
-                .flatMap { viewModel.repo.metricSeries(it, key, "0000-01-01", "9999-12-31") }
-                .maxByOrNull { it.day }?.value
-        fitnessAgeToday = runCatching { latestComputed("fitness_age") }.getOrNull()
-        vitalityToday = runCatching { latestComputed("vitality") }.getOrNull()
+        // These are WEEKLY scores, so "that day's value" is the most recent score that existed BY that day
+        // ([valueAsOfDay]) — never a later one, which would show a day a reading it could not have had.
+        suspend fun computedAsOfDay(key: String): Double? =
+            valueAsOfDay(
+                WhoopRepository.computedSourceIdsFor(viewModel.activeStrapId)
+                    .flatMap { viewModel.repo.metricSeries(it, key, "0000-01-01", "9999-12-31") }
+                    .map { it.day to it.value },
+                selectedDayKey,
+            )
+        fitnessAgeToday = runCatching { computedAsOfDay("fitness_age") }.getOrNull()
+        vitalityToday = runCatching { computedAsOfDay("vitality") }.getOrNull()
         // Cache the computed triple + signature so a later re-mount with unchanged data restores them and
         // short-circuits the history-wide read above.
         viewModel.todayStressCache = stressToday
@@ -488,16 +505,19 @@ fun TodayScreen(
         }
     }
 
-    // The latest active-energy figure (kcal) for the Calories card, the newest non-null activeKcal across
-    // the Apple-side daily aggregates, mirroring the Today Calories tile. Null hides the card's value.
+    // The imported active-energy figure (kcal) for the SELECTED DAY — the Calories tile/row fallback when
+    // the app's own per-day estimate is absent. This used to read the newest activeKcal anywhere in history,
+    // which was indistinguishable from today's while the value only ever rendered at offset 0; on a
+    // scrolled-back day it would have shown today's burn. Reading the day's own row ([activeKcalForDay])
+    // keeps a past day honest. Null leaves the tile/row at "No Data" rather than borrowing another day's.
     var latestActiveKcal by remember { mutableStateOf<Double?>(null) }
-    LaunchedEffect(days) {
+    LaunchedEffect(days, selectedDayKey) {
         latestActiveKcal = runCatching {
-            (viewModel.repo.appleDaily("apple-health", "0000-01-01", "9999-12-31") +
-                viewModel.repo.appleDaily("health-connect", "0000-01-01", "9999-12-31"))
-                .filter { it.activeKcal != null }
-                .maxByOrNull { it.day }
-                ?.activeKcal
+            activeKcalForDay(
+                viewModel.repo.appleDaily("apple-health", "0000-01-01", "9999-12-31"),
+                viewModel.repo.appleDaily("health-connect", "0000-01-01", "9999-12-31"),
+                selectedDayKey,
+            )
         }.getOrNull()
     }
 
@@ -517,9 +537,13 @@ fun TodayScreen(
     // re-reads the one metric row the moment a drink is logged / edited / deleted. Mirrors the iOS
     // Repository.hydrationSeq trigger.
     val hydrationSeq by HydrationStore.mutationSeq.collectAsStateWithLifecycle()
-    LaunchedEffect(days, hydrationEnabled, hydrationSeq) {
+    LaunchedEffect(days, hydrationEnabled, hydrationSeq, selectedDay) {
         hydrationTotalMl = if (hydrationEnabled) {
-            runCatching { HydrationStore.total(viewModel.repo) }.getOrDefault(0.0)
+            // The SELECTED day's logged total, not today's. HydrationStore.total already buckets by the local
+            // day containing the timestamp it is given, so passing the selected day's midday (safely inside
+            // the day whatever the DST offset) is the whole change — same store, same read, one day over.
+            val ts = selectedDay.atTime(12, 0).atZone(ZoneId.systemDefault()).toEpochSecond()
+            runCatching { HydrationStore.total(viewModel.repo, ts) }.getOrDefault(0.0)
         } else 0.0
     }
     // The day's Effort/strain (0..100) drives the goal's effort bump. Prefer the live in-progress Effort
@@ -648,13 +672,16 @@ fun TodayScreen(
         )
     }
 
-    // The newest Apple Health / Health Connect body weight, loaded off the main thread. Null until the
-    // load runs or when neither source carries a weight, the Weight tile then falls back to the profile.
+    // The newest Apple Health / Health Connect body weight ON OR BEFORE the selected day, loaded off the
+    // main thread. Null until the load runs or when no source carries a weight that old, the Weight tile
+    // then falls back to the profile. Bounded by the day (rather than newest-ever) so scrolling back shows
+    // what you weighed then — the reading a later weigh-in must not overwrite.
     var weightKg by remember { mutableStateOf<Double?>(null) }
-    LaunchedEffect(days) {
+    LaunchedEffect(days, selectedDayKey) {
         weightKg = latestWeightKg(
             viewModel.repo.appleDaily("apple-health", "0000-01-01", "9999-12-31"),
             viewModel.repo.appleDaily("health-connect", "0000-01-01", "9999-12-31"),
+            asOfDay = selectedDayKey,
         )
     }
 
@@ -3055,6 +3082,7 @@ private fun YourCardsSection(
                         hydrationTotalMl = hydrationTotalMl,
                         hydrationGoalMl = hydrationGoalMl,
                         scoreReads = scoreReads,
+                        isToday = isToday,
                     ),
                     subtitle = dashboardCardSubtitle(card, isToday),
                     // The mini liquid vessel's fill — the SAME per-card fraction iOS `liquidCard` uses.
@@ -3249,7 +3277,7 @@ private fun dashboardCardFraction(
  * today's own row (they accrue through the day, never a carry). Stress / Fitness age / Vitality come from
  * their own resolved loads.
  */
-private fun dashboardCardValue(
+internal fun dashboardCardValue(
     card: DashboardCard,
     day: DailyMetric?,
     carriedDay: DailyMetric?,
@@ -3264,6 +3292,8 @@ private fun dashboardCardValue(
     hydrationGoalMl: Int,
     // The shared score reads (Charge / Effort / Rest / Weight) — see [dashboardCardFraction].
     scoreReads: Map<KeyMetric, ScoreRead> = emptyMap(),
+    // Whether the selected day is today — only the Stress placeholder depends on it (see below).
+    isToday: Boolean = true,
 ): String {
     fun withUnit(s: String): String =
         if (s == NO_DATA) NO_DATA else if (card.unit.isEmpty()) s else "$s ${card.unit}"
@@ -3305,7 +3335,9 @@ private fun dashboardCardValue(
             // seed the 30-day RHR/HRV baseline StressScreen reads, the front card has no number to show. The
             // old `?: NO_DATA` rendered a bare dash that read like a broken card; show the honest calibrating
             // state instead, matching the owner's reply on #706 and the StressScreen empty/calibrating copy.
-            MetricReads.stress(stress).number ?: STRESS_CALIBRATING
+            // On a PAST day that placeholder would be a lie in the other direction: nothing is calibrating
+            // back there, the day simply has no score and never will. So only today calibrates.
+            MetricReads.stress(stress).number ?: if (isToday) STRESS_CALIBRATING else NO_DATA
         DashboardCard.FITNESS_AGE ->
             withUnit(MetricReads.fitnessAge(fitnessAge).number ?: NO_DATA)
         DashboardCard.VITALITY ->
@@ -4458,8 +4490,8 @@ private fun MetricGrid(
     // Your-cards rows ([chargeRead] & co.). The grid used to resolve them inline from seven separate
     // parameters; taking the finished read instead is what keeps a score tile and its card row identical.
     scoreReads: Map<KeyMetric, ScoreRead> = emptyMap(),
-    // The newest imported Apple Health / Health Connect active-energy figure — the Calories fallback when the
-    // app's own per-day estimate is absent. Shared with the Your-cards row so both surfaces agree (#calories).
+    // The SELECTED DAY's imported Apple Health / Health Connect active-energy figure — the Calories fallback
+    // when the app's own per-day estimate is absent. Shared with the Your-cards row so both surfaces agree.
     latestActiveKcal: Double? = null,
     importedStepsForDay: Int? = null,
     estimatedStepsForDay: Int? = null,
@@ -4606,8 +4638,10 @@ private fun MetricGrid(
             KeyTileData(
                 label = "Stress",
                 // Baseline-relative: until the strap has banked enough worn nights there is no score to
-                // show, and the honest "Calibrating" state reads better than a bare dash (#706/#684).
-                value = mv.number ?: STRESS_CALIBRATING,
+                // show, and the honest "Calibrating" state reads better than a bare dash (#706/#684). Only
+                // TODAY can be calibrating though — a past day with no score simply has none, so it reads
+                // "No Data". Same rule as the card row, so the two still agree.
+                value = mv.number ?: if (isToday) STRESS_CALIBRATING else NO_DATA,
                 unit = mv.unit,
                 tint = Palette.accent,
                 frac = mv.frac,
@@ -6218,12 +6252,47 @@ internal data class WeightTileText(val value: String, val caption: String?)
  * The newest body weight across the two Apple-side sources (apple-health + health-connect), or null
  * when neither carries one. Days are ISO `yyyy-MM-dd`, which sorts chronologically, so the lexically
  * greatest day with a non-null `weightKg` is the most recent, no date parsing needed. (#107)
+ *
+ * [asOfDay] bounds the read to readings on or before that day — what the Weight tile showed *then*. The
+ * Today screen passes the selected day, because the whole point of scrolling back is to see that day, and
+ * an unbounded "newest ever" would stamp this morning's weigh-in onto a day three weeks ago. Null (the
+ * default) keeps the unbounded newest-ever read for callers that genuinely want it.
  */
-internal fun latestWeightKg(apple: List<AppleDaily>, healthConnect: List<AppleDaily>): Double? =
+internal fun latestWeightKg(
+    apple: List<AppleDaily>,
+    healthConnect: List<AppleDaily>,
+    asOfDay: String? = null,
+): Double? =
     (apple + healthConnect)
-        .filter { it.weightKg != null }
+        .filter { it.weightKg != null && (asOfDay == null || it.day <= asOfDay) }
         .maxByOrNull { it.day }
         ?.weightKg
+
+/**
+ * Imported active energy (kcal) for [dayKey] across the two Apple-side sources, or null when neither
+ * carries one for that day. The Calories tile/row fall back to this when the app's own per-day estimate is
+ * absent; reading it PER DAY (rather than the newest figure anywhere in history, which is what it used to
+ * do) is what stops a scrolled-back day showing today's burn. Same shape as [stepsForDay] — the larger of
+ * the two sources wins, since a day present in both is the same day counted twice.
+ */
+internal fun activeKcalForDay(
+    apple: List<AppleDaily>,
+    healthConnect: List<AppleDaily>,
+    dayKey: String,
+): Double? =
+    (apple + healthConnect)
+        .filter { it.day == dayKey }
+        .mapNotNull { it.activeKcal }
+        .maxOrNull()
+
+/**
+ * The newest value in a day-keyed series on or before [dayKey], or null when the series has nothing that
+ * old. Backs the weekly-cadence scores (Fitness Age, Vitality): they are computed every so often, not
+ * daily, so "that day's value" is the most recent score that existed BY then — never a later one, which
+ * would show a day a reading it could not have had. Days are ISO `yyyy-MM-dd`, so they sort lexically.
+ */
+internal fun valueAsOfDay(series: List<Pair<String, Double>>, dayKey: String): Double? =
+    series.filter { it.first <= dayKey }.maxByOrNull { it.first }?.second
 
 /**
  * Steps for [dayKey] from the imported Apple Health / Health Connect daily aggregates, or null when

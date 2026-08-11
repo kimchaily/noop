@@ -731,4 +731,114 @@ class TodayMetricTilesTest {
             assertNull(dashboardCardMetricKey(DashboardCard.fromRaw(m.raw)!!))
         }
     }
+
+    // MARK: - A past day shows THAT day's values, never today's
+    //
+    // Five reads were "the newest value anywhere in history". That was indistinguishable from today's while
+    // the cards only rendered at offset 0 — but the dashboard now follows the day selector, so an unbounded
+    // read would stamp today's number onto a day weeks back. Each is bounded by the selected day below.
+
+    @Test
+    fun weight_asOfADay_ignoresLaterWeighIns() {
+        val apple = listOf(
+            appleDay("2026-06-10", 80.0),
+            appleDay("2026-06-17", 78.0),
+            appleDay("2026-06-19", 74.5),   // today's weigh-in
+        )
+        // Scrolled back to the 17th: that day's weight, not this morning's.
+        assertEquals(78.0, latestWeightKg(apple, emptyList(), asOfDay = "2026-06-17"))
+        assertEquals(80.0, latestWeightKg(apple, emptyList(), asOfDay = "2026-06-16"))
+        assertEquals(74.5, latestWeightKg(apple, emptyList(), asOfDay = "2026-06-19"))
+    }
+
+    @Test
+    fun weight_asOfADay_carriesTheLastReadingBeforeIt_notNothing() {
+        // Weight isn't logged daily, so a day with no weigh-in of its own honestly shows the most recent
+        // one that existed by then — the reading you'd have seen standing on that day.
+        val apple = listOf(appleDay("2026-06-10", 80.0), appleDay("2026-06-19", 74.5))
+        assertEquals(80.0, latestWeightKg(apple, emptyList(), asOfDay = "2026-06-15"))
+        // …and nothing at all before the first ever reading.
+        assertNull(latestWeightKg(apple, emptyList(), asOfDay = "2026-06-01"))
+    }
+
+    @Test
+    fun weight_unboundedReadIsUnchanged_forCallersThatWantNewestEver() {
+        val apple = listOf(appleDay("2026-06-10", 80.0), appleDay("2026-06-19", 74.5))
+        assertEquals(74.5, latestWeightKg(apple, emptyList()))
+    }
+
+    @Test
+    fun activeKcal_isTheDaysOwnFigure_notTheNewestAnywhere() {
+        val apple = listOf(
+            AppleDaily(deviceId = "apple-health", day = "2026-06-17", activeKcal = 410.0),
+            AppleDaily(deviceId = "apple-health", day = "2026-06-19", activeKcal = 730.0),
+        )
+        assertEquals(410.0, activeKcalForDay(apple, emptyList(), "2026-06-17"))
+        assertEquals(730.0, activeKcalForDay(apple, emptyList(), "2026-06-19"))
+        // A day with no imported energy borrows nothing — the tile reads No Data instead of another day's.
+        assertNull(activeKcalForDay(apple, emptyList(), "2026-06-18"))
+    }
+
+    @Test
+    fun activeKcal_unionsBothSources_takesTheLargerForTheDay() {
+        // Same rule as stepsForDay: a day present in both sources is one day counted twice, not two days.
+        val apple = listOf(AppleDaily(deviceId = "apple-health", day = "2026-06-19", activeKcal = 500.0))
+        val hc = listOf(AppleDaily(deviceId = "health-connect", day = "2026-06-19", activeKcal = 730.0))
+        assertEquals(730.0, activeKcalForDay(apple, hc, "2026-06-19"))
+    }
+
+    @Test
+    fun weeklyScores_readAsOfTheDay_neverAValueComputedLater() {
+        // Fitness Age / Vitality are computed weekly. A day may only show a score that already existed by
+        // then — showing a later one would give that day a reading it could not have had.
+        val series = listOf("2026-06-01" to 34.0, "2026-06-08" to 33.0, "2026-06-15" to 31.0)
+        assertEquals(33.0, valueAsOfDay(series, "2026-06-10"))
+        assertEquals(33.0, valueAsOfDay(series, "2026-06-14"))
+        assertEquals(31.0, valueAsOfDay(series, "2026-06-15"))
+        assertEquals(31.0, valueAsOfDay(series, "2026-06-19"))
+        // Before the first score there is nothing to show.
+        assertNull(valueAsOfDay(series, "2026-05-31"))
+    }
+
+    @Test
+    fun weeklyScores_asOfIsIndependentOfSeriesOrder() {
+        // The series arrives merged across computed lineages (identity fusion), so it is not sorted.
+        val jumbled = listOf("2026-06-15" to 31.0, "2026-06-01" to 34.0, "2026-06-08" to 33.0)
+        assertEquals(33.0, valueAsOfDay(jumbled, "2026-06-10"))
+        assertNull(valueAsOfDay(emptyList(), "2026-06-10"))
+    }
+
+    @Test
+    fun stressPlaceholder_onlyTodayCalibrates() {
+        // "Calibrating" says the baseline is still seeding — true today, a lie on a day weeks back, where
+        // the score simply doesn't exist and never will. Both surfaces apply the same rule.
+        assertEquals(
+            "Calibrating",
+            dashboardCardValue(
+                card = DashboardCard.STRESS, day = null, carriedDay = null, vitalsDay = null,
+                stress = null, fitnessAge = null, vitality = null,
+                importedStepsForDay = null, estimatedStepsForDay = null, latestActiveKcal = null,
+                hydrationTotalMl = 0.0, hydrationGoalMl = 0, isToday = true,
+            ),
+        )
+        assertEquals(
+            "No Data",
+            dashboardCardValue(
+                card = DashboardCard.STRESS, day = null, carriedDay = null, vitalsDay = null,
+                stress = null, fitnessAge = null, vitality = null,
+                importedStepsForDay = null, estimatedStepsForDay = null, latestActiveKcal = null,
+                hydrationTotalMl = 0.0, hydrationGoalMl = 0, isToday = false,
+            ),
+        )
+        // A real score reads the same on either day.
+        assertEquals(
+            "2",
+            dashboardCardValue(
+                card = DashboardCard.STRESS, day = null, carriedDay = null, vitalsDay = null,
+                stress = 2.0, fitnessAge = null, vitality = null,
+                importedStepsForDay = null, estimatedStepsForDay = null, latestActiveKcal = null,
+                hydrationTotalMl = 0.0, hydrationGoalMl = 0, isToday = false,
+            ),
+        )
+    }
 }
