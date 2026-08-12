@@ -841,4 +841,41 @@ class TodayMetricTilesTest {
             ),
         )
     }
+
+    // MARK: - The Recovery-vitals caption names the night on screen
+
+    @Test
+    fun vitalsCaption_onTodayIsUnchanged_lastNightIsTheDayBefore() {
+        // A row dated D carries the night that ended on the morning of D, so the night is D-1.
+        assertEquals("Last night · 11 Aug", heroVitalsNightLine("2026-08-12", isToday = true))
+        assertEquals("Last night · 31 Jul", heroVitalsNightLine("2026-08-01", isToday = true))
+    }
+
+    @Test
+    fun vitalsCaption_onAPastDay_namesThatDaysNight_notYesterday() {
+        // The bug this pins: the caption was `LocalDate.now().minusDays(1)`, so scrolling back to 24 July
+        // showed that day's real vitals under "Last night · 11 Aug" — right numbers, date three weeks off.
+        assertEquals("Overnight · 23 Jul", heroVitalsNightLine("2026-07-24", isToday = false))
+    }
+
+    @Test
+    fun vitalsCaption_onlyTodayMayCallItsNightLastNight() {
+        // "Last night" is a claim about now. On any other day it is simply false, whatever the date says.
+        for (key in listOf("2026-07-24", "2026-08-01", "2026-08-11")) {
+            assertFalse(heroVitalsNightLine(key, isToday = false).contains("Last night"))
+        }
+    }
+
+    @Test
+    fun vitalsCaption_crossesMonthAndYearBoundaries() {
+        assertEquals("Overnight · 31 Dec", heroVitalsNightLine("2026-01-01", isToday = false))
+        assertEquals("Overnight · 28 Feb", heroVitalsNightLine("2026-03-01", isToday = false))
+    }
+
+    @Test
+    fun vitalsCaption_unparseableKeyStillRendersACaption() {
+        // Never blank: a malformed key falls back to the wall clock rather than dropping the line.
+        assertTrue(heroVitalsNightLine("not-a-date", isToday = true).startsWith("Last night · "))
+        assertTrue(heroVitalsNightLine("", isToday = false).startsWith("Overnight · "))
+    }
 }

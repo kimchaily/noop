@@ -1387,7 +1387,15 @@ fun TodayScreen(
                 TodaySection.RECOVERY_VITALS -> {
                     item {
                     Box(modifier = Modifier.fillMaxWidth().staggeredAppear(stagger)) {
-                        HeroMetricRows(day = displayMetric, carriedDay = lastScoredRecoveryDay, vitalsDay = lastVitalsDay, days = days, colourVitalsByState = colourVitalsByState)
+                        HeroMetricRows(
+                            day = displayMetric,
+                            carriedDay = lastScoredRecoveryDay,
+                            vitalsDay = lastVitalsDay,
+                            days = days,
+                            colourVitalsByState = colourVitalsByState,
+                            shownDayKey = selectedDayKey,
+                            isToday = selectedDayOffset == 0,
+                        )
                     }
                     }
                 }
@@ -2911,6 +2919,11 @@ private fun HeroMetricRows(
     vitalsDay: DailyMetric? = null,
     days: List<DailyMetric> = emptyList(),
     colourVitalsByState: Boolean = false,
+    // The row on screen + whether it is today, so the caption names the night these vitals actually came
+    // from rather than always yesterday-relative-to-now (see [heroVitalsNightLine]). Defaults keep any
+    // caller that doesn't date itself on the previous wall-clock behaviour.
+    shownDayKey: String = LocalDate.now().toString(),
+    isToday: Boolean = true,
 ) {
     // Per-field, today-first: today's own value wins; the vitals carry only fills a field today lacks.
     // Resolved through the shared [MetricReads] so the vitals card, the Key-Metrics tile and the Your-cards
@@ -2936,7 +2949,8 @@ private fun HeroMetricRows(
                 Overline("Recovery vitals", modifier = Modifier.weight(1f))
                 // iOS `lastNightLine` — today's own "Last night · <date>" unless the shown vitals are a carry.
                 Text(
-                    if (carriedFromVitals) carriedCaption(vitalsDay!!.day) else heroVitalsLastNightLine(),
+                    if (carriedFromVitals) carriedCaption(vitalsDay!!.day)
+                    else heroVitalsNightLine(shownDayKey, isToday),
                     style = NoopType.caption,
                     color = Palette.textTertiary,
                 )
@@ -2963,10 +2977,24 @@ private fun HeroMetricRows(
     }
 }
 
-/** iOS `lastNightLine` — "Last night · <date>" where <date> is yesterday in "d MMM" form. */
-private fun heroVitalsLastNightLine(): String {
-    val d = LocalDate.now().minusDays(1)
-    return "Last night · ${d.format(DateTimeFormatter.ofPattern("d MMM", Locale.US))}"
+/**
+ * The Recovery-vitals caption: which night the three overnight vitals were measured on. A row dated D
+ * carries the night that ENDED on the morning of D, so the night is D-1.
+ *
+ * This used to be a bare `LocalDate.now().minusDays(1)` — always yesterday relative to the WALL CLOCK,
+ * whatever day was on screen. The card's values were day-scoped all along, so scrolling back to 24 July
+ * showed that day's real vitals under a caption reading "Last night · 11 Aug": the numbers were right and
+ * the date above them was three weeks off. It now dates by the row actually shown, and only TODAY gets to
+ * call its night "last night" — on any other day that framing is simply false, so it reads "Overnight".
+ *
+ * [shownDayKey] is the `yyyy-MM-dd` of the row on screen (which at offset 0 is the resolver's day, not the
+ * raw wall-clock date — the same key the Key Metrics header dates itself by, #434). An unparseable key
+ * falls back to the wall clock so the caption is never blank.
+ */
+internal fun heroVitalsNightLine(shownDayKey: String, isToday: Boolean): String {
+    val night = (runCatching { LocalDate.parse(shownDayKey) }.getOrNull() ?: LocalDate.now()).minusDays(1)
+    val date = night.format(DateTimeFormatter.ofPattern("d MMM", Locale.US))
+    return if (isToday) "Last night · $date" else "Overnight · $date"
 }
 
 /** One iOS `vitalRow`: a 26dp mini liquid VESSEL filled to [fraction] in [tint], the label (subhead,
