@@ -852,10 +852,24 @@ class TodayMetricTilesTest {
     }
 
     @Test
-    fun vitalsCaption_onAPastDay_namesThatDaysNight_notYesterday() {
-        // The bug this pins: the caption was `LocalDate.now().minusDays(1)`, so scrolling back to 24 July
-        // showed that day's real vitals under "Last night · 11 Aug" — right numbers, date three weeks off.
-        assertEquals("Overnight · 23 Jul", heroVitalsNightLine("2026-07-24", isToday = false))
+    fun vitalsCaption_onAPastDay_carriesThatDaysOwnDate() {
+        // Two fixes pinned at once:
+        //  1. it was `LocalDate.now().minusDays(1)`, so a scrolled-back day showed its own real vitals
+        //     under this morning's date;
+        //  2. dating it by the NIGHT (D-1) then disagreed with every other label on the same screen —
+        //     11 August's reading read "Overnight · 10 Aug" directly above a grid headed "TUE, 11 AUG".
+        // Sleep is banked by wake day, so the row's own date is the one the rest of the app uses.
+        assertEquals("Overnight · 11 Aug", heroVitalsNightLine("2026-08-11", isToday = false))
+        assertEquals("Overnight · 24 Jul", heroVitalsNightLine("2026-07-24", isToday = false))
+    }
+
+    @Test
+    fun vitalsCaption_agreesWithTheCarryCaption_forTheSameRow() {
+        // Both captions can appear in this one card. carriedCaption dates a carried row by its OWN day, so
+        // the non-carry branch must not date the same row a day earlier — that mismatch was the bug.
+        val row = "2026-08-11"
+        assertTrue(carriedCaption(row, today = "2026-08-12").endsWith("11 Aug"))
+        assertTrue(heroVitalsNightLine(row, isToday = false).endsWith("11 Aug"))
     }
 
     @Test
@@ -868,8 +882,11 @@ class TodayMetricTilesTest {
 
     @Test
     fun vitalsCaption_crossesMonthAndYearBoundaries() {
-        assertEquals("Overnight · 31 Dec", heroVitalsNightLine("2026-01-01", isToday = false))
-        assertEquals("Overnight · 28 Feb", heroVitalsNightLine("2026-03-01", isToday = false))
+        // Only TODAY steps back a day, so only today can cross a boundary backwards.
+        assertEquals("Last night · 31 Dec", heroVitalsNightLine("2027-01-01", isToday = true))
+        assertEquals("Last night · 28 Feb", heroVitalsNightLine("2026-03-01", isToday = true))
+        // A past day simply reads its own date, boundary or not.
+        assertEquals("Overnight · 1 Jan", heroVitalsNightLine("2027-01-01", isToday = false))
     }
 
     @Test
@@ -877,5 +894,16 @@ class TodayMetricTilesTest {
         // Never blank: a malformed key falls back to the wall clock rather than dropping the line.
         assertTrue(heroVitalsNightLine("not-a-date", isToday = true).startsWith("Last night · "))
         assertTrue(heroVitalsNightLine("", isToday = false).startsWith("Overnight · "))
+    }
+
+    @Test
+    fun vitalsCaption_neverDisagreesWithTheDayOnScreen_onAPastDay() {
+        // The rule, stated once: on a past day the caption must name the day the screen is showing. A
+        // future change that reintroduces the night convention fails here.
+        for (key in listOf("2026-07-24", "2026-08-01", "2026-08-11", "2026-12-31")) {
+            val shown = java.time.LocalDate.parse(key)
+                .format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.US))
+            assertEquals("Overnight · $shown", heroVitalsNightLine(key, isToday = false))
+        }
     }
 }
