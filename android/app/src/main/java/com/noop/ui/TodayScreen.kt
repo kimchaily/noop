@@ -391,18 +391,25 @@ fun TodayScreen(
     // The pinned "Your cards" values (Stress / Fitness age / Vitality), surfaced on Today so the buried
     // Explore features sit on the home screen (#582). The same merged resolvedSeries reads their detail
     // screens use; null simply renders a dash on that card. Mirror the iOS Today lane's stressToday /
-    // fitnessAgeToday / vitalityToday loads (last resolved value over all history). Loaded off the main
-    // thread; re-read as the data grows.
+    // fitnessAgeToday / vitalityToday loads. Loaded off the main thread; re-read as the data grows.
     // #849: seed from the ViewModel cache so a re-mount restores the pinned-card numbers instead of flashing
     // dashes while the heavy history-wide read is (now) skipped for unchanged data.
+    //
+    // These three follow the SELECTED DAY, not just today. They used to read "the newest value anywhere in
+    // history", which was correct while the cards only ever rendered at offset 0 — but the dashboard now
+    // renders for any day, and an unbounded read would stamp today's Stress / Fitness Age / Vitality onto a
+    // day three weeks back. The resolution below is the same one each detail screen uses; only its upper
+    // bound moves to the selected day.
     var stressToday by remember { mutableStateOf(viewModel.todayStressCache) }
     var fitnessAgeToday by remember { mutableStateOf(viewModel.todayFitnessAgeCache) }
     var vitalityToday by remember { mutableStateOf(viewModel.todayVitalityCache) }
-    LaunchedEffect(days) {
+    LaunchedEffect(days, selectedDayKey) {
         // #849 re-mount guard: skip the whole-history scan when `days` is content-identical to the last load
         // (data class hashCode is a stable structural signature). The marker + cached values live on the
         // long-lived ViewModel, so a tab-return / post-import re-mount restores the numbers without re-reading.
-        val sig = days.hashCode()
+        // The day is part of the signature now: the same `days` on a DIFFERENT selected day is a different
+        // answer, so caching on `days` alone would freeze yesterday's numbers onto every other day.
+        val sig = 31 * days.hashCode() + selectedDayKey.hashCode()
         if (viewModel.todayCardsLoadedSig == sig) return@LaunchedEffect
         // Read each pinned card from the SAME source its own detail screen reads, the proven path that
         // already shows real numbers there (and the resolution iOS's exploreSeries uses). Stress is derived
@@ -419,21 +426,31 @@ fun TodayScreen(
         // StressScreen does (day → value, clamped 0–3) and feeding the same `days` ties the two together; both
         // recompute off `days`, so the pinned card stays in sync. null (no usable signal) keeps the honest
         // "Calibrating" placeholder, matching StressScreen's empty state.
+        //
+        // Per-day: StressModel.build treats the LAST row of the list it is given as "the day", and the 30 days
+        // before it as that day's baseline. Truncating `days` at the selected day therefore re-uses the exact
+        // same model, scored against the window that day actually had — no second stress calculation, and a
+        // past day is measured against its own past rather than against today's.
         stressToday = runCatching {
             val stored = viewModel.repo.metricSeries("my-whoop", "stress", "0000-01-01", "9999-12-31")
                 .associate { it.day to it.value.coerceIn(0.0, 3.0) }
-            StressModel.build(days, stored)?.score
+            StressModel.build(days.filter { it.day <= selectedDayKey }, stored)?.score
         }.getOrNull()
         // IDENTITY FUSION: Fitness Age / Vitality live ONLY under the engine's computed namespace, which
         // splits in two after a "Make active" onto a strap's real id. Read every computed lineage and take
         // the newest point by day, so the weekly score doesn't vanish (or freeze at the pre-switch value)
         // the moment the engine starts writing under the new id. Single-WHOOP ⇒ one id ⇒ unchanged read.
-        suspend fun latestComputed(key: String): Double? =
-            WhoopRepository.computedSourceIdsFor(viewModel.activeStrapId)
-                .flatMap { viewModel.repo.metricSeries(it, key, "0000-01-01", "9999-12-31") }
-                .maxByOrNull { it.day }?.value
-        fitnessAgeToday = runCatching { latestComputed("fitness_age") }.getOrNull()
-        vitalityToday = runCatching { latestComputed("vitality") }.getOrNull()
+        // These are WEEKLY scores, so "that day's value" is the most recent score that existed BY that day
+        // ([valueAsOfDay]) — never a later one, which would show a day a reading it could not have had.
+        suspend fun computedAsOfDay(key: String): Double? =
+            valueAsOfDay(
+                WhoopRepository.computedSourceIdsFor(viewModel.activeStrapId)
+                    .flatMap { viewModel.repo.metricSeries(it, key, "0000-01-01", "9999-12-31") }
+                    .map { it.day to it.value },
+                selectedDayKey,
+            )
+        fitnessAgeToday = runCatching { computedAsOfDay("fitness_age") }.getOrNull()
+        vitalityToday = runCatching { computedAsOfDay("vitality") }.getOrNull()
         // Cache the computed triple + signature so a later re-mount with unchanged data restores them and
         // short-circuits the history-wide read above.
         viewModel.todayStressCache = stressToday
@@ -488,16 +505,19 @@ fun TodayScreen(
         }
     }
 
-    // The latest active-energy figure (kcal) for the Calories card, the newest non-null activeKcal across
-    // the Apple-side daily aggregates, mirroring the Today Calories tile. Null hides the card's value.
+    // The imported active-energy figure (kcal) for the SELECTED DAY — the Calories tile/row fallback when
+    // the app's own per-day estimate is absent. This used to read the newest activeKcal anywhere in history,
+    // which was indistinguishable from today's while the value only ever rendered at offset 0; on a
+    // scrolled-back day it would have shown today's burn. Reading the day's own row ([activeKcalForDay])
+    // keeps a past day honest. Null leaves the tile/row at "No Data" rather than borrowing another day's.
     var latestActiveKcal by remember { mutableStateOf<Double?>(null) }
-    LaunchedEffect(days) {
+    LaunchedEffect(days, selectedDayKey) {
         latestActiveKcal = runCatching {
-            (viewModel.repo.appleDaily("apple-health", "0000-01-01", "9999-12-31") +
-                viewModel.repo.appleDaily("health-connect", "0000-01-01", "9999-12-31"))
-                .filter { it.activeKcal != null }
-                .maxByOrNull { it.day }
-                ?.activeKcal
+            activeKcalForDay(
+                viewModel.repo.appleDaily("apple-health", "0000-01-01", "9999-12-31"),
+                viewModel.repo.appleDaily("health-connect", "0000-01-01", "9999-12-31"),
+                selectedDayKey,
+            )
         }.getOrNull()
     }
 
@@ -517,9 +537,13 @@ fun TodayScreen(
     // re-reads the one metric row the moment a drink is logged / edited / deleted. Mirrors the iOS
     // Repository.hydrationSeq trigger.
     val hydrationSeq by HydrationStore.mutationSeq.collectAsStateWithLifecycle()
-    LaunchedEffect(days, hydrationEnabled, hydrationSeq) {
+    LaunchedEffect(days, hydrationEnabled, hydrationSeq, selectedDay) {
         hydrationTotalMl = if (hydrationEnabled) {
-            runCatching { HydrationStore.total(viewModel.repo) }.getOrDefault(0.0)
+            // The SELECTED day's logged total, not today's. HydrationStore.total already buckets by the local
+            // day containing the timestamp it is given, so passing the selected day's midday (safely inside
+            // the day whatever the DST offset) is the whole change — same store, same read, one day over.
+            val ts = selectedDay.atTime(12, 0).atZone(ZoneId.systemDefault()).toEpochSecond()
+            runCatching { HydrationStore.total(viewModel.repo, ts) }.getOrDefault(0.0)
         } else 0.0
     }
     // The day's Effort/strain (0..100) drives the goal's effort bump. Prefer the live in-progress Effort
@@ -648,13 +672,16 @@ fun TodayScreen(
         )
     }
 
-    // The newest Apple Health / Health Connect body weight, loaded off the main thread. Null until the
-    // load runs or when neither source carries a weight, the Weight tile then falls back to the profile.
+    // The newest Apple Health / Health Connect body weight ON OR BEFORE the selected day, loaded off the
+    // main thread. Null until the load runs or when no source carries a weight that old, the Weight tile
+    // then falls back to the profile. Bounded by the day (rather than newest-ever) so scrolling back shows
+    // what you weighed then — the reading a later weigh-in must not overwrite.
     var weightKg by remember { mutableStateOf<Double?>(null) }
-    LaunchedEffect(days) {
+    LaunchedEffect(days, selectedDayKey) {
         weightKg = latestWeightKg(
             viewModel.repo.appleDaily("apple-health", "0000-01-01", "9999-12-31"),
             viewModel.repo.appleDaily("health-connect", "0000-01-01", "9999-12-31"),
+            asOfDay = selectedDayKey,
         )
     }
 
@@ -930,6 +957,22 @@ fun TodayScreen(
     // 14-day trailing calendar window ending on the phone's actual local day.
     // Old imports stay in history, but they do not fill the Today trend tiles.
     val window = remember14(days, selectedDay)
+
+    // The four score reads (Charge / Effort / Rest / Weight) resolved ONCE for the selected day and handed to
+    // BOTH Today surfaces that render them — the Key-Metrics tiles and the Your-cards rows. Resolving here
+    // rather than inside each surface is what makes "the tile and the card agree" structural instead of a
+    // convention two call sites have to keep remembering (the #543 lesson, applied to the scores).
+    val scoreReads: Map<KeyMetric, ScoreRead> = remember(
+        displayMetric, recoveryCalibration, lastScoredCharge, effortScale,
+        restScoreForDay, weightKg, profileWeightKg, unitSystem,
+    ) {
+        mapOf(
+            KeyMetric.CHARGE to chargeRead(displayMetric, recoveryCalibration, lastScoredCharge),
+            KeyMetric.EFFORT to effortRead(displayMetric, effortScale),
+            KeyMetric.REST to restRead(restScoreForDay),
+            KeyMetric.WEIGHT to weightRead(weightKg, profileWeightKg, unitSystem),
+        )
+    }
 
     LaunchedEffect(days) {
         // #849: this footer pass is the heavy one. It derives HR per imported workout from raw strap samples
@@ -1279,9 +1322,17 @@ fun TodayScreen(
                 TodaySection.YOUR_CARDS -> {
                     item {
                     val visibleDashboardCards = enabledDashboardCards.filter {
-                        it != DashboardCard.HYDRATION || hydrationEnabled
+                        // Hydration is opt-in; the Coupled row is a navigation row into a TODAY-only screen
+                        // (CoupledScreen reads the live day), so it drops off a scrolled-back day rather than
+                        // promising a past-day view it can't render. Every other card carries a per-day value.
+                        (it != DashboardCard.HYDRATION || hydrationEnabled) &&
+                            (it != DashboardCard.COUPLED || selectedDayOffset == 0)
                     }
-                    if (selectedDayOffset == 0 && visibleDashboardCards.isNotEmpty()) {
+                    // The dashboard renders for the SELECTED day, not only today (it used to be gated to
+                    // offset 0 while the Key-Metrics grid beside it already dated itself). The values were
+                    // day-scoped all along — `displayMetric` is the selected day's row — so scrolling back
+                    // now moves both sections together instead of blanking one of them.
+                    if (visibleDashboardCards.isNotEmpty()) {
                         YourCardsSection(
                             cards = visibleDashboardCards,
                             day = displayMetric,
@@ -1305,6 +1356,9 @@ fun TodayScreen(
                             latestActiveKcal = latestActiveKcal,
                             hydrationTotalMl = hydrationTotalMl,
                             hydrationGoalMl = hydrationGoalMl,
+                            scoreReads = scoreReads,
+                            isToday = selectedDayOffset == 0,
+                            dayLabel = dayLabel,
                             onOpenHydration = onOpenHydration,
                             onOpenStress = onOpenStress,
                             onOpenMetric = onOpenMetric,
@@ -1333,7 +1387,15 @@ fun TodayScreen(
                 TodaySection.RECOVERY_VITALS -> {
                     item {
                     Box(modifier = Modifier.fillMaxWidth().staggeredAppear(stagger)) {
-                        HeroMetricRows(day = displayMetric, carriedDay = lastScoredRecoveryDay, vitalsDay = lastVitalsDay, days = days, colourVitalsByState = colourVitalsByState)
+                        HeroMetricRows(
+                            day = displayMetric,
+                            carriedDay = lastScoredRecoveryDay,
+                            vitalsDay = lastVitalsDay,
+                            days = days,
+                            colourVitalsByState = colourVitalsByState,
+                            shownDayKey = selectedDayKey,
+                            isToday = selectedDayOffset == 0,
+                        )
                     }
                     }
                 }
@@ -1362,27 +1424,36 @@ fun TodayScreen(
                         MetricGrid(
                             d = displayMetric,
                             w = window,
-                            recoveryCalibration = recoveryCalibration,
-                            lastScoredCharge = lastScoredCharge,
                             carriedDay = lastScoredRecoveryDay,
                             vitalsDay = lastVitalsDay,
-                            unitSystem = unitSystem,
-                            effortScale = effortScale,
-                            latestWeightKg = weightKg,
-                            profileWeightKg = profileWeightKg,
+                            scoreReads = scoreReads,
                             latestActiveKcal = latestActiveKcal,
                             importedStepsForDay = importedStepsForDay,
                             estimatedStepsForDay = stepsEstForDay,
                             stepActivityClassForDay = stepActivityClassForDay,
                             stepsEstimateCaption = stepsEstimateCaption(profileStore),
-                            restScore = restScoreForDay,
                             restSpark = restCompositeSpark,
-                            enabledMetrics = enabledKeyMetrics,
+                            // The three pinned scores + hydration the grid gained from the Your-cards
+                            // dashboard, the SAME already-resolved values those rows render.
+                            stress = stressToday,
+                            fitnessAge = fitnessAgeToday,
+                            vitality = vitalityToday,
+                            hydrationTotalMl = hydrationTotalMl,
+                            hydrationGoalMl = hydrationGoalMl,
+                            // Hydration is opt-in, so its tile follows the same rule its card row does and
+                            // drops out entirely when Hydration tracking is off in Settings.
+                            enabledMetrics = enabledKeyMetrics.filter {
+                                it != KeyMetric.HYDRATION || hydrationEnabled
+                            },
                             days = days,
                             colourVitalsByState = colourVitalsByState,
                             isToday = selectedDayOffset == 0,
                             onScoreInfo = openGuide,
                             onOpenMetric = onOpenMetric,
+                            // Stress / Sleep / Hydration tiles open their own screen, like their card rows.
+                            onOpenStress = onOpenStress,
+                            onOpenSleep = onOpenSleep,
+                            onOpenHydration = onOpenHydration,
                             metricsExpanded = metricsExpanded,
                             onToggleMetrics = { metricsExpanded = !metricsExpanded },
                         )
@@ -2848,6 +2919,11 @@ private fun HeroMetricRows(
     vitalsDay: DailyMetric? = null,
     days: List<DailyMetric> = emptyList(),
     colourVitalsByState: Boolean = false,
+    // The row on screen + whether it is today, so the caption names the night these vitals actually came
+    // from rather than always yesterday-relative-to-now (see [heroVitalsNightLine]). Defaults keep any
+    // caller that doesn't date itself on the previous wall-clock behaviour.
+    shownDayKey: String = LocalDate.now().toString(),
+    isToday: Boolean = true,
 ) {
     // Per-field, today-first: today's own value wins; the vitals carry only fills a field today lacks.
     // Resolved through the shared [MetricReads] so the vitals card, the Key-Metrics tile and the Your-cards
@@ -2873,7 +2949,8 @@ private fun HeroMetricRows(
                 Overline("Recovery vitals", modifier = Modifier.weight(1f))
                 // iOS `lastNightLine` — today's own "Last night · <date>" unless the shown vitals are a carry.
                 Text(
-                    if (carriedFromVitals) carriedCaption(vitalsDay!!.day) else heroVitalsLastNightLine(),
+                    if (carriedFromVitals) carriedCaption(vitalsDay!!.day)
+                    else heroVitalsNightLine(shownDayKey, isToday),
                     style = NoopType.caption,
                     color = Palette.textTertiary,
                 )
@@ -2900,10 +2977,34 @@ private fun HeroMetricRows(
     }
 }
 
-/** iOS `lastNightLine` — "Last night · <date>" where <date> is yesterday in "d MMM" form. */
-private fun heroVitalsLastNightLine(): String {
-    val d = LocalDate.now().minusDays(1)
-    return "Last night · ${d.format(DateTimeFormatter.ofPattern("d MMM", Locale.US))}"
+/**
+ * The Recovery-vitals caption. Sleep is banked by WAKE day (`dayString(session.endTs)`), so a row dated D
+ * holds the night that ENDED on the morning of D — and D is the date every other surface uses for that
+ * reading: the day selector, the Key Metrics header, Trends, and [carriedCaption] on this very card.
+ *
+ * Two fixes live here, in order:
+ *
+ * 1. It used to be a bare `LocalDate.now().minusDays(1)`, always yesterday relative to the WALL CLOCK
+ *    whatever day was on screen, so a scrolled-back day showed its own real vitals under this morning's
+ *    date. It now dates by the row actually shown.
+ * 2. Dating that row by its NIGHT (D-1) then put two dates on one screen for one number: 11 August's
+ *    54 ms read "Overnight · 10 Aug" directly above a Key Metrics grid headed "TUE, 11 AUG". The phrase
+ *    decides what the date names, so the two must agree:
+ *      • TODAY says "Last night · <D-1>" — "last night" names a NIGHT, and last night is the night before
+ *        today, so the night's own date is the right one. Unchanged, and the only case where D-1 is meant.
+ *      • ANY OTHER DAY says "Overnight · <D>" — there the caption names that day's overnight READING, not
+ *        a night relative to now, so it carries the day's own date and matches everything around it.
+ *
+ * [shownDayKey] is the `yyyy-MM-dd` of the row on screen (at offset 0 the resolver's day, not the raw
+ * wall-clock date — the same key the Key Metrics header dates itself by, #434). An unparseable key falls
+ * back to the wall clock so the caption is never blank.
+ */
+internal fun heroVitalsNightLine(shownDayKey: String, isToday: Boolean): String {
+    val shown = runCatching { LocalDate.parse(shownDayKey) }.getOrNull() ?: LocalDate.now()
+    // Today names the night before it; every other day names itself (see the note above).
+    val dated = if (isToday) shown.minusDays(1) else shown
+    val date = dated.format(DateTimeFormatter.ofPattern("d MMM", Locale.US))
+    return if (isToday) "Last night · $date" else "Overnight · $date"
 }
 
 /** One iOS `vitalRow`: a 26dp mini liquid VESSEL filled to [fraction] in [tint], the label (subhead,
@@ -2959,6 +3060,14 @@ private fun YourCardsSection(
     latestActiveKcal: Double?,
     hydrationTotalMl: Double,
     hydrationGoalMl: Int,
+    // The Charge / Effort / Rest / Weight reads, shared with the Key-Metrics tiles ([chargeRead] & co.).
+    scoreReads: Map<KeyMetric, ScoreRead>,
+    // Whether the SELECTED day is today. The dashboard used to render only at offset 0, so "Today" /
+    // "Last night" subtitles were safe to hard-code; now it renders for any day and the wording follows.
+    isToday: Boolean,
+    // The Key-Metrics header's day label ("Today · Mon, 11 Aug" / "Wed, 6 Aug"), appended to this section's
+    // overline on a past day so both sections say which day they are describing.
+    dayLabel: String,
     onOpenHydration: () -> Unit,
     onOpenStress: () -> Unit,
     onOpenMetric: (String) -> Unit,
@@ -2969,8 +3078,13 @@ private fun YourCardsSection(
     Box(modifier = Modifier.fillMaxWidth().staggeredAppear(2)) {
         Column(verticalArrangement = Arrangement.spacedBy(Metrics.gap)) {
             // Header: "YOUR CARDS" overline + a right-aligned blue CUSTOMISE action (the WHOOP ✎ affordance).
+            // On a past day the overline carries the date too, so a scrolled-back dashboard can't be mistaken
+            // for today's; today stays the bare "YOUR CARDS" it has always been.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Overline("Your cards", modifier = Modifier.weight(1f))
+                Overline(
+                    if (isToday) "Your cards" else "Your cards · $dayLabel",
+                    modifier = Modifier.weight(1f),
+                )
                 TextButton(
                     onClick = onCustomise,
                     colors = ButtonDefaults.textButtonColors(contentColor = Palette.accent),
@@ -3005,7 +3119,10 @@ private fun YourCardsSection(
                         latestActiveKcal = latestActiveKcal,
                         hydrationTotalMl = hydrationTotalMl,
                         hydrationGoalMl = hydrationGoalMl,
+                        scoreReads = scoreReads,
+                        isToday = isToday,
                     ),
+                    subtitle = dashboardCardSubtitle(card, isToday),
                     // The mini liquid vessel's fill — the SAME per-card fraction iOS `liquidCard` uses.
                     fraction = dashboardCardFraction(
                         card = card,
@@ -3018,12 +3135,15 @@ private fun YourCardsSection(
                         importedStepsForDay = importedStepsForDay,
                         estimatedStepsForDay = estimatedStepsForDay,
                         latestActiveKcal = latestActiveKcal,
+                        scoreReads = scoreReads,
                     ),
-                    // Vital cards colour by STATE (green→amber→red vs your baseline), like the tiles + Vital
-                    // Signs; non-vitals keep their identity tint. A non-vital / no-reading key bands to null
-                    // → falls back to dashboardCardTint(card).
-                    tint = dashboardCardMetricKey(card)
-                        ?.let { key -> VitalStatus.color(key, day ?: vitalsDay, days, dashboardCardTint(card), colourVitalsByState) }
+                    // A score card (Charge / Effort / Rest / Weight) tints by its VALUE, straight off the
+                    // shared read its tile uses. Vital cards colour by STATE (green→amber→red vs your
+                    // baseline), like the tiles + Vital Signs; non-vitals keep their identity tint. A
+                    // non-vital / no-reading key bands to null → falls back to dashboardCardTint(card).
+                    tint = card.scoreRead(scoreReads)?.tint
+                        ?: dashboardCardMetricKey(card)
+                            ?.let { key -> VitalStatus.color(key, day ?: vitalsDay, days, dashboardCardTint(card), colourVitalsByState) }
                         ?: dashboardCardTint(card),
                     // #706/#684: every card now opens its OWN detail, matching iOS. The Stress card -> Stress;
                     // the overnight vitals (HRV / Resting HR / Respiratory / SpO₂ / Skin Temp) + Fitness age /
@@ -3047,7 +3167,7 @@ private fun YourCardsSection(
  *  screen (Stress / Sleep / Hydration / Coupled) rather than a metric-detail trend. Mirrors the iOS
  *  `liquidCard` switch, where every metric/vital card opens `metricDetail(key)` (its own focused trend),
  *  NOT the shared Health hub (2026-07-03). Keys are the Android VitalDetailScreen keys. */
-private fun dashboardCardMetricKey(card: DashboardCard): String? = when (card) {
+internal fun dashboardCardMetricKey(card: DashboardCard): String? = when (card) {
     DashboardCard.HRV -> "hrv"
     DashboardCard.RESTING_HR -> "rhr"
     DashboardCard.RESPIRATORY -> "resp"
@@ -3057,8 +3177,24 @@ private fun dashboardCardMetricKey(card: DashboardCard): String? = when (card) {
     DashboardCard.VITALITY -> "vitality"
     DashboardCard.STEPS -> "steps_est"
     DashboardCard.CALORIES -> "active_kcal"
-    // These carry their own full screen, not a per-metric trend.
-    DashboardCard.STRESS, DashboardCard.SLEEP, DashboardCard.HYDRATION, DashboardCard.COUPLED -> null
+    // These carry their own full screen, not a per-metric trend. The Charge / Effort / Rest scores reach
+    // their explainer through the hero ring's ⓘ, and Weight has no trend page — same as their tiles.
+    DashboardCard.STRESS, DashboardCard.SLEEP, DashboardCard.HYDRATION, DashboardCard.COUPLED,
+    DashboardCard.CHARGE, DashboardCard.EFFORT, DashboardCard.REST, DashboardCard.WEIGHT -> null
+}
+
+/**
+ * A card's subtitle, worded for the day actually on screen. The registry's static [DashboardCard.subtitle]
+ * is written for today ("Today", "Last night", "Today's fluid"); now that the dashboard renders for ANY
+ * selected day, those three would quietly misdate a row three weeks back. Every other subtitle is already
+ * day-neutral and passes through untouched.
+ */
+internal fun dashboardCardSubtitle(card: DashboardCard, isToday: Boolean): String = when {
+    isToday -> card.subtitle
+    card == DashboardCard.STEPS -> "That day"
+    card == DashboardCard.SLEEP -> "That night"
+    card == DashboardCard.HYDRATION -> "That day's fluid"
+    else -> card.subtitle
 }
 
 /** The destination callback a dashboard card opens when tapped. Mirrors the iOS dashboardCardRow switch:
@@ -3072,17 +3208,16 @@ private fun dashboardCardDestination(
     onOpenSleep: () -> Unit,
     onOpenHydration: () -> Unit,
     onOpenCoupled: () -> Unit,
-): () -> Unit = when (card) {
+): (() -> Unit)? = when (card) {
     DashboardCard.STRESS -> onOpenStress
     DashboardCard.SLEEP -> onOpenSleep
     DashboardCard.HYDRATION -> onOpenHydration
     // The Coupled view card (#43) taps through to the full WHOOP-style day screen.
     DashboardCard.COUPLED -> onOpenCoupled
     // Every overnight vital + Fitness age / Vitality / Steps / Calories opens its own metric-detail trend.
-    else -> {
-        val key = dashboardCardMetricKey(card)
-        if (key != null) ({ onOpenMetric(key) }) else ({})
-    }
+    // The Charge / Effort / Rest scores and Weight resolve to no key and stay inert, exactly as their tiles
+    // do — [DashboardCardRow] then draws no chevron, so the row never promises a screen that isn't there.
+    else -> dashboardCardMetricKey(card)?.let { key -> { onOpenMetric(key) } }
 }
 
 /** A dashboard card's WHOOP-token tint (icon + accent). Score cards take their domain colour; vitals take
@@ -3107,6 +3242,12 @@ private fun dashboardCardTint(card: DashboardCard): Color = when (card) {
     DashboardCard.CALORIES -> Palette.metricAmber
     DashboardCard.HYDRATION -> Palette.metricCyan
     DashboardCard.COUPLED -> Palette.chargeColor
+    // The four score cards tint by their VALUE, not their identity (a 30% Recovery must read red, not
+    // green), so their live tint comes from the shared [ScoreRead]; these are only the no-reading fallbacks.
+    DashboardCard.CHARGE -> Palette.chargeColor
+    DashboardCard.EFFORT -> Palette.effortColor
+    DashboardCard.REST -> Palette.restColor
+    DashboardCard.WEIGHT -> Palette.accent
 }
 
 /**
@@ -3131,10 +3272,15 @@ private fun dashboardCardFraction(
     importedStepsForDay: Int?,
     estimatedStepsForDay: Int?,
     latestActiveKcal: Double? = null,
+    // The shared score reads (Charge / Effort / Rest / Weight), resolved once on the Today screen and read
+    // by the Key-Metrics tile too, so a score's vessel fills identically on both surfaces.
+    scoreReads: Map<KeyMetric, ScoreRead> = emptyMap(),
 ): Double? {
     fun over(v: Double?, ceiling: Double): Double? = v?.let { (it / ceiling).coerceIn(0.0, 1.0) }
     val vd = carriedDay ?: day
     return when (card) {
+        DashboardCard.CHARGE, DashboardCard.EFFORT, DashboardCard.REST, DashboardCard.WEIGHT ->
+            card.scoreRead(scoreReads)?.frac
         DashboardCard.STRESS -> over(stress, 3.0)
         DashboardCard.FITNESS_AGE -> if (fitnessAge != null) 0.5 else null
         DashboardCard.VITALITY -> over(vitality, 100.0)
@@ -3144,7 +3290,7 @@ private fun dashboardCardFraction(
         DashboardCard.RESPIRATORY -> MetricReads.respiratory(day, vitalsDay).frac
         DashboardCard.STEPS ->
             MetricReads.stepsFrac(MetricReads.stepsResolved(day?.steps, importedStepsForDay, estimatedStepsForDay))
-        DashboardCard.SLEEP -> over(vd?.totalSleepMin, 480.0)
+        DashboardCard.SLEEP -> MetricReads.sleep(vd, null).frac
         DashboardCard.COUPLED -> 0.6
         // Calories now carries a real read (day estimate ?: imported latest), so its vessel fills to match the
         // shown number and the Key-Metrics tile — no longer an empty vessel beside a real value.
@@ -3169,7 +3315,7 @@ private fun dashboardCardFraction(
  * today's own row (they accrue through the day, never a carry). Stress / Fitness age / Vitality come from
  * their own resolved loads.
  */
-private fun dashboardCardValue(
+internal fun dashboardCardValue(
     card: DashboardCard,
     day: DailyMetric?,
     carriedDay: DailyMetric?,
@@ -3182,6 +3328,10 @@ private fun dashboardCardValue(
     latestActiveKcal: Double?,
     hydrationTotalMl: Double,
     hydrationGoalMl: Int,
+    // The shared score reads (Charge / Effort / Rest / Weight) — see [dashboardCardFraction].
+    scoreReads: Map<KeyMetric, ScoreRead> = emptyMap(),
+    // Whether the selected day is today — only the Stress placeholder depends on it (see below).
+    isToday: Boolean = true,
 ): String {
     fun withUnit(s: String): String =
         if (s == NO_DATA) NO_DATA else if (card.unit.isEmpty()) s else "$s ${card.unit}"
@@ -3190,6 +3340,12 @@ private fun dashboardCardValue(
     val vd = carriedDay ?: day
 
     return when (card) {
+        // The four score cards render the SAME read their Key-Metrics tile renders, unit included — the
+        // read already decides whether a unit applies (a calibrating Charge shows "3/4", not "3/4 %").
+        DashboardCard.CHARGE, DashboardCard.EFFORT, DashboardCard.REST, DashboardCard.WEIGHT ->
+            card.scoreRead(scoreReads)
+                ?.let { if (it.unit.isEmpty()) it.value else "${it.value} ${it.unit}" }
+                ?: NO_DATA
         // The three overnight vitals resolve through the shared [MetricReads] (the recovery-independent
         // [vitalsDay] carry), so the card's number always agrees with the vitals card + Key-Metrics tile.
         // withUnit still appends card.unit, which equals the read's own unit for these three.
@@ -3200,9 +3356,10 @@ private fun dashboardCardValue(
             // vd = carriedDay ?: day (recovery-gated); shared "%.0f" format, joined inline as "97%".
             MetricReads.bloodOxygen(vd, null).number?.let { "$it%" } ?: NO_DATA
         DashboardCard.SKIN_TEMP ->
-            // Stored as a deviation from baseline (°C); show it signed so +/- reads honestly.
-            vd?.skinTempDevC?.let { String.format(Locale.US, "%+.1f°", it) } ?: NO_DATA
-        DashboardCard.SLEEP -> sleepValue(vd)
+            // Stored as a deviation from baseline (°C); show it signed so +/- reads honestly. Shared with
+            // the Skin Temp tile via MetricReads (same format, same carry).
+            MetricReads.skinTemp(vd, null).number ?: NO_DATA
+        DashboardCard.SLEEP -> MetricReads.sleep(vd, null).number ?: NO_DATA
         DashboardCard.STEPS ->
             // Same precedence as the tile (via MetricReads); grouped format is this row's own.
             MetricReads.stepsResolved(day?.steps, importedStepsForDay, estimatedStepsForDay)
@@ -3216,18 +3373,17 @@ private fun dashboardCardValue(
             // seed the 30-day RHR/HRV baseline StressScreen reads, the front card has no number to show. The
             // old `?: NO_DATA` rendered a bare dash that read like a broken card; show the honest calibrating
             // state instead, matching the owner's reply on #706 and the StressScreen empty/calibrating copy.
-            stress?.let { it.roundToInt().toString() } ?: STRESS_CALIBRATING
+            // On a PAST day that placeholder would be a lie in the other direction: nothing is calibrating
+            // back there, the day simply has no score and never will. So only today calibrates.
+            MetricReads.stress(stress).number ?: if (isToday) STRESS_CALIBRATING else NO_DATA
         DashboardCard.FITNESS_AGE ->
-            withUnit(fitnessAge?.let { it.roundToInt().toString() } ?: NO_DATA)
+            withUnit(MetricReads.fitnessAge(fitnessAge).number ?: NO_DATA)
         DashboardCard.VITALITY ->
-            vitality?.let { it.roundToInt().toString() } ?: NO_DATA
+            MetricReads.vitality(vitality).number ?: NO_DATA
         DashboardCard.HYDRATION ->
             // "<total> / <goal> L" in litres to 1 dp, e.g. "1.2 / 3.2 L". Always shows a value (a fresh
             // day reads "0.0 / 3.2 L"), since the goal is always derivable from the profile.
-            String.format(
-                Locale.US, "%.1f / %.1f L",
-                hydrationTotalMl / 1000.0, hydrationGoalMl / 1000.0,
-            )
+            MetricReads.hydration(hydrationTotalMl, hydrationGoalMl).number ?: NO_DATA
         DashboardCard.COUPLED ->
             // A tap-through row with no metric value of its own, the row shows just the chevron. An empty
             // string (not NO_DATA) renders no number and leaves it un-dimmed. Mirrors iOS dashboardValue.
@@ -3245,6 +3401,9 @@ private fun dashboardCardValue(
 private fun DashboardCardRow(
     card: DashboardCard,
     value: String,
+    // Day-aware (see [dashboardCardSubtitle]): the registry's static subtitle is written for today, and the
+    // dashboard now renders for any selected day.
+    subtitle: String,
     fraction: Double?,
     tint: Color,
     onClick: (() -> Unit)? = null,
@@ -3297,7 +3456,7 @@ private fun DashboardCardRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                card.subtitle,
+                subtitle,
                 style = NoopType.caption,
                 color = Palette.textTertiary,
                 maxLines = 1,
@@ -3311,13 +3470,19 @@ private fun DashboardCardRow(
             color = if (hasValue) Palette.textPrimary else Palette.textTertiary,
             maxLines = 1,
         )
-        // iOS chevron = 12.
-        Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = Palette.textTertiary,
-            modifier = Modifier.size(12.dp),
-        )
+        // iOS chevron = 12. Only on a row that actually navigates: the Charge / Effort / Rest scores and
+        // Weight have no destination (same as their tiles), and a chevron on an inert row promises a screen
+        // that never opens. A spacer keeps every value column aligned whether or not the chevron is there.
+        if (onClick != null) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = Palette.textTertiary,
+                modifier = Modifier.size(12.dp),
+            )
+        } else {
+            Spacer(Modifier.size(12.dp))
+        }
     }
 }
 
@@ -4282,6 +4447,68 @@ internal fun provenanceLabelTint(label: String): Color = when (label) {
 // field-by-field merge winner per WhoopRepository.mergeDaily. The pure `dayOwnerSource` /
 // `provenanceBadgeLabel` By-Day mappers are kept (Intelligence/Trends + tests still use that vocabulary).
 
+// MARK: - The four SCORE reads both Today surfaces now share
+//
+// Charge / Effort / Rest / Weight were Key-Metrics tiles only, so their value + unit + tint + fill were
+// resolved inline in [MetricGrid]. Now that they are also "Your cards" rows, that inline resolution is
+// lifted here and BOTH surfaces call it — the same move [MetricReads] made for the vitals, and for the same
+// reason: a second copy is a drift waiting to happen (#543). The bodies are the grid's verbatim, so no
+// displayed number, unit or colour changes; only the number of places that decide them does.
+
+/** One resolved score read: the display string, its unit, the tile/row tint and the 0..1 vessel fill. */
+internal data class ScoreRead(val value: String, val unit: String, val tint: Color, val frac: Double?)
+
+/**
+ * This card's shared score read, or null when the card isn't one of the four scores. The lookup goes through
+ * the raw id on purpose: [KeyMetric] and [DashboardCard] deliberately carry byte-identical raws for the same
+ * metric, so "which tile is this card" needs no second hand-maintained mapping to fall out of date.
+ */
+internal fun DashboardCard.scoreRead(reads: Map<KeyMetric, ScoreRead>): ScoreRead? =
+    KeyMetric.fromRaw(raw)?.let { reads[it] }
+
+/** Charge (Recovery): today's own score, else the calibrating "n/N" count, else the carried last-scored
+ *  value. The unit stays empty while calibrating, so "3/4" never reads as "3/4 %". */
+internal fun chargeRead(d: DailyMetric?, recoveryCalibration: Int?, lastScoredCharge: LastCharge?): ScoreRead {
+    val v = d?.recovery ?: lastScoredCharge?.value
+    return ScoreRead(
+        value = d?.recovery?.let { "${it.roundToInt()}" }
+            ?: recoveryCalibration?.let { "$it/${Baselines.minNightsSeed}" }
+            ?: lastScoredCharge?.let { "${it.value.roundToInt()}" } ?: NO_DATA,
+        unit = if (d?.recovery != null || lastScoredCharge != null) "%" else "",
+        tint = v?.let { Palette.recoveryColor(it) } ?: Palette.chargeColor,
+        frac = v?.let { (it / 100.0).coerceIn(0.0, 1.0) },
+    )
+}
+
+/** Effort (Strain) on the user's chosen display scale; never carried, a day's Effort is its own. */
+internal fun effortRead(d: DailyMetric?, effortScale: EffortScale): ScoreRead =
+    ScoreRead(
+        value = d?.strain?.let { UnitFormatter.effortDisplay(it, effortScale) } ?: NO_DATA,
+        unit = if (d?.strain != null) "%" else "",
+        tint = d?.strain?.let { Palette.effortTint(it / StrainScorer.maxStrain) } ?: Palette.effortColor,
+        frac = d?.strain?.let { (it / 100.0).coerceIn(0.0, 1.0) },
+    )
+
+/** Rest: the day's Rest composite (0–100 sleep performance), resolved by the caller off the same series
+ *  the Rest sparkline reads. */
+internal fun restRead(restScore: Double?): ScoreRead =
+    ScoreRead(
+        value = restScore?.let { "${it.roundToInt()}" } ?: NO_DATA,
+        unit = if (restScore != null) "%" else "",
+        tint = restScore?.let { Palette.recoveryColor(it) } ?: Palette.restColor,
+        frac = restScore?.let { (it / 100.0).coerceIn(0.0, 1.0) },
+    )
+
+/** Weight: the newest imported reading, else the profile weight, in the user's unit system. No vessel fill
+ *  — a body weight has no goal to fill toward. */
+internal fun weightRead(latestWeightKg: Double?, profileWeightKg: Double, unitSystem: UnitSystem): ScoreRead =
+    ScoreRead(
+        value = weightTile(latestWeightKg, profileWeightKg, unitSystem).value,
+        unit = "",
+        tint = Palette.accent,
+        frac = null,
+    )
+
 /**
  * The full 14-day metric grid, mirroring the macOS LazyVGrid order:
  * Charge, Effort, Rest, HRV, Resting HR, Blood Oxygen, Respiratory,
@@ -4292,19 +4519,17 @@ internal fun provenanceLabelTint(label: String): Color = when (label) {
 private fun MetricGrid(
     d: DailyMetric?,
     w: Window,
-    recoveryCalibration: Int? = null,
-    lastScoredCharge: LastCharge? = null,
     carriedDay: DailyMetric? = null,
     // The recovery-INDEPENDENT vitals carry (#543). The three overnight vitals read against THIS, matching
     // the vitals card + Your-cards row, so a night whose recovery was nulled still surfaces its OWN preserved
     // HRV / Resting HR / Respiratory instead of an older recovery-scored day's. SpO₂ stays on [carriedDay].
     vitalsDay: DailyMetric? = null,
-    unitSystem: UnitSystem = UnitSystem.METRIC,
-    effortScale: EffortScale = EffortScale.HUNDRED,
-    latestWeightKg: Double? = null,
-    profileWeightKg: Double = 75.0,
-    // The newest imported Apple Health / Health Connect active-energy figure — the Calories fallback when the
-    // app's own per-day estimate is absent. Shared with the Your-cards row so both surfaces agree (#calories).
+    // The Charge / Effort / Rest / Weight reads, resolved once on the Today screen and shared with the
+    // Your-cards rows ([chargeRead] & co.). The grid used to resolve them inline from seven separate
+    // parameters; taking the finished read instead is what keeps a score tile and its card row identical.
+    scoreReads: Map<KeyMetric, ScoreRead> = emptyMap(),
+    // The SELECTED DAY's imported Apple Health / Health Connect active-energy figure — the Calories fallback
+    // when the app's own per-day estimate is absent. Shared with the Your-cards row so both surfaces agree.
     latestActiveKcal: Double? = null,
     importedStepsForDay: Int? = null,
     estimatedStepsForDay: Int? = null,
@@ -4315,11 +4540,17 @@ private fun MetricGrid(
     // k=… from N days + confidence tier) so a frozen-looking estimate self-explains. Built from the SAME
     // persisted calibration the estimate used; defaults to a bare "est." for callers that don't supply it.
     stepsEstimateCaption: String = "est.",
-    restScore: Double? = null,
     // The Rest tile's sparkline: the trailing-window Rest composite (0–100, `sleep_performance`), so the
     // mini-graph tracks the Rest SCORE rather than raw sleep minutes (#614 follow-up). Other tiles still
     // read their series off `w` (the DailyMetric windows).
     restSpark: List<Double> = emptyList(),
+    // The three pinned scores + hydration the grid gained from the Your-cards dashboard. They are resolved
+    // ONCE on the Today screen and handed to both surfaces, so the tile and its card row read one value.
+    stress: Double? = null,
+    fitnessAge: Double? = null,
+    vitality: Double? = null,
+    hydrationTotalMl: Double = 0.0,
+    hydrationGoalMl: Int = 0,
     enabledMetrics: List<KeyMetric> = KeyMetric.defaultOrder,
     // History (oldest→newest) for the personal-baseline banding that tints the vital tiles by STATE
     // (green on baseline → amber → red), matching the Vital Signs screen. Empty → vitals keep their
@@ -4333,6 +4564,12 @@ private fun MetricGrid(
     // destination its Your-cards row uses, via [keyMetricDetailKey]. Defaults to a no-op for callers that
     // don't wire navigation (e.g. a preview).
     onOpenMetric: (String) -> Unit = {},
+    // Stress / Sleep / Hydration tiles open their own full screen (they have no per-metric trend), the same
+    // destinations their Your-cards rows use. Default no-ops keep previews and any non-navigating caller
+    // working unchanged.
+    onOpenStress: () -> Unit = {},
+    onOpenSleep: () -> Unit = {},
+    onOpenHydration: () -> Unit = {},
     // S5: cap the grid to the first METRICS_COLLAPSED_CAP tiles behind a "Show all metrics" expander,
     // collapsing OVERFLOW only (never dropping or reordering a user-selected tile, #251). Defaults keep the
     // grid fully expanded for any caller that doesn't opt into the cap.
@@ -4345,32 +4582,11 @@ private fun MetricGrid(
     // the old builders used PLUS the tile's LiquidTube fraction (mirroring the iOS ktile frac). The #251
     // editor + enabled-order + collapse expander are all preserved; only the tile look changes.
     val descriptors: Map<KeyMetric, KeyTileData> = mapOf(
-        KeyMetric.CHARGE to run {
-            val v = d?.recovery ?: lastScoredCharge?.value
-            KeyTileData(
-                label = "Recovery",
-                value = d?.recovery?.let { "${it.roundToInt()}" }
-                    ?: recoveryCalibration?.let { "$it/${Baselines.minNightsSeed}" }
-                    ?: lastScoredCharge?.let { "${it.value.roundToInt()}" } ?: NO_DATA,
-                unit = if (d?.recovery != null || lastScoredCharge != null) "%" else "",
-                tint = v?.let { Palette.recoveryColor(it) } ?: Palette.chargeColor,
-                frac = v?.let { (it / 100.0).coerceIn(0.0, 1.0) },
-            )
-        },
-        KeyMetric.EFFORT to KeyTileData(
-            label = "Strain",
-            value = d?.strain?.let { UnitFormatter.effortDisplay(it, effortScale) } ?: NO_DATA,
-            unit = if (d?.strain != null) "%" else "",
-            tint = d?.strain?.let { Palette.effortTint(it / StrainScorer.maxStrain) } ?: Palette.effortColor,
-            frac = d?.strain?.let { (it / 100.0).coerceIn(0.0, 1.0) },
-        ),
-        KeyMetric.REST to KeyTileData(
-            label = "Rest",
-            value = restScore?.let { "${it.roundToInt()}" } ?: NO_DATA,
-            unit = if (restScore != null) "%" else "",
-            tint = restScore?.let { Palette.recoveryColor(it) } ?: Palette.restColor,
-            frac = restScore?.let { (it / 100.0).coerceIn(0.0, 1.0) },
-        ),
+        // The four score reads now shared with the Your-cards rows (see [chargeRead] and friends), so the
+        // tile and the row can no longer disagree about a score the way the vitals once did.
+        KeyMetric.CHARGE to scoreReads[KeyMetric.CHARGE].asTile("Recovery"),
+        KeyMetric.EFFORT to scoreReads[KeyMetric.EFFORT].asTile("Strain"),
+        KeyMetric.REST to scoreReads[KeyMetric.REST].asTile("Rest"),
         KeyMetric.HRV to run {
             // Shared read on the recovery-INDEPENDENT vitals carry (#543): the tile now agrees with the
             // vitals card + Your-cards row even at the rollover when last night's recovery was nulled.
@@ -4426,16 +4642,7 @@ private fun MetricGrid(
                 frac = MetricReads.stepsFrac(steps),
             )
         },
-        KeyMetric.WEIGHT to run {
-            val weight = weightTile(latestWeightKg, profileWeightKg, unitSystem)
-            KeyTileData(
-                label = "Weight",
-                value = weight.value,
-                unit = "",
-                tint = Palette.accent,
-                frac = null,
-            )
-        },
+        KeyMetric.WEIGHT to scoreReads[KeyMetric.WEIGHT].asTile("Weight"),
         KeyMetric.CALORIES to run {
             // Day estimate first, imported Apple/HC latest as fallback — the SAME resolution the Your-cards
             // row uses, so the two surfaces can no longer show a value on one and "No Data" on the other.
@@ -4446,6 +4653,76 @@ private fun MetricGrid(
                 unit = if (kcal != null) "kcal" else "",
                 tint = Palette.metricAmber,
                 frac = MetricReads.caloriesFrac(kcal),
+            )
+        },
+
+        // The six tiles the grid gained from the Your-cards dashboard. Each renders the SAME [MetricReads]
+        // resolution its card row renders — no new source, no second copy of a format — so the two surfaces
+        // agree by construction rather than by review. Carry rules follow the card exactly: Sleep and Skin
+        // Temp read the recovery-gated `carriedDay` fallback, and the three pinned scores (Stress / Vitality
+        // / Fitness Age) plus Hydration come in already resolved from the screen's own loads.
+        KeyMetric.SLEEP to run {
+            val mv = MetricReads.sleep(d, carriedDay)
+            KeyTileData(
+                label = "Sleep",
+                value = mv.number ?: NO_DATA,
+                unit = mv.unit,
+                tint = Palette.restColor,
+                frac = mv.frac,
+            )
+        },
+        KeyMetric.STRESS to run {
+            val mv = MetricReads.stress(stress)
+            KeyTileData(
+                label = "Stress",
+                // Baseline-relative: until the strap has banked enough worn nights there is no score to
+                // show, and the honest "Calibrating" state reads better than a bare dash (#706/#684). Only
+                // TODAY can be calibrating though — a past day with no score simply has none, so it reads
+                // "No Data". Same rule as the card row, so the two still agree.
+                value = mv.number ?: if (isToday) STRESS_CALIBRATING else NO_DATA,
+                unit = mv.unit,
+                tint = Palette.accent,
+                frac = mv.frac,
+            )
+        },
+        KeyMetric.SKIN_TEMP to run {
+            val mv = MetricReads.skinTemp(d, carriedDay)
+            KeyTileData(
+                label = "Skin Temp",
+                value = mv.number ?: NO_DATA,
+                unit = mv.unit,
+                tint = VitalStatus.color("skin", d, days, Palette.metricAmber, colourVitalsByState),
+                frac = mv.frac,
+            )
+        },
+        KeyMetric.VITALITY to run {
+            val mv = MetricReads.vitality(vitality)
+            KeyTileData(
+                label = "Vitality",
+                value = mv.number ?: NO_DATA,
+                unit = mv.unit,
+                tint = LIQUID_PURPLE,
+                frac = mv.frac,
+            )
+        },
+        KeyMetric.FITNESS_AGE to run {
+            val mv = MetricReads.fitnessAge(fitnessAge)
+            KeyTileData(
+                label = "Fitness Age",
+                value = mv.number ?: NO_DATA,
+                unit = if (mv.number != null) mv.unit else "",
+                tint = Palette.chargeColor,
+                frac = mv.frac,
+            )
+        },
+        KeyMetric.HYDRATION to run {
+            val mv = MetricReads.hydration(hydrationTotalMl, hydrationGoalMl)
+            KeyTileData(
+                label = "Hydration",
+                value = mv.number ?: NO_DATA,
+                unit = mv.unit,
+                tint = Palette.metricCyan,
+                frac = mv.frac,
             )
         },
     )
@@ -4468,8 +4745,11 @@ private fun MetricGrid(
                     LiquidKeyTile(
                         tile,
                         modifier = Modifier.weight(1f),
-                        // Vitals + Steps + Calories open their metric detail; scores/Weight have none.
-                        onClick = keyMetricDetailKey(metric)?.let { key -> { onOpenMetric(key) } },
+                        // Vitals + Steps + Calories open their metric detail, Stress / Sleep / Hydration
+                        // their own screen; the Charge / Effort / Rest scores and Weight have none.
+                        onClick = keyMetricDestination(
+                            metric, onOpenMetric, onOpenStress, onOpenSleep, onOpenHydration,
+                        ),
                     )
                 }
                 repeat(3 - rowTiles.size) { Spacer(Modifier.weight(1f)) }
@@ -4502,14 +4782,39 @@ private fun MetricGrid(
 /** The vital-detail key a Key-Metrics tile opens on tap, or null for tiles with no detail page: the
  *  Charge / Effort / Rest scores reach their explainer via the ring ⓘ, and Weight has no trend page.
  *  Mirrors [dashboardCardMetricKey] so a tile and its Your-cards row open the SAME detail. */
-private fun keyMetricDetailKey(m: KeyMetric): String? = when (m) {
+internal fun keyMetricDetailKey(m: KeyMetric): String? = when (m) {
     KeyMetric.HRV -> "hrv"
     KeyMetric.RESTING_HR -> "rhr"
     KeyMetric.BLOOD_OXYGEN -> "spo2"
     KeyMetric.RESPIRATORY -> "resp"
     KeyMetric.STEPS -> "steps_est"
     KeyMetric.CALORIES -> "active_kcal"
-    KeyMetric.CHARGE, KeyMetric.EFFORT, KeyMetric.REST, KeyMetric.WEIGHT -> null
+    KeyMetric.SKIN_TEMP -> "skin"
+    KeyMetric.FITNESS_AGE -> "fitness_age"
+    KeyMetric.VITALITY -> "vitality"
+    // Stress / Sleep / Hydration carry their own full screen rather than a per-metric trend — see
+    // [keyMetricDestination], which routes those three the way their card rows already do.
+    KeyMetric.CHARGE, KeyMetric.EFFORT, KeyMetric.REST, KeyMetric.WEIGHT,
+    KeyMetric.STRESS, KeyMetric.SLEEP, KeyMetric.HYDRATION -> null
+}
+
+/**
+ * Where a Key-Metrics tile navigates on tap, or null for a tile with no destination (the Charge / Effort /
+ * Rest scores reach their explainer via the ring ⓘ, and Weight has no trend page). The Stress / Sleep /
+ * Hydration tiles open their own full screen and everything else opens its `vital_detail/<key>` trend, so a
+ * tile and its Your-cards row now land in the SAME place — the twin of [dashboardCardDestination].
+ */
+private fun keyMetricDestination(
+    m: KeyMetric,
+    onOpenMetric: (String) -> Unit,
+    onOpenStress: () -> Unit,
+    onOpenSleep: () -> Unit,
+    onOpenHydration: () -> Unit,
+): (() -> Unit)? = when (m) {
+    KeyMetric.STRESS -> onOpenStress
+    KeyMetric.SLEEP -> onOpenSleep
+    KeyMetric.HYDRATION -> onOpenHydration
+    else -> keyMetricDetailKey(m)?.let { key -> { onOpenMetric(key) } }
 }
 
 /** One compact Key-Metrics tile's data: iOS `ktile`(label, value, unit, tint, frac). */
@@ -4521,6 +4826,18 @@ private data class KeyTileData(
     val frac: Double?,
 )
 
+/** Render a shared [ScoreRead] as this grid's tile shape. The read already carries value / unit / tint /
+ *  fill; only the tile's own [label] is added, so a score tile is a pure re-skin of the row's read. A null
+ *  read (a caller that supplied no score map, e.g. a preview) degrades to the plain No-Data tile. */
+private fun ScoreRead?.asTile(label: String): KeyTileData =
+    KeyTileData(
+        label = label,
+        value = this?.value ?: NO_DATA,
+        unit = this?.unit.orEmpty(),
+        tint = this?.tint ?: Palette.textTertiary,
+        frac = this?.frac,
+    )
+
 /**
  * One iOS `ktile`: a compact 3-column tile — a 9sp / +1.2 overline label, the value (number 17) + small
  * unit (caption), and a thin 8dp [LiquidTube] fill bar tinted [KeyTileData.tint] to [KeyTileData.frac].
@@ -4529,7 +4846,9 @@ private data class KeyTileData(
  */
 @Composable
 private fun LiquidKeyTile(data: KeyTileData, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
-    val hasValue = data.value != NO_DATA
+    // A real number renders bright; a placeholder (No Data, or the Stress tile's calibrating state) renders
+    // dimmed — the same test [DashboardCardRow] applies, so a metric reads identically on both surfaces.
+    val hasValue = data.value != NO_DATA && data.value != STRESS_CALIBRATING
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
@@ -5971,12 +6290,47 @@ internal data class WeightTileText(val value: String, val caption: String?)
  * The newest body weight across the two Apple-side sources (apple-health + health-connect), or null
  * when neither carries one. Days are ISO `yyyy-MM-dd`, which sorts chronologically, so the lexically
  * greatest day with a non-null `weightKg` is the most recent, no date parsing needed. (#107)
+ *
+ * [asOfDay] bounds the read to readings on or before that day — what the Weight tile showed *then*. The
+ * Today screen passes the selected day, because the whole point of scrolling back is to see that day, and
+ * an unbounded "newest ever" would stamp this morning's weigh-in onto a day three weeks ago. Null (the
+ * default) keeps the unbounded newest-ever read for callers that genuinely want it.
  */
-internal fun latestWeightKg(apple: List<AppleDaily>, healthConnect: List<AppleDaily>): Double? =
+internal fun latestWeightKg(
+    apple: List<AppleDaily>,
+    healthConnect: List<AppleDaily>,
+    asOfDay: String? = null,
+): Double? =
     (apple + healthConnect)
-        .filter { it.weightKg != null }
+        .filter { it.weightKg != null && (asOfDay == null || it.day <= asOfDay) }
         .maxByOrNull { it.day }
         ?.weightKg
+
+/**
+ * Imported active energy (kcal) for [dayKey] across the two Apple-side sources, or null when neither
+ * carries one for that day. The Calories tile/row fall back to this when the app's own per-day estimate is
+ * absent; reading it PER DAY (rather than the newest figure anywhere in history, which is what it used to
+ * do) is what stops a scrolled-back day showing today's burn. Same shape as [stepsForDay] — the larger of
+ * the two sources wins, since a day present in both is the same day counted twice.
+ */
+internal fun activeKcalForDay(
+    apple: List<AppleDaily>,
+    healthConnect: List<AppleDaily>,
+    dayKey: String,
+): Double? =
+    (apple + healthConnect)
+        .filter { it.day == dayKey }
+        .mapNotNull { it.activeKcal }
+        .maxOrNull()
+
+/**
+ * The newest value in a day-keyed series on or before [dayKey], or null when the series has nothing that
+ * old. Backs the weekly-cadence scores (Fitness Age, Vitality): they are computed every so often, not
+ * daily, so "that day's value" is the most recent score that existed BY then — never a later one, which
+ * would show a day a reading it could not have had. Days are ISO `yyyy-MM-dd`, so they sort lexically.
+ */
+internal fun valueAsOfDay(series: List<Pair<String, Double>>, dayKey: String): Double? =
+    series.filter { it.first <= dayKey }.maxByOrNull { it.first }?.second
 
 /**
  * Steps for [dayKey] from the imported Apple Health / Health Connect daily aggregates, or null when
