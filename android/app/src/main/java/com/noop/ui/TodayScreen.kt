@@ -1394,7 +1394,6 @@ fun TodayScreen(
                             days = days,
                             colourVitalsByState = colourVitalsByState,
                             shownDayKey = selectedDayKey,
-                            isToday = selectedDayOffset == 0,
                         )
                     }
                     }
@@ -2919,11 +2918,9 @@ private fun HeroMetricRows(
     vitalsDay: DailyMetric? = null,
     days: List<DailyMetric> = emptyList(),
     colourVitalsByState: Boolean = false,
-    // The row on screen + whether it is today, so the caption names the night these vitals actually came
-    // from rather than always yesterday-relative-to-now (see [heroVitalsNightLine]). Defaults keep any
-    // caller that doesn't date itself on the previous wall-clock behaviour.
+    // The row on screen, so the caption names the day these vitals belong to rather than always
+    // yesterday-relative-to-now (see [heroVitalsNightLine]).
     shownDayKey: String = LocalDate.now().toString(),
-    isToday: Boolean = true,
 ) {
     // Per-field, today-first: today's own value wins; the vitals carry only fills a field today lacks.
     // Resolved through the shared [MetricReads] so the vitals card, the Key-Metrics tile and the Your-cards
@@ -2950,7 +2947,7 @@ private fun HeroMetricRows(
                 // iOS `lastNightLine` — today's own "Last night · <date>" unless the shown vitals are a carry.
                 Text(
                     if (carriedFromVitals) carriedCaption(vitalsDay!!.day)
-                    else heroVitalsNightLine(shownDayKey, isToday),
+                    else heroVitalsNightLine(shownDayKey),
                     style = NoopType.caption,
                     color = Palette.textTertiary,
                 )
@@ -2978,33 +2975,36 @@ private fun HeroMetricRows(
 }
 
 /**
- * The Recovery-vitals caption. Sleep is banked by WAKE day (`dayString(session.endTs)`), so a row dated D
- * holds the night that ENDED on the morning of D — and D is the date every other surface uses for that
- * reading: the day selector, the Key Metrics header, Trends, and [carriedCaption] on this very card.
+ * The Recovery-vitals caption: which day's overnight reading this card is showing.
  *
- * Two fixes live here, in order:
+ * Sleep is banked by WAKE day (`dayString(session.endTs)`), so a row dated D holds the night that ENDED on
+ * the morning of D — and D is the date every other surface puts on that reading: the day selector, the Key
+ * Metrics header, Trends, and [carriedCaption] on this very card. So does this caption, on EVERY day. One
+ * rule, no special cases; that is the whole point, and it took three tries to get here:
  *
- * 1. It used to be a bare `LocalDate.now().minusDays(1)`, always yesterday relative to the WALL CLOCK
- *    whatever day was on screen, so a scrolled-back day showed its own real vitals under this morning's
- *    date. It now dates by the row actually shown.
- * 2. Dating that row by its NIGHT (D-1) then put two dates on one screen for one number: 11 August's
- *    54 ms read "Overnight · 10 Aug" directly above a Key Metrics grid headed "TUE, 11 AUG". The phrase
- *    decides what the date names, so the two must agree:
- *      • TODAY says "Last night · <D-1>" — "last night" names a NIGHT, and last night is the night before
- *        today, so the night's own date is the right one. Unchanged, and the only case where D-1 is meant.
- *      • ANY OTHER DAY says "Overnight · <D>" — there the caption names that day's overnight READING, not
- *        a night relative to now, so it carries the day's own date and matches everything around it.
+ * 1. It was a bare `LocalDate.now().minusDays(1)` — always yesterday relative to the WALL CLOCK, whatever
+ *    day was on screen — so a scrolled-back day showed its own real vitals under this morning's date.
+ * 2. Dating the shown row by its NIGHT (D-1) fixed that but disagreed with every label around it: 11 Aug's
+ *    54 ms read "Overnight · 10 Aug" above a grid headed "TUE, 11 AUG".
+ * 3. Keeping D-1 for TODAY alone — on the reasoning that "last night" names a night — then made today
+ *    collide with yesterday. Today's row (13 Aug, holding last night's sleep) read "Last night · 12 Aug"
+ *    while the actual 12 Aug screen read "Overnight · 12 Aug" with DIFFERENT numbers: one date, two
+ *    readings, and the 12th appearing twice while every other day appeared once.
+ *
+ * The lesson the wording now encodes: this caption names the READING (which belongs to the day on screen),
+ * never a night relative to now. "Overnight" says the reading came from sleep without claiming a night, so
+ * it is true on today and on any past day, and the date can always be the day the whole screen is about.
+ *
+ * The one caption that legitimately carries a DIFFERENT date is [carriedCaption], used when today has no
+ * vitals of its own and the card falls back to a prior day's — there the mismatch is the message.
  *
  * [shownDayKey] is the `yyyy-MM-dd` of the row on screen (at offset 0 the resolver's day, not the raw
  * wall-clock date — the same key the Key Metrics header dates itself by, #434). An unparseable key falls
  * back to the wall clock so the caption is never blank.
  */
-internal fun heroVitalsNightLine(shownDayKey: String, isToday: Boolean): String {
+internal fun heroVitalsNightLine(shownDayKey: String): String {
     val shown = runCatching { LocalDate.parse(shownDayKey) }.getOrNull() ?: LocalDate.now()
-    // Today names the night before it; every other day names itself (see the note above).
-    val dated = if (isToday) shown.minusDays(1) else shown
-    val date = dated.format(DateTimeFormatter.ofPattern("d MMM", Locale.US))
-    return if (isToday) "Last night · $date" else "Overnight · $date"
+    return "Overnight · ${shown.format(DateTimeFormatter.ofPattern("d MMM", Locale.US))}"
 }
 
 /** One iOS `vitalRow`: a 26dp mini liquid VESSEL filled to [fraction] in [tint], the label (subhead,
