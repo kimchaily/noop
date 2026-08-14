@@ -4,6 +4,7 @@ import com.noop.data.AppleDaily
 import com.noop.data.DailyMetric
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -467,5 +468,494 @@ class TodayMetricTilesTest {
         assertEquals("2026-06-18", vitals?.day)
         assertEquals(50.0, vitals?.avgHrv)
         assertEquals(55, vitals?.restingHr)
+    }
+
+    // Row builders for the six reads the Key-Metrics grid gained from the Your-cards dashboard.
+    private fun sleepMinutesDay(day: String, totalSleepMin: Double?) =
+        DailyMetric(deviceId = "my-whoop", day = day, totalSleepMin = totalSleepMin)
+
+    private fun skinTempDay(day: String, devC: Double?) =
+        DailyMetric(deviceId = "my-whoop", day = day, skinTempDevC = devC)
+
+    // MARK: - One metric, one id, two surfaces (Key Metrics ⟷ Your cards)
+    //
+    // The two Today sections were independent registries over the SAME already-loaded values, so which
+    // section a metric appeared in was an accident of history rather than a data limit. They now cover the
+    // same metrics, and a metric's persisted id is shared, which is what lets a card find its score read.
+
+    @Test
+    fun everyMetricThatExistsOnBothSurfaces_sharesOnePersistedId() {
+        // The raws are the join between the two registries (DashboardCard.scoreRead looks a card's tile up
+        // by raw). If a future metric is added to one side under a different spelling, the join breaks
+        // silently — a card would simply stop finding its read — so pin the overlap here.
+        val tileRaws = KeyMetric.entries.map { it.raw }.toSet()
+        val cardRaws = DashboardCard.entries.map { it.raw }.toSet()
+        // Coupled is a navigation row, not a reading, so it has no tile twin. Everything else pairs up.
+        assertEquals(cardRaws - setOf("coupled"), tileRaws)
+        // And the pairing resolves in both directions.
+        for (card in DashboardCard.entries.filter { it != DashboardCard.COUPLED }) {
+            assertNotNull("no tile for card ${card.raw}", KeyMetric.fromRaw(card.raw))
+        }
+        for (metric in KeyMetric.entries) {
+            assertNotNull("no card for tile ${metric.raw}", DashboardCard.fromRaw(metric.raw))
+        }
+    }
+
+    @Test
+    fun keyMetricRaws_areStableAndUnique() {
+        // The raws are the persisted layout AND the backup/restore contract with the iOS enum. Renaming one
+        // silently drops that tile from every saved layout, so pin the exact set.
+        assertEquals(
+            listOf(
+                "charge", "effort", "rest", "hrv", "restingHr", "bloodOxygen", "respiratory",
+                "steps", "weight", "calories", "sleep", "stress", "skinTemp", "vitality",
+                "fitnessAge", "hydration",
+            ),
+            KeyMetric.entries.map { it.raw },
+        )
+        assertEquals(KeyMetric.entries.size, KeyMetric.entries.map { it.raw }.toSet().size)
+    }
+
+    @Test
+    fun newMetricsAreOnByDefault_butASavedLayoutIsNeverOverwritten() {
+        // On by default: an unset layout lists every tile, so the six that came over from the dashboard
+        // show without a trip to the editor.
+        assertEquals(KeyMetric.entries.toList(), KeyMetricPrefs.decodeEnabled(null))
+        assertTrue(KeyMetric.SLEEP in KeyMetricPrefs.decodeEnabled(""))
+        assertTrue(KeyMetric.STRESS in KeyMetricPrefs.decodeEnabled(null))
+        // …but a user who already saved a layout keeps exactly what they chose — the new tiles do NOT
+        // reappear in a customised grid.
+        val saved = KeyMetricPrefs.decodeEnabled("hrv,steps")
+        assertEquals(listOf(KeyMetric.HRV, KeyMetric.STEPS), saved)
+
+        // Same contract on the dashboard: unset = every card that carries a value; Coupled stays opt-in.
+        val defaults = DashboardCardPrefs.decodeEnabled(null)
+        assertEquals(DashboardCard.entries.filter { it != DashboardCard.COUPLED }, defaults)
+        assertFalse(DashboardCard.COUPLED in defaults)
+        assertEquals(listOf(DashboardCard.SLEEP), DashboardCardPrefs.decodeEnabled("""["sleep"]"""))
+    }
+
+    // MARK: - Day-aware card subtitles
+
+    @Test
+    fun cardSubtitles_areUnchangedForToday() {
+        // The dashboard now renders for any selected day, but today must read exactly as it always has.
+        for (card in DashboardCard.entries) {
+            assertEquals(card.subtitle, dashboardCardSubtitle(card, isToday = true))
+        }
+    }
+
+    @Test
+    fun cardSubtitles_stopSayingTodayOnAPastDay() {
+        // The three today-worded subtitles would misdate a row three weeks back.
+        assertEquals("That day", dashboardCardSubtitle(DashboardCard.STEPS, isToday = false))
+        assertEquals("That night", dashboardCardSubtitle(DashboardCard.SLEEP, isToday = false))
+        assertEquals("That day's fluid", dashboardCardSubtitle(DashboardCard.HYDRATION, isToday = false))
+    }
+
+    @Test
+    fun cardSubtitles_dayNeutralOnesPassThroughUnchanged() {
+        // Everything else was already day-neutral; a past day must not reword it.
+        val dayNeutral = DashboardCard.entries -
+            setOf(DashboardCard.STEPS, DashboardCard.SLEEP, DashboardCard.HYDRATION)
+        for (card in dayNeutral) {
+            assertEquals(card.subtitle, dashboardCardSubtitle(card, isToday = false))
+        }
+    }
+
+    @Test
+    fun noCardSubtitle_saysTodayOrLastNightOnAPastDay() {
+        // The rule that matters, stated once: after the day gate was lifted, no subtitle on a scrolled-back
+        // day may claim to describe today. Catches a future card added with today-worded copy.
+        for (card in DashboardCard.entries) {
+            val s = dashboardCardSubtitle(card, isToday = false).lowercase()
+            assertFalse("'${card.raw}' still says today: $s", s.contains("today"))
+            assertFalse("'${card.raw}' still says last night: $s", s.contains("last night"))
+        }
+    }
+
+    // MARK: - The four score reads shared by tile and card
+
+    @Test
+    fun chargeRead_prefersTheDaysOwnScore_thenCalibration_thenTheCarriedValue() {
+        val scored = chargeRead(recDay("2026-06-19", 71.0), recoveryCalibration = null, lastScoredCharge = null)
+        assertEquals("71", scored.value)
+        assertEquals("%", scored.unit)
+        assertEquals(0.71, scored.frac!!, 1e-9)
+
+        // Mid-calibration the tile shows "n/N" — and must NOT append a percent sign to a fraction.
+        val calibrating = chargeRead(recDay("2026-06-19", null), recoveryCalibration = 3, lastScoredCharge = null)
+        assertEquals("", calibrating.unit)
+        assertTrue(calibrating.value.startsWith("3/"))
+        assertNull(calibrating.frac)
+
+        val carried = chargeRead(
+            recDay("2026-06-19", null),
+            recoveryCalibration = null,
+            lastScoredCharge = LastCharge(value = 64.0, caption = "18 Jun"),
+        )
+        assertEquals("64", carried.value)
+        assertEquals("%", carried.unit)
+    }
+
+    @Test
+    fun chargeRead_withNothingToShow_isNoDataAndAnEmptyVessel() {
+        val none = chargeRead(null, recoveryCalibration = null, lastScoredCharge = null)
+        assertEquals("No Data", none.value)
+        assertEquals("", none.unit)
+        assertNull(none.frac)
+    }
+
+    @Test
+    fun restRead_scoresAndFillsTogether_orReadsNoData() {
+        val rested = restRead(82.0)
+        assertEquals("82", rested.value)
+        assertEquals("%", rested.unit)
+        assertEquals(0.82, rested.frac!!, 1e-9)
+
+        val none = restRead(null)
+        assertEquals("No Data", none.value)
+        assertEquals("", none.unit)
+        assertNull(none.frac)
+    }
+
+    @Test
+    fun weightRead_hasNoVesselFill_andFollowsTheUnitToggle() {
+        // A body weight has no goal to fill toward, so the vessel stays empty rather than half-full.
+        val metric = weightRead(74.5, profileWeightKg = 90.0, unitSystem = UnitSystem.METRIC)
+        assertNull(metric.frac)
+        assertEquals("", metric.unit)
+        assertEquals(weightTile(74.5, 90.0, UnitSystem.METRIC).value, metric.value)
+
+        val imperial = weightRead(74.5, profileWeightKg = 90.0, unitSystem = UnitSystem.IMPERIAL)
+        assertEquals(weightTile(74.5, 90.0, UnitSystem.IMPERIAL).value, imperial.value)
+    }
+
+    @Test
+    fun scoreReads_areLookedUpByASharedRaw_soACardFindsItsTile() {
+        // The mechanism the Your-cards rows use to render the SAME read the tile renders.
+        val reads = mapOf(
+            KeyMetric.CHARGE to chargeRead(recDay("2026-06-19", 71.0), null, null),
+            KeyMetric.REST to restRead(82.0),
+        )
+        assertEquals("71", DashboardCard.CHARGE.scoreRead(reads)?.value)
+        assertEquals("82", DashboardCard.REST.scoreRead(reads)?.value)
+        // A card with no score read (a vital, or a score the caller didn't resolve) falls through to null so
+        // the row keeps its own resolution instead of silently blanking.
+        assertNull(DashboardCard.HRV.scoreRead(reads))
+        assertNull(DashboardCard.EFFORT.scoreRead(reads))
+    }
+
+    // MARK: - The six reads the grid gained, shared with the card rows
+
+    @Test
+    fun sleepRead_formatsHoursAndMinutes_andFillsAgainstAnEightHourNight() {
+        val mv = MetricReads.sleep(sleepMinutesDay("2026-06-19", 432.0), null)
+        assertEquals("7h 12m", mv.number)
+        assertEquals("", mv.unit)
+        assertEquals(0.9, mv.frac!!, 1e-9)
+        // A long night fills the vessel without overflowing it.
+        assertEquals(1.0, MetricReads.sleep(sleepMinutesDay("2026-06-19", 600.0), null).frac!!, 1e-9)
+        assertNull(MetricReads.sleep(null, null).number)
+    }
+
+    @Test
+    fun sleepRead_fallsBackToTheCarriedNight() {
+        // Right after the logical-day rollover today's row carries no sleep yet; the tile and the card both
+        // read the carried night rather than blanking.
+        val mv = MetricReads.sleep(sleepMinutesDay("2026-06-19", null), sleepMinutesDay("2026-06-18", 420.0))
+        assertEquals("7h 0m", mv.number)
+    }
+
+    @Test
+    fun skinTempRead_isSignedSoADropReadsHonestly() {
+        assertEquals("+0.3°", MetricReads.skinTemp(skinTempDay("2026-06-19", 0.3), null).number)
+        assertEquals("-0.4°", MetricReads.skinTemp(skinTempDay("2026-06-19", -0.4), null).number)
+        // A deviation has no natural ceiling, so there is no vessel to fill.
+        assertNull(MetricReads.skinTemp(skinTempDay("2026-06-19", 0.3), null).frac)
+        assertNull(MetricReads.skinTemp(null, null).number)
+    }
+
+    @Test
+    fun stressRead_roundsAndFillsAgainstThree_andNullMeansCalibrating() {
+        val mv = MetricReads.stress(2.4)
+        assertEquals("2", mv.number)
+        assertEquals(0.8, mv.frac!!, 1e-9)
+        // Null is NOT "no data" — Stress is baseline-relative and the caller substitutes "Calibrating".
+        assertNull(MetricReads.stress(null).number)
+        assertNull(MetricReads.stress(null).frac)
+    }
+
+    @Test
+    fun vitalityAndFitnessAgeReads_roundToWholeUnits() {
+        assertEquals("87", MetricReads.vitality(86.6).number)
+        assertEquals(0.87, MetricReads.vitality(87.0).frac!!, 1e-9)
+
+        val fa = MetricReads.fitnessAge(31.4)
+        assertEquals("31", fa.number)
+        assertEquals("yrs", fa.unit)
+        // Fixed half-fill: younger is better, so a ceiling would read backwards.
+        assertEquals(0.5, fa.frac!!, 1e-9)
+        assertNull(MetricReads.fitnessAge(null).frac)
+    }
+
+    @Test
+    fun hydrationRead_alwaysResolves_becauseTheGoalIsAlwaysDerivable() {
+        assertEquals("1.2 / 3.2 L", MetricReads.hydration(1200.0, 3200).number)
+        // A fresh day reads zero rather than "No Data".
+        assertEquals("0.0 / 3.2 L", MetricReads.hydration(0.0, 3200).number)
+        assertNull(MetricReads.hydration(1200.0, 3200).frac)
+    }
+
+    // MARK: - Tile navigation matches its card row
+
+    @Test
+    fun everyTileWithACardDestination_landsOnTheSameScreen() {
+        // A tile and its row must not disagree about where the metric lives.
+        for (metric in KeyMetric.entries) {
+            val card = DashboardCard.fromRaw(metric.raw) ?: continue
+            assertEquals(
+                "tile ${metric.raw} and its card open different details",
+                dashboardCardMetricKey(card),
+                keyMetricDetailKey(metric),
+            )
+        }
+    }
+
+    @Test
+    fun scoreTilesAndScoreCards_bothHaveNoMetricDetail() {
+        // Charge / Effort / Rest reach their explainer through the hero ring's ⓘ and Weight has no trend
+        // page, so neither surface may promise one (the card row drops its chevron on the strength of this).
+        for (m in listOf(KeyMetric.CHARGE, KeyMetric.EFFORT, KeyMetric.REST, KeyMetric.WEIGHT)) {
+            assertNull(keyMetricDetailKey(m))
+            assertNull(dashboardCardMetricKey(DashboardCard.fromRaw(m.raw)!!))
+        }
+    }
+
+    // MARK: - A past day shows THAT day's values, never today's
+    //
+    // Five reads were "the newest value anywhere in history". That was indistinguishable from today's while
+    // the cards only rendered at offset 0 — but the dashboard now follows the day selector, so an unbounded
+    // read would stamp today's number onto a day weeks back. Each is bounded by the selected day below.
+
+    @Test
+    fun weight_asOfADay_ignoresLaterWeighIns() {
+        val apple = listOf(
+            appleDay("2026-06-10", 80.0),
+            appleDay("2026-06-17", 78.0),
+            appleDay("2026-06-19", 74.5),   // today's weigh-in
+        )
+        // Scrolled back to the 17th: that day's weight, not this morning's.
+        assertEquals(78.0, latestWeightKg(apple, emptyList(), asOfDay = "2026-06-17"))
+        assertEquals(80.0, latestWeightKg(apple, emptyList(), asOfDay = "2026-06-16"))
+        assertEquals(74.5, latestWeightKg(apple, emptyList(), asOfDay = "2026-06-19"))
+    }
+
+    @Test
+    fun weight_asOfADay_carriesTheLastReadingBeforeIt_notNothing() {
+        // Weight isn't logged daily, so a day with no weigh-in of its own honestly shows the most recent
+        // one that existed by then — the reading you'd have seen standing on that day.
+        val apple = listOf(appleDay("2026-06-10", 80.0), appleDay("2026-06-19", 74.5))
+        assertEquals(80.0, latestWeightKg(apple, emptyList(), asOfDay = "2026-06-15"))
+        // …and nothing at all before the first ever reading.
+        assertNull(latestWeightKg(apple, emptyList(), asOfDay = "2026-06-01"))
+    }
+
+    @Test
+    fun weight_unboundedReadIsUnchanged_forCallersThatWantNewestEver() {
+        val apple = listOf(appleDay("2026-06-10", 80.0), appleDay("2026-06-19", 74.5))
+        assertEquals(74.5, latestWeightKg(apple, emptyList()))
+    }
+
+    @Test
+    fun activeKcal_isTheDaysOwnFigure_notTheNewestAnywhere() {
+        val apple = listOf(
+            AppleDaily(deviceId = "apple-health", day = "2026-06-17", activeKcal = 410.0),
+            AppleDaily(deviceId = "apple-health", day = "2026-06-19", activeKcal = 730.0),
+        )
+        assertEquals(410.0, activeKcalForDay(apple, emptyList(), "2026-06-17"))
+        assertEquals(730.0, activeKcalForDay(apple, emptyList(), "2026-06-19"))
+        // A day with no imported energy borrows nothing — the tile reads No Data instead of another day's.
+        assertNull(activeKcalForDay(apple, emptyList(), "2026-06-18"))
+    }
+
+    @Test
+    fun activeKcal_unionsBothSources_takesTheLargerForTheDay() {
+        // Same rule as stepsForDay: a day present in both sources is one day counted twice, not two days.
+        val apple = listOf(AppleDaily(deviceId = "apple-health", day = "2026-06-19", activeKcal = 500.0))
+        val hc = listOf(AppleDaily(deviceId = "health-connect", day = "2026-06-19", activeKcal = 730.0))
+        assertEquals(730.0, activeKcalForDay(apple, hc, "2026-06-19"))
+    }
+
+    @Test
+    fun weeklyScores_readAsOfTheDay_neverAValueComputedLater() {
+        // Fitness Age / Vitality are computed weekly. A day may only show a score that already existed by
+        // then — showing a later one would give that day a reading it could not have had.
+        val series = listOf("2026-06-01" to 34.0, "2026-06-08" to 33.0, "2026-06-15" to 31.0)
+        assertEquals(33.0, valueAsOfDay(series, "2026-06-10"))
+        assertEquals(33.0, valueAsOfDay(series, "2026-06-14"))
+        assertEquals(31.0, valueAsOfDay(series, "2026-06-15"))
+        assertEquals(31.0, valueAsOfDay(series, "2026-06-19"))
+        // Before the first score there is nothing to show.
+        assertNull(valueAsOfDay(series, "2026-05-31"))
+    }
+
+    @Test
+    fun weeklyScores_asOfIsIndependentOfSeriesOrder() {
+        // The series arrives merged across computed lineages (identity fusion), so it is not sorted.
+        val jumbled = listOf("2026-06-15" to 31.0, "2026-06-01" to 34.0, "2026-06-08" to 33.0)
+        assertEquals(33.0, valueAsOfDay(jumbled, "2026-06-10"))
+        assertNull(valueAsOfDay(emptyList(), "2026-06-10"))
+    }
+
+    @Test
+    fun stressPlaceholder_onlyTodayCalibrates() {
+        // "Calibrating" says the baseline is still seeding — true today, a lie on a day weeks back, where
+        // the score simply doesn't exist and never will. Both surfaces apply the same rule.
+        assertEquals(
+            "Calibrating",
+            dashboardCardValue(
+                card = DashboardCard.STRESS, day = null, carriedDay = null, vitalsDay = null,
+                stress = null, fitnessAge = null, vitality = null,
+                importedStepsForDay = null, estimatedStepsForDay = null, latestActiveKcal = null,
+                hydrationTotalMl = 0.0, hydrationGoalMl = 0, isToday = true,
+            ),
+        )
+        assertEquals(
+            "No Data",
+            dashboardCardValue(
+                card = DashboardCard.STRESS, day = null, carriedDay = null, vitalsDay = null,
+                stress = null, fitnessAge = null, vitality = null,
+                importedStepsForDay = null, estimatedStepsForDay = null, latestActiveKcal = null,
+                hydrationTotalMl = 0.0, hydrationGoalMl = 0, isToday = false,
+            ),
+        )
+        // A real score reads the same on either day.
+        assertEquals(
+            "2",
+            dashboardCardValue(
+                card = DashboardCard.STRESS, day = null, carriedDay = null, vitalsDay = null,
+                stress = 2.0, fitnessAge = null, vitality = null,
+                importedStepsForDay = null, estimatedStepsForDay = null, latestActiveKcal = null,
+                hydrationTotalMl = 0.0, hydrationGoalMl = 0, isToday = false,
+            ),
+        )
+    }
+
+    // MARK: - The Recovery-vitals caption names the day on screen
+
+    @Test
+    fun vitalsCaption_namesTheDayOnScreen_onEveryDayIncludingToday() {
+        // ONE rule, no special cases. Sleep is banked by wake day, so the row dated D holds that night and
+        // D is the date every other label uses for it — the day selector, the Key Metrics header, Trends.
+        assertEquals("Overnight · 13 Aug", heroVitalsNightLine("2026-08-13"))
+        assertEquals("Overnight · 12 Aug", heroVitalsNightLine("2026-08-12"))
+        assertEquals("Overnight · 11 Aug", heroVitalsNightLine("2026-08-11"))
+        assertEquals("Overnight · 24 Jul", heroVitalsNightLine("2026-07-24"))
+    }
+
+    @Test
+    fun vitalsCaption_isUniqueAcrossConsecutiveDays() {
+        // THE regression this pins. Today used to keep a D-1 special case ("last night names a night"),
+        // which made today's caption collide with yesterday's screen: today (13 Aug, holding last night's
+        // sleep) read "Last night · 12 Aug" while the real 12 Aug screen read "Overnight · 12 Aug" with
+        // DIFFERENT numbers. One date, two readings — the 12th appeared twice and every other day once.
+        // Any caption rule that dates one day by another day's date fails here.
+        val days = listOf(
+            "2026-08-08", "2026-08-09", "2026-08-10",
+            "2026-08-11", "2026-08-12", "2026-08-13",
+        )
+        val captions = days.map { heroVitalsNightLine(it) }
+        assertEquals("a caption is reused across days: $captions", days.size, captions.toSet().size)
+    }
+
+    @Test
+    fun vitalsCaption_agreesWithTheCarryCaption_forTheSameRow() {
+        // Both captions can appear in this one card. carriedCaption dates a carried row by its OWN day, so
+        // the non-carry branch must not date the same row differently — that mismatch was the first bug.
+        val row = "2026-08-11"
+        assertTrue(carriedCaption(row, today = "2026-08-12").endsWith("11 Aug"))
+        assertTrue(heroVitalsNightLine(row).endsWith("11 Aug"))
+    }
+
+    @Test
+    fun vitalsCaption_neverClaimsANightRelativeToNow() {
+        // "Last night" is a claim about the wall clock, and this caption belongs to the day on screen. The
+        // only caption allowed to say it is carriedCaption, which is deliberately pointing at ANOTHER day.
+        for (key in listOf("2026-07-24", "2026-08-01", "2026-08-11", "2026-08-13")) {
+            assertFalse(heroVitalsNightLine(key).contains("Last night"))
+            assertFalse(heroVitalsNightLine(key).contains("Yesterday"))
+        }
+    }
+
+    @Test
+    fun vitalsCaption_neverShiftsTheDate_acrossMonthAndYearBoundaries() {
+        // No arithmetic on the date at all now, so a boundary is not a special case either.
+        assertEquals("Overnight · 1 Jan", heroVitalsNightLine("2027-01-01"))
+        assertEquals("Overnight · 1 Mar", heroVitalsNightLine("2026-03-01"))
+        assertEquals("Overnight · 31 Dec", heroVitalsNightLine("2026-12-31"))
+    }
+
+    @Test
+    fun vitalsCaption_matchesTheKeyMetricsHeaderDate_forTheSameDay() {
+        // The two sit inches apart showing the SAME numbers, so they must carry the same date. This is the
+        // contradiction a user can see on one screen without scrolling.
+        for (key in listOf("2026-08-13", "2026-08-11", "2026-07-24")) {
+            val headerDate = java.time.LocalDate.parse(key)
+                .format(java.time.format.DateTimeFormatter.ofPattern("d MMM", java.util.Locale.US))
+            assertTrue(heroVitalsNightLine(key).endsWith(headerDate))
+        }
+    }
+
+    @Test
+    fun vitalsCaption_unparseableKeyStillRendersACaption() {
+        // Never blank: a malformed key falls back to the wall clock rather than dropping the line.
+        assertTrue(heroVitalsNightLine("not-a-date").startsWith("Overnight · "))
+        assertTrue(heroVitalsNightLine("").startsWith("Overnight · "))
+    }
+
+    // MARK: - The "your scores are building" note is for a cold start, not a gap
+
+    @Test
+    fun coldStart_trueOnlyWhenNothingHasEverBeenScored() {
+        assertFalse(hasAnyScoredDay(emptyList()))
+        // A row that exists but carries nothing scored is still a cold start.
+        assertFalse(hasAnyScoredDay(listOf(DailyMetric(deviceId = "my-whoop", day = "2026-08-13"))))
+    }
+
+    @Test
+    fun coldStart_falseAsSoonAsAnySingleScoreExists() {
+        // Any one of the three things the note promises will appear is enough to make it false.
+        assertTrue(hasAnyScoredDay(listOf(recDay("2026-08-13", 54.0))))
+        assertTrue(hasAnyScoredDay(listOf(
+            DailyMetric(deviceId = "my-whoop", day = "2026-08-13", strain = 33.0),
+        )))
+        assertTrue(hasAnyScoredDay(listOf(sleepMinutesDay("2026-08-13", 420.0))))
+    }
+
+    @Test
+    fun coldStart_aSingleGapInAPopulatedHistoryIsNotAColdStart() {
+        // THE bug this pins. The note fired whenever the SELECTED day had no recovery, so scrolling onto
+        // one day the strap missed showed a user with weeks of history the whole first-run pitch —
+        // "scores build over your next few nights of wear, import your WHOOP export to backfill".
+        val history = listOf(
+            recDay("2026-08-10", 27.0),
+            recDay("2026-08-11", 55.0),
+            DailyMetric(deviceId = "my-whoop", day = "2026-08-12"),   // the gap the strap missed
+            recDay("2026-08-13", 54.0),
+        )
+        assertTrue(hasAnyScoredDay(history))
+    }
+
+    @Test
+    fun coldStart_staysFalseEvenWhenTheOnlyScoredDayIsOld() {
+        // A user who wore the strap weeks ago and stopped is not starting cold either; the note would be
+        // telling them their scores are about to appear when they already have.
+        val history = listOf(
+            recDay("2026-06-01", 60.0),
+            DailyMetric(deviceId = "my-whoop", day = "2026-08-12"),
+            DailyMetric(deviceId = "my-whoop", day = "2026-08-13"),
+        )
+        assertTrue(hasAnyScoredDay(history))
     }
 }

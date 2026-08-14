@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "8.2.37"
+    const val CURRENT_VERSION = "8.2.39"
 
     data class Release(
         val version: String,
@@ -36,6 +36,29 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "8.2.39",
+            title = "Past days: one date rule for Recovery vitals, and no first-run pitch on a gap day",
+            date = "August 2026",
+            items = listOf(
+                "**Today's Recovery vitals no longer borrows yesterday's date.** 8.2.38 dated this card by the night before the day on screen, which made today collide with yesterday: today's card read \"Last night · 12 Aug\" while the 12 August screen read \"Overnight · 12 Aug\" — the same date above two different sets of readings, with the 12th appearing twice and every other day once. Every day now carries its own date, today included, so scrolling through the week shows each date exactly once beside the readings that belong to it.",
+                "**A day the strap missed no longer triggers the first-run pitch.** Scrolling onto a single day with no scores brought up \"Live now. Your scores are building… import your WHOOP export and it backfills in about a minute\" — the welcome message for someone who has just paired a strap, shown to someone with weeks of history because of one gap. On a past day it also ignored the dismiss button, so it could not be waved away. It now appears only when nothing in your history has been scored at all. A gap day shows its empty tiles and nothing else, which is the honest read: nothing is building on a day already past.",
+            ),
+        ),
+        Release(
+            version = "8.2.38",
+            title = "Key Metrics and Your cards now show the same metrics, on every day",
+            date = "August 2026",
+            items = listOf(
+                "**Every metric now appears in both places on Today.** Key Metrics had no Sleep, Stress, Skin Temp, Vitality, Fitness Age or Hydration; Your cards had no Recovery, Strain, Rest or Weight. Nothing about the data caused that split — both sections render values Today already loads, so which one a metric landed in was an accident of the order they were built. Both now carry all sixteen, and all of them are on by default. A layout you already customised is untouched.",
+                "**Your cards no longer vanishes when you scroll back a day.** The dashboard only ever drew for today, while the Key Metrics grid beside it already dated itself and moved with the day selector — so going back a day silently emptied half the screen. Both sections now move together.",
+                "**A past day shows that day's values, never today's.** Weight, Calories, Fitness Age, Vitality, Hydration and Stress were each read as \"the newest value anywhere in your history\". That was indistinguishable from the right answer while these only ever drew for today, but on a day three weeks back it would have shown this morning's numbers. Each now reads the day on screen: your weight as of that day, that day's active energy and logged fluid, the weekly scores that existed by then, and Stress scored against the baseline that day actually had.",
+                "**Recovery vitals is dated by the day you are looking at.** Its HRV, resting heart rate and breathing rate were already the selected day's, but the caption above them always read yesterday's date relative to right now — so a day in July showed its own real readings under \"Last night · 11 Aug\". It now carries the same date as the rest of the screen, so one reading can't appear under two different dates. Today still reads \"Last night\" with last night's date, exactly as before.",
+                "**The rest of the wording follows the day too.** \"Today\", \"Last night\" and \"Today's fluid\" now read \"That day\", \"That night\" and \"That day's fluid\" when you have scrolled back, and the section heading carries the date. \"Calibrating\" is today-only as well: it means your baseline is still filling in, which is true today and meaningless on a day long past, so those days say No Data instead.",
+                "**A tile and its card can no longer disagree.** Where both sections showed the same metric they each resolved it separately, which is exactly how the two drifted apart before. Each metric is now resolved once and drawn twice, so a change to a number, a unit or a colour reaches both at the same instant.",
+                "**Rows that go nowhere no longer show an arrow.** Recovery, Strain, Rest and Weight have no detail screen to open, so the chevron promising one is gone; Stress, Sleep and Hydration tiles became tappable and open the same screens their card rows do.",
+            ),
+        ),
         Release(
             version = "8.2.37",
             title = "Tapping a graph now tells you when, not just how much",

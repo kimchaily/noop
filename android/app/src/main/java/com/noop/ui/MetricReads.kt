@@ -114,4 +114,79 @@ internal object MetricReads {
 
     /** Calories vessel fill against an 800 kcal active-energy ceiling. */
     fun caloriesFrac(kcal: Double?): Double? = kcal?.let { (it / 800.0).coerceIn(0.0, 1.0) }
+
+    // MARK: - The six metrics the Key-Metrics grid gained from the Your-cards dashboard
+    //
+    // Each was already resolved INLINE inside `dashboardCardValue` / `dashboardCardFraction`. Lifting them
+    // here first, unchanged, is what lets the new tile and the existing card share one read instead of the
+    // grid growing a second copy that drifts (the #543 failure mode this file exists to prevent). Every
+    // format below is byte-for-byte what the card already printed — no displayed number changes.
+
+    /**
+     * Skin-temperature deviation from baseline, signed so +/- reads honestly ("+0.3°"). The degree glyph is
+     * part of [MetricValue.number] (as the card always printed it) and [MetricValue.unit] is empty, so the
+     * tile shows the same single token. No vessel fill: a deviation has no natural 0..1 ceiling.
+     */
+    fun skinTemp(today: DailyMetric?, carry: DailyMetric?): MetricValue {
+        val v = today?.skinTempDevC ?: carry?.skinTempDevC
+        return MetricValue(
+            number = v?.let { String.format(Locale.US, "%+.1f°", it) },
+            unit = "",
+            frac = null,
+        )
+    }
+
+    /** Sleep duration as "7h 12m"; vessel fills against an 8 h (480 min) night. */
+    fun sleep(today: DailyMetric?, carry: DailyMetric?): MetricValue {
+        val m = today?.totalSleepMin ?: carry?.totalSleepMin
+        return MetricValue(
+            number = m?.let { val t = it.roundToInt(); "${t / 60}h ${t % 60}m" },
+            unit = "",
+            frac = m?.let { (it / 480.0).coerceIn(0.0, 1.0) },
+        )
+    }
+
+    /**
+     * Stress as a whole 0–3 autonomic-load score; vessel fills against the 3 ceiling. A null score is NOT
+     * "no data" here — Stress is baseline-relative, so callers substitute their own "Calibrating" placeholder
+     * (see the card's STRESS_CALIBRATING note) rather than a bare dash.
+     */
+    fun stress(score: Double?): MetricValue =
+        MetricValue(
+            number = score?.let { it.roundToInt().toString() },
+            unit = "",
+            frac = score?.let { (it / 3.0).coerceIn(0.0, 1.0) },
+        )
+
+    /** Vitality as a whole 0–100 wellness score; vessel fills against the 100 ceiling. */
+    fun vitality(score: Double?): MetricValue =
+        MetricValue(
+            number = score?.let { it.roundToInt().toString() },
+            unit = "",
+            frac = score?.let { (it / 100.0).coerceIn(0.0, 1.0) },
+        )
+
+    /**
+     * Fitness age in whole years. The vessel sits at a FIXED half-fill when a score exists: fitness age has
+     * no "full" to fill toward (younger is better, so a ceiling would read backwards), and a half vessel says
+     * "present" without implying a rank. Mirrors the iOS `liquidCard` frac for this card.
+     */
+    fun fitnessAge(years: Double?): MetricValue =
+        MetricValue(
+            number = years?.let { it.roundToInt().toString() },
+            unit = "yrs",
+            frac = if (years != null) 0.5 else null,
+        )
+
+    /**
+     * Logged fluid against the day's goal, in litres to 1 dp ("1.2 / 3.2 L"). Always resolves — a fresh day
+     * reads "0.0 / 3.2 L" — because the goal is always derivable from the profile. No vessel fill: the value
+     * already carries its own progress, and the card has never filled one.
+     */
+    fun hydration(totalMl: Double, goalMl: Int): MetricValue =
+        MetricValue(
+            number = String.format(Locale.US, "%.1f / %.1f L", totalMl / 1000.0, goalMl / 1000.0),
+            unit = "",
+            frac = null,
+        )
 }
