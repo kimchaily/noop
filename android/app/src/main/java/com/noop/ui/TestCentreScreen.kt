@@ -461,9 +461,13 @@ private fun CoverageRow(label: String, have: Int, total: Int) {
  */
 private fun lastCheckedLine(checkedAt: Long?, newestPassAt: Long?): String = when {
     checkedAt == null -> "Not checked yet on this install."
+    // A pass followed the check. Whether that pass CHANGED anything is the entry's business, not this
+    // line's: it can perfectly well run and conclude that every day was already up to date. Saying
+    // "found work to do" here claimed an outcome this line cannot know, and contradicted the entry
+    // directly beneath it whenever the pass came up empty.
     newestPassAt != null && newestPassAt >= checkedAt ->
-        "Last checked ${relativeSince(checkedAt)}, and it found work to do."
-    else -> "Last checked ${relativeSince(checkedAt)} - nothing new had arrived, so nothing ran."
+        "Last checked ${relativeSince(checkedAt)}, and a pass ran - its result is the first entry below."
+    else -> "Last checked ${relativeSince(checkedAt)} - no new measurements had arrived, so no pass ran."
 }
 
 /** "12 minutes ago" / "3 hours ago" / "2 days ago". Coarse on purpose — the exact second means nothing. */
