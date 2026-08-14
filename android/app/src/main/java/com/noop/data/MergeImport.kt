@@ -320,6 +320,11 @@ object MergeImport {
         } finally {
             runCatching { insert.close() }
         }
+        // Keep the scoring gate's invariant whole: it counts raw rows written, and these are raw rows
+        // written. The merge already forces a full re-score of its own, so nothing depends on this today
+        // — but a watermark that silently missed a whole write path is the kind of gap that only shows
+        // up much later, as a score that never refreshed.
+        RawWriteWatermark.recordWrites(added.coerceAtMost(Int.MAX_VALUE.toLong()).toInt())
         return TableResult(table, added, (seen - added).coerceAtLeast(0L))
     }
 

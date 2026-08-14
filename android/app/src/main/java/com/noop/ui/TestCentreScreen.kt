@@ -379,9 +379,16 @@ private fun CalculationsCard(vm: AppViewModel) {
                 }
             }
 
-            // The pass log itself.
+            // The pass log itself, headed by when Choop last LOOKED. Without that line an empty list is
+            // ambiguous — "nothing needed doing" and "no check ran at all" read identically, which is
+            // exactly what made a quiet journal impossible to interpret.
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Recent passes", style = NoopType.subhead, color = Palette.textPrimary)
+                val checkedAt = remember(backgroundActions, days) { AnalyzeJournal.lastCheckedAt(context) }
+                Text(
+                    lastCheckedLine(checkedAt, entries.firstOrNull()?.atSeconds),
+                    style = NoopType.footnote, color = Palette.textSecondary,
+                )
                 if (entries.isEmpty()) {
                     Text(
                         "Nothing recorded yet. The first entry appears after the next check, sync or edit.",
@@ -442,6 +449,21 @@ private fun CoverageRow(label: String, have: Int, total: Int) {
             color = if (have == total) Palette.textSecondary else Palette.statusWarning,
         )
     }
+}
+
+/**
+ * "Last checked 12 min ago - nothing new had arrived." — the line that makes an empty list readable.
+ *
+ * Checking and recalculating are different events: Choop looks every 15 minutes while it is running,
+ * but only recalculates when raw data actually landed. A check that found nothing writes no entry, so
+ * without this line a journal whose newest entry is two days old looks identical whether Choop has been
+ * checking and finding nothing, or has not run at all.
+ */
+private fun lastCheckedLine(checkedAt: Long?, newestPassAt: Long?): String = when {
+    checkedAt == null -> "Not checked yet on this install."
+    newestPassAt != null && newestPassAt >= checkedAt ->
+        "Last checked ${relativeSince(checkedAt)}, and it found work to do."
+    else -> "Last checked ${relativeSince(checkedAt)} - nothing new had arrived, so nothing ran."
 }
 
 /** "12 minutes ago" / "3 hours ago" / "2 days ago". Coarse on purpose — the exact second means nothing. */

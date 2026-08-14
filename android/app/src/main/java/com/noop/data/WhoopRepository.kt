@@ -190,9 +190,8 @@ class WhoopRepository(private val dao: WhoopDao) {
         // (0 wake/1 still/2 asleep/3 up), decoded and streamed but dropped at storage until now. Idempotent
         // by (deviceId, ts); not counted into InsertCounts (no consumer reads a count). The raw 0-3 code is
         // stored verbatim — a strap that never reports it inserts nothing.
-        if (streams.sleepState.isNotEmpty()) {
+        val sleepStateIds = if (streams.sleepState.isEmpty()) emptyList() else
             dao.insertSleepState(streams.sleepState.map { SleepStateSampleEntity(deviceId, it.ts, it.state) })
-        }
         val respIds = if (streams.resp.isEmpty()) emptyList() else
             dao.insertResp(streams.resp.map { RespSample(deviceId, it.ts, it.raw) })
         val gravIds = if (streams.gravity.isEmpty()) emptyList() else
@@ -203,7 +202,7 @@ class WhoopRepository(private val dao: WhoopDao) {
             dao.insertPpgHr(streams.ppgHr.map { PpgHrSample(deviceId, it.ts, it.bpm, it.conf) })
 
         // OnConflictStrategy.IGNORE returns -1 for skipped (already-present) rows; count the inserts.
-        return InsertCounts(
+        val counts = InsertCounts(
             hr = hrIds.countInserted() + ppgHrIds.countInserted(),
             rr = rrIds.countInserted(),
             events = evIds.countInserted(),
@@ -214,12 +213,31 @@ class WhoopRepository(private val dao: WhoopDao) {
             resp = respIds.countInserted(),
             gravity = gravIds.countInserted(),
         )
+        // The scoring gate reads this instead of counting the whole table (see [RawWriteWatermark]).
+        // EVERY raw stream is counted, not just heart rate: the sleep stager reads motion, the band's
+        // own sleep state and the wrist-off events, and a WHOOP 5/MG banks its beats in ppgHrSample
+        // rather than hrSample — a gate watching one table would sit shut while those moved.
+        RawWriteWatermark.recordWrites(
+            counts.hr + counts.rr + counts.events + counts.battery + counts.spo2 +
+                counts.skinTemp + counts.steps + counts.resp + counts.gravity +
+                sleepStateIds.countInserted(),
+        )
+        return counts
     }
 
-    /** #836 — cheap whole-history raw-HR change fingerprint `"count:maxTs"`. The idle 15-min rescore (the
-     *  AppViewModel backstop) skips when this is unchanged since the last completed run. Any HR insert/delete
-     *  moves it (count or maxTs), so a real change always rescores; mirrors Swift WhoopStore.hrFingerprint. */
-    suspend fun hrFingerprint(): String = "${dao.countHr()}:${dao.maxHrTs()}"
+    /**
+     * #836 — the raw-data change fingerprint the idle 15-min rescore gates on: it skips when this is
+     * unchanged since the last completed run.
+     *
+     * Was `"${'$'}{countHr()}:${'$'}{maxHrTs()}"`, which walked the ENTIRE hrSample index twice on every tick
+     * (SQLite stores no row count, and `ts` is the second column of the only index, so neither aggregate
+     * can be answered from a seek). That made the gate more expensive than the pass it was guarding, and
+     * it grew with the whole recorded history rather than with the three weeks a pass reads.
+     *
+     * Now an in-memory count of rows genuinely written since process start — see [RawWriteWatermark] for
+     * why that is both cheaper and stricter than the pair it replaces.
+     */
+    fun rawWriteFingerprint(): String = RawWriteWatermark.current()
 
     /**
      * Digest of everything a single day's scoring reads from raw, for [deviceId] over [from]..[to].
@@ -1445,7 +1463,8 @@ class WhoopRepository(private val dao: WhoopDao) {
     /** Persist HR samples directly (e.g. a live-tracked workout's 1 Hz series). Dedup-safe:
      *  `insertHr` IGNOREs on the (deviceId, ts) primary key, so re-inserts / a later offload sync
      *  covering the same seconds are no-ops. (#528) */
-    suspend fun insertHr(rows: List<HrSample>) = dao.insertHr(rows)
+    suspend fun insertHr(rows: List<HrSample>) =
+        dao.insertHr(rows).also { RawWriteWatermark.recordWrites(it.countInserted()) }
 
     suspend fun latestHrSampleTs(deviceId: String): Long? = dao.latestHrSampleTs(deviceId)
     suspend fun latestHr(deviceId: String): HrSample? = dao.latestHr(deviceId)

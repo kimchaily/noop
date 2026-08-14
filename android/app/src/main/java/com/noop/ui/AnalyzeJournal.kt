@@ -19,6 +19,7 @@ import com.noop.analytics.IntelligenceEngine
 object AnalyzeJournal {
     private const val PREFS = "noop.analyzeJournal"
     private const val KEY_ENTRIES = "entries"
+    private const val KEY_LAST_CHECKED = "lastCheckedAt"
 
     /** Roughly a day of 15-minute backstop passes, which is as far back as this is useful. */
     const val MAX_ENTRIES = 30
@@ -92,9 +93,25 @@ object AnalyzeJournal {
             .apply()
     }
 
+    /**
+     * Note that the backstop looked, regardless of whether it then ran a pass.
+     *
+     * A single OVERWRITTEN timestamp, deliberately not a journal entry: the check runs every fifteen
+     * minutes, so appending would bury the passes that actually did something under a wall of "looked,
+     * nothing there". One line answering "when did Choop last look?" is all that was missing — without
+     * it, a quiet journal reads identically whether nothing needed doing or nothing ran at all.
+     */
+    fun markChecked(context: Context, atSeconds: Long = System.currentTimeMillis() / 1000L) {
+        prefs(context).edit().putLong(KEY_LAST_CHECKED, atSeconds).apply()
+    }
+
+    /** When the backstop last looked, or null if it never has on this install. */
+    fun lastCheckedAt(context: Context): Long? =
+        prefs(context).getLong(KEY_LAST_CHECKED, 0L).takeIf { it > 0L }
+
     /** Drop the whole journal. Diagnostics only — no score depends on it. */
     fun clear(context: Context) {
-        prefs(context).edit().remove(KEY_ENTRIES).apply()
+        prefs(context).edit().remove(KEY_ENTRIES).remove(KEY_LAST_CHECKED).apply()
     }
 
     /** The most recent pass that actually wrote something, or null when none of the kept ones did. */

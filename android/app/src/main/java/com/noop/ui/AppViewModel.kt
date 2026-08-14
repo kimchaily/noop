@@ -788,7 +788,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // moves the raw-HR fingerprint, so skip the heavy 21-day rescore when the HR stream is unchanged
                 // since the last COMPLETED run. Mirrors the Swift analyzeRecent(force:false) gate; the watermark
                 // advances only on success (below), so an interrupted run can never hide unscored data.
-                val analyzeFp = repository.hrFingerprint()
+                val analyzeFp = repository.rawWriteFingerprint()
+                // Record that a check HAPPENED, whether or not it leads to a pass. Without this the
+                // diagnostics view cannot tell "there was nothing to do" from "nothing ran at all" —
+                // both look like an empty list, which is exactly what made a stale-looking journal
+                // impossible to interpret.
+                AnalyzeJournal.markChecked(appContext)
                 if (analyzeFp != NoopPrefs.analyzeWatermark(appContext)) runCatching {
                     IntelligenceEngine.analyzeRecent(
                         repo = repository,
