@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "8.2.38"
+    const val CURRENT_VERSION = "8.2.39"
 
     data class Release(
         val version: String,
@@ -36,6 +36,15 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "8.2.39",
+            title = "Past days: one date rule for Recovery vitals, and no first-run pitch on a gap day",
+            date = "August 2026",
+            items = listOf(
+                "**Today's Recovery vitals no longer borrows yesterday's date.** 8.2.38 dated this card by the night before the day on screen, which made today collide with yesterday: today's card read \"Last night · 12 Aug\" while the 12 August screen read \"Overnight · 12 Aug\" — the same date above two different sets of readings, with the 12th appearing twice and every other day once. Every day now carries its own date, today included, so scrolling through the week shows each date exactly once beside the readings that belong to it.",
+                "**A day the strap missed no longer triggers the first-run pitch.** Scrolling onto a single day with no scores brought up \"Live now. Your scores are building… import your WHOOP export and it backfills in about a minute\" — the welcome message for someone who has just paired a strap, shown to someone with weeks of history because of one gap. On a past day it also ignored the dismiss button, so it could not be waved away. It now appears only when nothing in your history has been scored at all. A gap day shows its empty tiles and nothing else, which is the honest read: nothing is building on a day already past.",
+            ),
+        ),
         Release(
             version = "8.2.38",
             title = "Key Metrics and Your cards now show the same metrics, on every day",
