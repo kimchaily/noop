@@ -602,9 +602,19 @@ interface WhoopDao : DeviceRegistryDao {
      * both the row count and the edge timestamps untouched, and a count-only digest would call that
      * day unchanged and keep serving the stale score.
      */
+    // COUNT/MIN/MAX of `ts` ONLY, deliberately: those three are answerable from the (deviceId, ts)
+    // primary-key index without touching a single table row, so this walks an index and stops. Adding
+    // SUM(bpm) — as this once did — forces SQLite to fetch every matching row for the bpm column, which
+    // on a 1 Hz strap is ~108k row reads per day and ~2.3M per pass. That is the same order of work the
+    // digest exists to AVOID, paid on every pass to answer "did anything change?".
+    //
+    // Dropping it costs no safety. `insertHr` is OnConflictStrategy.IGNORE, so bpm can never change
+    // under an existing (deviceId, ts): a re-offloaded second is discarded, not overwritten. Every way
+    // the row set of a window can actually change — a row arriving late, a row removed — moves COUNT.
+    // SUM was guarding a mutation this table does not permit.
     @Query(
-        "SELECT COUNT(*) || ':' || COALESCE(MIN(ts), 0) || ':' || COALESCE(MAX(ts), 0) || ':' || " +
-            "COALESCE(SUM(bpm), 0) FROM hrSample WHERE deviceId = :deviceId AND ts BETWEEN :from AND :to",
+        "SELECT COUNT(*) || ':' || COALESCE(MIN(ts), 0) || ':' || COALESCE(MAX(ts), 0) " +
+            "FROM hrSample WHERE deviceId = :deviceId AND ts BETWEEN :from AND :to",
     )
     suspend fun hrDayDigest(deviceId: String, from: Long, to: Long): String
 
@@ -618,7 +628,11 @@ interface WhoopDao : DeviceRegistryDao {
 
     /** The R-R twin of [hrDayDigest]. HRV is computed from R-R INTERVALS, not from the HR series, and it
      *  is the dominant Charge driver at weight 0.55 — a digest that watched HR alone could call a night
-     *  unchanged while the very numbers the score rests on had moved. */
+     *  unchanged while the very numbers the score rests on had moved.
+     *
+     *  This one KEEPS its SUM, because `rrMs` is part of the primary key (deviceId, ts, rrMs) and is
+     *  therefore already in the index: the sum costs nothing extra here, unlike on `hrSample`. That is
+     *  the rule — pay for the extra check only where the index already carries the column. */
     @Query(
         "SELECT COUNT(*) || ':' || COALESCE(MIN(ts), 0) || ':' || COALESCE(MAX(ts), 0) || ':' || " +
             "COALESCE(SUM(rrMs), 0) FROM rrInterval WHERE deviceId = :deviceId AND ts BETWEEN :from AND :to",
