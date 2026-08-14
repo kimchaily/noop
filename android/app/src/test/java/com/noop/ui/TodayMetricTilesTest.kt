@@ -913,4 +913,49 @@ class TodayMetricTilesTest {
         assertTrue(heroVitalsNightLine("not-a-date").startsWith("Overnight · "))
         assertTrue(heroVitalsNightLine("").startsWith("Overnight · "))
     }
+
+    // MARK: - The "your scores are building" note is for a cold start, not a gap
+
+    @Test
+    fun coldStart_trueOnlyWhenNothingHasEverBeenScored() {
+        assertFalse(hasAnyScoredDay(emptyList()))
+        // A row that exists but carries nothing scored is still a cold start.
+        assertFalse(hasAnyScoredDay(listOf(DailyMetric(deviceId = "my-whoop", day = "2026-08-13"))))
+    }
+
+    @Test
+    fun coldStart_falseAsSoonAsAnySingleScoreExists() {
+        // Any one of the three things the note promises will appear is enough to make it false.
+        assertTrue(hasAnyScoredDay(listOf(recDay("2026-08-13", 54.0))))
+        assertTrue(hasAnyScoredDay(listOf(
+            DailyMetric(deviceId = "my-whoop", day = "2026-08-13", strain = 33.0),
+        )))
+        assertTrue(hasAnyScoredDay(listOf(sleepMinutesDay("2026-08-13", 420.0))))
+    }
+
+    @Test
+    fun coldStart_aSingleGapInAPopulatedHistoryIsNotAColdStart() {
+        // THE bug this pins. The note fired whenever the SELECTED day had no recovery, so scrolling onto
+        // one day the strap missed showed a user with weeks of history the whole first-run pitch —
+        // "scores build over your next few nights of wear, import your WHOOP export to backfill".
+        val history = listOf(
+            recDay("2026-08-10", 27.0),
+            recDay("2026-08-11", 55.0),
+            DailyMetric(deviceId = "my-whoop", day = "2026-08-12"),   // the gap the strap missed
+            recDay("2026-08-13", 54.0),
+        )
+        assertTrue(hasAnyScoredDay(history))
+    }
+
+    @Test
+    fun coldStart_staysFalseEvenWhenTheOnlyScoredDayIsOld() {
+        // A user who wore the strap weeks ago and stopped is not starting cold either; the note would be
+        // telling them their scores are about to appear when they already have.
+        val history = listOf(
+            recDay("2026-06-01", 60.0),
+            DailyMetric(deviceId = "my-whoop", day = "2026-08-12"),
+            DailyMetric(deviceId = "my-whoop", day = "2026-08-13"),
+        )
+        assertTrue(hasAnyScoredDay(history))
+    }
 }

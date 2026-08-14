@@ -958,6 +958,10 @@ fun TodayScreen(
     // Old imports stay in history, but they do not fill the Today trend tiles.
     val window = remember14(days, selectedDay)
 
+    // Whether ANY day in history carries a score — the cold-start test for the "your scores are building"
+    // note (see its use below). Cheap scan over the already-loaded list, remembered per data change.
+    val historyHasAnyScore = remember(days) { hasAnyScoredDay(days) }
+
     // The four score reads (Charge / Effort / Rest / Weight) resolved ONCE for the selected day and handed to
     // BOTH Today surfaces that render them — the Key-Metrics tiles and the Your-cards rows. Resolving here
     // rather than inside each surface is what makes "the tile and the card agree" structural instead of a
@@ -1207,7 +1211,15 @@ fun TodayScreen(
                     }
                 }
             }
-            if (selectedDayOffset != 0 || !scoresBuildingDismissed) {
+            // COLD START ONLY. This note tells you scores build "over your next few nights of wear" and
+            // offers to backfill from a WHOOP export — true for someone who has just paired a strap, and
+            // false and alarming for someone with weeks of history who scrolled onto a day the strap
+            // missed. It used to fire whenever the SELECTED day had no recovery, so a single gap in an
+            // otherwise-full history summoned the whole first-run pitch (and on a past day it ignored the
+            // dismissal too, so it could not even be waved away). Its own comment above always said "no
+            // history"; now the condition does. An established user's gap day shows the No-Data tiles and
+            // nothing else — which is the honest read, because nothing is building on a day already past.
+            if (!historyHasAnyScore && (selectedDayOffset != 0 || !scoresBuildingDismissed)) {
                 Box(modifier = Modifier.fillMaxWidth()) {
                     DataPendingNote(
                         title = "Live now. Your scores are building.",
@@ -4075,6 +4087,16 @@ internal fun lastScoredRecoveryDay(
     if (!isToday || todayScored || isCalibrating) return null
     return days.lastOrNull { it.recovery != null && it.day != selectedDayKey && it.day <= today }
 }
+
+/**
+ * Whether history holds ANY scored day — the cold-start test behind the "Live now. Your scores are
+ * building." note. A day counts as scored if it carries a Charge, an Effort or a sleep duration: the three
+ * things that note promises will start appearing. False means nothing has ever been scored, which is the
+ * only situation where "they build over your next few nights of wear, and an import backfills them" is
+ * true. One gap in a populated history is emphatically not that.
+ */
+internal fun hasAnyScoredDay(days: List<DailyMetric>): Boolean =
+    days.any { it.recovery != null || it.strain != null || it.totalSleepMin != null }
 
 /** A prior day's Charge carried over on TODAY (value + "Last night · <date>" caption) while tonight's
  *  recovery hasn't been scored yet (#543). Mirrors the iOS lastScoredCharge tuple. */
