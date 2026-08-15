@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "8.2.39"
+    const val CURRENT_VERSION = "8.2.40"
 
     data class Release(
         val version: String,
@@ -36,6 +36,21 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "8.2.40",
+            title = "Choop stops paying for the checks that were meant to save the work",
+            date = "August 2026",
+            items = listOf(
+                "**Choop no longer re-reads your whole history just to ask whether anything changed.** Before doing any work it checked \"has new data arrived?\" — and answered that by counting every heart-rate reading you have ever recorded, twice, every fifteen minutes. On a long history that is millions of readings, and it grew for as long as you used the app, while the work it was guarding only ever looks at the last three weeks. The question is now answered from a running count kept as data is written, without touching the database at all.",
+                "**And the second check no longer reads the readings it exists to avoid reading.** Deciding *which* days changed also added up every heart-rate value in each day, and that column isn't in the index, so the phone had to fetch every single reading — about a hundred thousand a day. It now genuinely only glances at the index.",
+                "**Both checks got more accurate in the process, not just faster.** A night that finishes uploading hours late arrives stamped with *older* times, so \"what's the newest reading?\" doesn't budge — the old check noticed such nights only by accident. Counting what was actually written catches them by construction. The new count also watches every kind of measurement rather than heart rate alone, which matters on a WHOOP 5/MG: its records carry no per-second heart rate at all, so the old check could have sat shut for ever.",
+                "**The battery saving now applies when your strap syncs, which is when it matters most.** It used to apply only to the timed check — and that one stops when Android freezes the app in the background, while syncing carries on. Both paths now do one day when only today has changed.",
+                "**You can finally tell \"nothing to do\" from \"nothing ran\".** The diagnostics view now opens with when Choop last looked: *\"Last checked 12 min ago — nothing new had arrived, so nothing ran.\"* A check that finds nothing writes no entry, so without that line a quiet list looked identical whether Choop was checking and finding nothing, or wasn't running at all.",
+                "**A sleep correction can no longer be lost if it's interrupted.** Correcting a bed or wake time changes a calculated night, not the raw recording, so the change-check doesn't notice it. Choop now marks those days as needing work *before* it starts, so an interrupted correction is repaired by the next ordinary check instead of quietly persisting.",
+                "**The bad-clock cleanup no longer leaves holes.** It deletes calculated days stamped with an impossible date; those days were still marked \"already done\", so a later pass would have skipped exactly the days it had just emptied.",
+                "**Expect one full recalculation right after this update, then back to normal.** The change-check's format changed, so none of the stored ones match and every day is re-derived once. That is the mechanism working.",
+            ),
+        ),
         Release(
             version = "8.2.39",
             title = "Past days: one date rule for Recovery vitals, and no first-run pitch on a gap day",
