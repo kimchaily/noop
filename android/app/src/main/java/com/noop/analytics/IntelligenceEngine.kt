@@ -553,6 +553,14 @@ object IntelligenceEngine {
 
         val digestByDay = LinkedHashMap<String, String>()
         var earliestChangedDay: String? = null
+        // Days this pass DID examine but that carry too little raw HR to score (the strap was off the
+        // wrist). They produce no daily row, so they never reached the digest write below — and a day
+        // with no stored digest reads as "changed" for ever. Because the skip is a SUFFIX, one such day
+        // dragged every day after it into a full re-derive on every single pass, until it aged out of
+        // the window. One night without the strap therefore disabled the whole optimisation for three
+        // weeks. Collected here and marked at the end: "nothing scoreable" is a real, durable result,
+        // exactly as valid to record as a score.
+        val examinedUnscoreable = LinkedHashSet<String>()
         for (offset in maxDays - 1 downTo 0) { // oldest first, so the FIRST mismatch is the earliest
             val dayStart = nowLocalMidnight - offset * SECONDS_PER_DAY
             val dayKey = AnalyticsEngine.dayString(dayStart, tzOffsetSeconds)
@@ -618,7 +626,13 @@ object IntelligenceEngine {
             // scored-days loop, NOT here). Only when the universal sink is on. A day skipped below for too
             // few rows is never scored, so it emits no line, byte-identical to the iOS behaviour.
             if (universalSink != null) readOwnerByDay[day] = OwnerRead(owner, hr.size)
-            if (hr.size < MIN_HR_SAMPLES) continue // need real raw data, not a stray sample
+            if (hr.size < MIN_HR_SAMPLES) {
+                // Examined, and the honest answer is "nothing to score". Record it so the day stops
+                // looking changed on every future pass; more HR arriving later moves its digest and
+                // brings it straight back.
+                examinedUnscoreable.add(day)
+                continue // need real raw data, not a stray sample
+            }
             val rr = repo.rrIntervals(owner, from, to, STREAM_LIMIT)
             val resp = repo.respSamples(owner, from, to, STREAM_LIMIT)
             val grav = repo.gravitySamples(owner, from, to, STREAM_LIMIT)
@@ -1131,6 +1145,11 @@ object IntelligenceEngine {
         // actually re-derived; a skipped day keeps the digest it already had, which is still accurate
         // because its inputs are what made it skippable.
         for (d in dailies) digestByDay[d.day]?.let { digestPut(d.day, it) }
+        // Same discipline, same moment: only after the write, so an interrupted pass leaves them
+        // looking changed and the next pass re-examines them. Their outcome — no computed row, because
+        // there was nothing to compute from — is already durable, since the transaction above cleared
+        // the range and re-inserted only the days that produced a row.
+        for (day in examinedUnscoreable) digestByDay[day]?.let { digestPut(day, it) }
 
         // Same reasoning as the digests: report only once the rows are actually in the store, so the
         // journal the user reads can never claim a pass that did not land.
