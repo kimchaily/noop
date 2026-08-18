@@ -195,6 +195,15 @@ final class IntelligenceEngine: ObservableObject {
         return fmt.string(from: sat)
     }
 
+    /// Metric-series key holding the wear-gated NIGHTLY SKIN-TEMPERATURE MEAN (degrees Celsius) under the
+    /// computed ("-noop") source. The daily row carries the skin-temp DEVIATION, and a deviation cannot be
+    /// re-folded into the baseline it was measured against, so the mean needs somewhere of its own to live
+    /// , otherwise its baseline can only be rebuilt from the nights the current pass scanned, which on a
+    /// routine incremental pass is one night: below the seed, never usable, term dropped. No schema change
+    /// (`metricSeries` already holds the engine's derived per-day values). MUST match Android
+    /// `IntelligenceEngine.SKIN_TEMP_NIGHT_KEY`.
+    static let skinTempNightKey = "skin_temp_night"
+
     /// UserDefaults flag guarding the one-shot #313 full-history Effort rescore (below). Set once the
     /// pass completes so it never re-runs.
     static let effortRescoreFlagKey = "intelligence.effortRescore.v313.done"
@@ -676,6 +685,11 @@ final class IntelligenceEngine: ObservableObject {
         // every stored score shifted by about a point. `maxDays` must not decide what we measure against.
         let computedHist = ((try? await store.dailyMetrics(deviceId: computedId,
                                                            from: "0000-01-01", to: "9999-12-31")) ?? [])
+        // The persisted nightly skin-temp means, over the whole record , same reason as the line above:
+        // what the baseline measures against must not be decided by how wide this pass's window was.
+        let storedSkinPoints = ((try? await store.metricSeries(deviceId: computedId,
+                                                              key: Self.skinTempNightKey,
+                                                              from: "0000-01-01", to: "9999-12-31")) ?? [])
         for d in computedHist {
             histHrvByDay[d.day] = d.avgHrv
             histRhrByDay[d.day] = d.restingHr.map(Double.init)
@@ -702,13 +716,20 @@ final class IntelligenceEngine: ObservableObject {
         let rhrSeq = rhrDayKeys.map { histRhrByDay[$0]! }
         let respDayKeys = histRespByDay.keys.sorted()
         let respSeq = respDayKeys.map { histRespByDay[$0]! }
-        // KNOWN REMNANT (mirrors Android): skin temp still folds over THIS PASS's window only, because
-        // the daily row stores the deviation rather than the nightly mean and a deviation cannot be
-        // re-folded into the baseline it was measured against. Persisting the mean needs a schema column.
-        // wSkinTemp = 0.05 and the term drops unless its baseline is usable, so the residual window
-        // dependence here is roughly a twentieth of what HRV's was.
-        let skinDayKeys = nightlySkinByDay.keys.sorted()
-        let skinSeq = skinDayKeys.map { nightlySkinByDay[$0]! }
+        // Skin temp folds over the record too, from the metric series persisted at the end of the pass
+        // rather than from a column. Membership is the SAME rule as the other three: every day the stored
+        // record knows about is a member, and a day without a mean is a member holding nil , skip-and-hold,
+        // so a long strapless stretch ages the baseline out to .stale instead of letting it pretend to be
+        // current. Trimming membership to the days that HAVE a mean would stitch a real gap closed.
+        // `updateValue(nil,forKey:)` because assigning nil through the subscript would REMOVE the key.
+        var histSkinByDay: [String: Double?] = [:]
+        for day in histHrvByDay.keys { histSkinByDay.updateValue(nil, forKey: day) }
+        for p in storedSkinPoints { histSkinByDay[p.day] = p.value }
+        // The days this pass re-derived win, mean or no mean: a night whose raw skin-temp rows went away
+        // retracts its stored point below, and must not go on being folded in here either.
+        for (day, v) in nightlySkinByDay { histSkinByDay[day] = v }
+        let skinDayKeys = histSkinByDay.keys.sorted()
+        let skinSeq = skinDayKeys.map { histSkinByDay[$0]! }
         // ── CAUSAL baselines: each night is scored against who the person was BEFORE it ────────────────
         // Previously all four drivers were folded into ONE terminal state and EVERY day in the window was
         // scored against it. That made a finished day's Charge depend on nights that came AFTER it, so
@@ -1004,6 +1025,25 @@ final class IntelligenceEngine: ObservableObject {
             _ = try? await store.deleteDailyMetrics(deviceId: computedId, from: stale.day, to: stale.day)
         }
         if !restPoints.isEmpty { _ = try? await store.upsertMetricSeries(restPoints, deviceId: computedId) }
+
+        // Persist this pass's nightly skin-temp MEANS so the next pass folds a baseline from the record
+        // instead of rebuilding one from its own window (see `skinTempNightKey`). A night that was
+        // re-derived and no longer yields a mean retracts its old point: leaving it would keep a number in
+        // the baseline that nothing backs any more. Mirrors the Android write.
+        var skinPoints: [MetricPoint] = []
+        var retractedSkinDays: [String] = []
+        let storedSkinDays = Set(storedSkinPoints.map { $0.day })
+        for night in scoredNights {
+            if let mean = night.nightlySkin {
+                skinPoints.append(MetricPoint(day: night.daily.day, key: Self.skinTempNightKey, value: mean))
+            } else if storedSkinDays.contains(night.daily.day) {
+                retractedSkinDays.append(night.daily.day)
+            }
+        }
+        if !skinPoints.isEmpty { _ = try? await store.upsertMetricSeries(skinPoints, deviceId: computedId) }
+        for day in retractedSkinDays {
+            _ = try? await store.deleteMetricSeriesPoint(deviceId: computedId, day: day, key: Self.skinTempNightKey)
+        }
 
         // ── Fitness Age (Phase 2) , weekly, keyed to the week's Saturday ────────────────────────────
         // Roll the last 7 computed days into the Nes/HUNT inputs and upsert a weekly Fitness Age (+ an

@@ -60,6 +60,24 @@ extension WhoopStore {
         }
     }
 
+    // MARK: - Delete
+
+    /// Remove ONE point. Derived values only , the table holds nothing but per-day computed numbers, so
+    /// no raw measurement is reachable from here. Used to retract a value whose day no longer produces it.
+    /// Returns rows deleted (0 when the point was already absent). Mirrors Android
+    /// `WhoopDao.deleteMetricSeriesPoint`.
+    @discardableResult
+    public func deleteMetricSeriesPoint(deviceId: String, day: String, key: String) async throws -> Int {
+        try syncWrite { db in
+            try db.execute(
+                sql: "DELETE FROM metricSeries WHERE deviceId = ? AND day = ? AND key = ?",
+                arguments: [deviceId, day, key])
+            return db.changesCount
+        }
+    }
+
+    // MARK: - Reads (continued)
+
     /// Distinct metric keys present for a device, sorted ascending.
     public func metricKeys(deviceId: String) async throws -> [String] {
         try syncRead { db in
