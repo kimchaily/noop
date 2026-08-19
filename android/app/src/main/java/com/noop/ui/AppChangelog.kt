@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "8.2.40"
+    const val CURRENT_VERSION = "8.2.41"
 
     data class Release(
         val version: String,
@@ -36,6 +36,17 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "8.2.41",
+            title = "Skin temperature counts again",
+            date = "August 2026",
+            items = listOf(
+                "**Your skin temperature is measured against your own history again.** Until now the nightly mean had nowhere to be stored, so its baseline was rebuilt from whatever nights a single recalculation happened to look at — normally one. One night is too few to compare against, so the value was thrown away and the day showed nothing.",
+                "**The illness early-warning gets its most important input back.** Skin temperature is the signal that moves first when something is coming on. It was silent on every ordinary day, and only appeared briefly after a full rebuild.",
+                "**Charge shifts by about a point on recent days, once.** The temperature term is a small part of the score, and it has been missing. When it returns, past days settle on slightly different numbers and then stay there.",
+                "**The whole history is rebuilt once after the update.** This changes which nights feed a baseline rather than the formula itself, so Choop cannot detect it on its own — the rebuild is triggered explicitly, and takes a minute or two in the background.",
+            ),
+        ),
         Release(
             version = "8.2.40",
             title = "Choop stops paying for the checks that were meant to save the work",
