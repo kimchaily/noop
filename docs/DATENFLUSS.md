@@ -72,7 +72,8 @@ Daneben, gleiche Ebene:
   **bewahrt** sie, statt die erkannten Grenzen darüberzuschreiben.
 - **`metricSeries`** — Langformat `(deviceId, day, key) → value` mit den Schlüsseln `charge`,
   `strain`, `sleep_performance`, `rhr`, `hrv`, `steps`, `calories_in`, `weight`,
-  `sleep_total_min`. Die Form, in der Trends und Vergleiche lesen.
+  `sleep_total_min` und `skin_temp_night` (das nächtliche Hauttemperatur-Mittel, das die
+  Tageszeile nicht führt). Die Form, in der Trends und Vergleiche lesen.
 
 ## Ebene 3 — die drei Ringe
 
@@ -176,7 +177,7 @@ Werte nie ankamen.
 
 ## Ehrliche Lücken
 
-Vier Stellen, an denen der Weg nicht so vollständig ist, wie die Oberfläche vermuten lässt.
+Drei Stellen, an denen der Weg nicht so vollständig ist, wie die Oberfläche vermuten lässt.
 
 - **SpO₂ wird gemessen, aber nie ausgewertet.** Rot- und Infrarotkanal landen vollständig in
   `spo2Sample`, doch `AnalyticsEngine` schreibt `spo2Pct` unbedingt als `null`. Ein Prozentwert im
@@ -187,8 +188,13 @@ Vier Stellen, an denen der Weg nicht so vollständig ist, wie die Oberfläche ve
   respiratorische Sinusarrhythmie geschätzt.
 - **Schritte und Kalorien sind Näherungen.** Die Schrittsemantik des Armband-Zählers ist nicht
   gegen die Hersteller-App verifiziert; die Kalorien sind eine Formel auf der Herzfrequenz.
-- **Die Hauttemperatur-Baseline ist noch nicht vollständig kausal.** Anders als HRV und Ruhepuls
-  wird das nächtliche Mittel nirgends als eigene Spalte gespeichert — die Tageszeile hält nur die
-  *Abweichung*. Deshalb bildet sich diese eine Baseline aus dem, was der jeweilige Durchlauf
-  gerade gelesen hat. Der Term wiegt 0,05 und fällt ganz heraus, solange seine Baseline nicht
-  brauchbar ist; die Behebung braucht eine Schema-Spalte.
+
+**Geschlossen — die Hauttemperatur-Baseline.** Sie war die vierte Lücke: die Tageszeile hält nur
+die *Abweichung*, und eine Abweichung lässt sich nicht in die Baseline zurückfalten, gegen die sie
+gemessen wurde. Also bildete sich diese eine Baseline aus dem, was der jeweilige Durchlauf gerade
+gelesen hatte — bei einem Routinelauf genau eine Nacht, unter der Vier-Nächte-Schwelle, damit nie
+brauchbar. Der Term fiel aus Charge heraus, `skinTempDevC` wurde leer geschrieben, und der
+Krankheits-Frühwarnung fehlte ihr fiebernächstes Signal. Das nächtliche Mittel liegt jetzt als
+eigene Messreihe (`skin_temp_night`, Ebene 2) im Speicher — keine Schemaänderung nötig, die Tabelle
+trägt ohnehin die abgeleiteten Tageswerte — und die Baseline faltet die ganze Historie wie HRV und
+Ruhepuls.

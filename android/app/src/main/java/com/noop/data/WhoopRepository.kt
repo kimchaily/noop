@@ -992,6 +992,14 @@ class WhoopRepository(private val dao: WhoopDao) {
     suspend fun metricSeries(deviceId: String, key: String, from: String, to: String) =
         dao.metricSeries(deviceId, key, from, to)
 
+    /**
+     * Drop ONE derived metric point. Computed values only — the engine uses it to retract a
+     * [MetricSeriesRow] whose night no longer produces the value it recorded. No raw measurement can be
+     * reached from here: the table holds nothing but per-day derived numbers.
+     */
+    suspend fun deleteMetricSeriesPoint(deviceId: String, day: String, key: String) =
+        dao.deleteMetricSeriesPoint(deviceId, day, key)
+
     /** Distinct metric keys present for a [deviceId]/source, sorted ascending. */
     suspend fun metricKeys(deviceId: String): List<String> = dao.metricKeys(deviceId)
 

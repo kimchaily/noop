@@ -29,6 +29,18 @@ class ScoringFingerprintTest {
     }
 
     /**
+     * The fixture supplies its own nights, so a change to WHICH nights reach the scorers cannot move the
+     * hash — [ScoringFingerprint.INPUT_REVISION] is the only thing that carries such a change into the
+     * value and fires the one-off history rebuild. If it stops reaching the value, bumping it becomes a
+     * no-op and the rebuild silently stops happening.
+     */
+    @Test
+    fun carriesTheInputRevision() {
+        val v = ScoringFingerprint.value
+        assertTrue("got '$v'", v.endsWith("-i${ScoringFingerprint.INPUT_REVISION}"))
+    }
+
+    /**
      * The load-bearing property. The fingerprint is a hash of the scorers' outputs over a fixed fixture,
      * so this recomputes that hash with ONE constant perturbed and asserts it differs. If this ever
      * passes trivially, the fingerprint has stopped tracking the algorithm and the rebuild gate is

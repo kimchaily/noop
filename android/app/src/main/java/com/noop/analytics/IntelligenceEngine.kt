@@ -284,8 +284,24 @@ object IntelligenceEngine {
      *   1 , causal (strictly-prior) baselines
      *   2 , same day set on every pass (`ownerSource` on all callers)
      *   3 , baseline folded from the stored history instead of the scan window
+     *   4 , the skin-temp mean persisted, so its baseline folds over the record too
      */
-    const val SCORING_VERSION: Int = 3
+    const val SCORING_VERSION: Int = 4
+
+    /**
+     * Metric-series key holding the wear-gated NIGHTLY SKIN-TEMPERATURE MEAN, in degrees Celsius, under
+     * the computed ("-noop") source.
+     *
+     * The daily row has a `skinTempDevC` column, but that is the DEVIATION from the baseline, and a
+     * deviation cannot be re-folded into the baseline it was measured against. So the mean itself needs
+     * somewhere to live, or the skin-temp baseline can only ever be rebuilt from the nights the current
+     * pass happened to scan , which on a routine incremental pass is one night, below the four-night
+     * seed, so the baseline was never usable and the term dropped out of Charge entirely.
+     *
+     * No schema change: `metricSeries` is already where the engine's derived per-day values go
+     * (`sleep_performance`, `fitness_age`, `vo2max_est`, `vitality`).
+     */
+    const val SKIN_TEMP_NIGHT_KEY: String = "skin_temp_night"
 
     /**
      * One-shot, on-upgrade FULL-history Effort rescore (#313 PART B). The Effort hero gauge + numbers
@@ -489,12 +505,6 @@ object IntelligenceEngine {
         // the cheap recovery composite. The raw hr/rr/... lists are freed after each analyzeDay,
         // keeping memory bounded over a full multi-night offload history.
         val scoredNights = ArrayList<DayResult>()
-
-        // Wear-gated nightly skin-temp means (on-device only , imported rows carry the deviation, not
-        // the raw mean, so the skin-temp baseline is seeded purely from these). (PR #85)
-        // The ONLY driver still harvested in memory: HRV / resting HR / respiration are persisted columns
-        // and are read back over the whole history below.
-        val nightlySkinByDay = LinkedHashMap<String, Double?>()
 
         // Floor `now` to LOCAL midnight (#277) so each `dayStart` lands on a local-day boundary and the
         // day keys are LOCAL calendar days, consistent with the dashboard's local "today" lookup. A
@@ -750,15 +760,6 @@ object IntelligenceEngine {
                 }
             }
 
-            // Harvest the nightly SKIN-TEMP mean. HRV / resting HR / respiration are NOT harvested here
-            // any more: they are persisted columns on the daily row, so the baseline reads them back from
-            // the store over the WHOLE history instead of only the days this pass happened to scan.
-            // Skin temp has no such column (the row stores the DEVIATION, not the mean, and a deviation
-            // can't be re-folded into the baseline it was measured against), so it still folds over this
-            // pass's window only. With wSkinTemp = 0.05 and the term gated on a usable baseline the
-            // residual is small, but it is a real remnant of the window dependence — see the note at the
-            // baseline fold below. The raw streams go out of scope here and are freed before the next night.
-            nightlySkinByDay[day] = res.nightlySkinTempC
             // ── RHR floor-vs-mean diagnostic (#691) ────────────────────────────────────────────────
             // Make the recurring "Choop's resting HR reads LOWER than my sleeping-HR app" reports
             // explainable from the strap log instead of a guess. The two numbers measure different
@@ -878,6 +879,40 @@ object IntelligenceEngine {
             },
         )
 
+        // The nightly SKIN-TEMP MEAN gets the same treatment, by a different route. It has no daily
+        // column , the row carries the DEVIATION, and a deviation cannot be re-folded into the baseline it
+        // was measured against , so until now it was the one driver whose baseline was rebuilt from
+        // whatever nights this pass happened to scan. On a routine incremental pass that is a single
+        // night: far below the four-night seed, so the baseline was never usable, [baselinesBefore] gated
+        // the term away, and [recomputeSkinTempDev] wrote skinTempDevC NULL. Charge lost its 0.05 term and
+        // , the larger cost , the illness early-warning lost the signal that sits nearest a fever.
+        //
+        // So the mean is persisted as its own metric series ([SKIN_TEMP_NIGHT_KEY]) and read back below
+        // like every other driver. The store is read FIRST here, before the write, purely so a night that
+        // stopped producing a mean can retract its old point without a per-day existence query; the merged
+        // map is what the store holds once the two writes land, so the fold below still reads one truth.
+        val storedSkinByDay = LinkedHashMap<String, Double>()
+        for (point in repo.metricSeries(computedId, SKIN_TEMP_NIGHT_KEY, "0000-01-01", "9999-12-31")) {
+            storedSkinByDay[point.day] = point.value
+        }
+        val skinPoints = ArrayList<MetricSeriesRow>()
+        val retractedSkinDays = ArrayList<String>()
+        for ((res, daily) in settled) {
+            val mean = res.nightlySkinTempC
+            if (mean != null) {
+                skinPoints.add(
+                    MetricSeriesRow(deviceId = computedId, day = daily.day, key = SKIN_TEMP_NIGHT_KEY, value = mean),
+                )
+                storedSkinByDay[daily.day] = mean
+            } else if (storedSkinByDay.remove(daily.day) != null) {
+                // Re-derived, and it no longer yields a mean (its raw skin-temp rows were quarantined, say).
+                // Keeping the old point would leave a number in the baseline that nothing backs any more.
+                retractedSkinDays.add(daily.day)
+            }
+        }
+        if (skinPoints.isNotEmpty()) repo.upsertMetricSeries(skinPoints)
+        for (day in retractedSkinDays) repo.deleteMetricSeriesPoint(computedId, day, SKIN_TEMP_NIGHT_KEY)
+
         // ── CAUSAL baselines over the WHOLE history ────────────────────────────────────────────────────
         // Two properties, both required, and each one alone leaves the score drifting:
         //
@@ -913,9 +948,13 @@ object IntelligenceEngine {
         val hrvSorted = histHrvByDay.entries.sortedBy { it.key }
         val rhrSorted = histRhrByDay.entries.sortedBy { it.key }
         val respSorted = histRespByDay.entries.sortedBy { it.key }
-        // Per metric over that metric's OWN key list — deliberately NOT a unified key set. Padding a
-        // metric's absent days with nulls would advance nightsSinceUpdate and could flip a baseline to
-        // STALE, which silently drops the term (BaselineState.usable excludes STALE).
+        // One key list per metric, all four built from the same thing: the DAY ROWS the record holds. A
+        // null inside one is a night that was derived but produced no value for that driver, which the
+        // fold treats as skip-and-hold — it advances nightsSinceUpdate and can age the baseline out to
+        // STALE, which drops the term (BaselineState.usable excludes STALE). That is the intended
+        // reading. What must NOT happen is padding a metric's list with days from somewhere else, or
+        // trimming it to the days that happen to carry a value: the first invents gaps, the second
+        // stitches real ones closed and scores a night against a baseline older than it appears.
         //
         // HRV honours noop.hrvBaselineEpoch; rhr/resp/skin honour noop.recoveryBaselineEpoch via their
         // parallel day keys, so a manual Recalibrate restarts the whole Charge build-up together.
@@ -926,12 +965,16 @@ object IntelligenceEngine {
         // term whenever a baseline object is present, and a CALIBRATING (<4-night) baseline would let one
         // noisy night move Charge. The gate applies to the PRIOR state, per day.
         val respPrior = PriorBaselines(respSorted.map { it.key }, respSorted.map { it.value }, respCfg, recoveryEpoch)
-        // KNOWN REMNANT: skin temp still folds over THIS PASS's window only, because the daily row stores
-        // the deviation rather than the nightly mean and a deviation cannot be re-folded into the baseline
-        // it was measured against. Persisting the mean needs a schema column; until then this one driver
-        // keeps the old window dependence. It carries wSkinTemp = 0.05 and is dropped entirely unless its
-        // baseline is usable, so the residual is roughly a twentieth of what HRV's was , real, but small.
-        val skinSorted = nightlySkinByDay.entries.sortedBy { it.key }
+        // Skin temp folds over the record too, from the metric series persisted a few lines above rather
+        // than from a column. Membership is deliberately the SAME rule as the other three: every day the
+        // stored record knows about is a member, and a day without a mean is a member holding null, which
+        // is skip-and-hold , so a long strapless stretch ages the baseline out to STALE instead of letting
+        // it pretend to be current. Restricting membership to the days that HAVE a mean would quietly
+        // stitch a gap closed and score a night against a baseline weeks older than it looks.
+        val histSkinByDay = LinkedHashMap<String, Double?>()
+        for (day in histHrvByDay.keys) histSkinByDay[day] = null
+        for ((day, mean) in storedSkinByDay) histSkinByDay[day] = mean
+        val skinSorted = histSkinByDay.entries.sortedBy { it.key }
         val skinPrior = PriorBaselines(skinSorted.map { it.key }, skinSorted.map { it.value }, skinCfg, recoveryEpoch)
 
         // The four Charge baselines as they stood strictly BEFORE `day`.

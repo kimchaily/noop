@@ -29,15 +29,39 @@ package com.noop.analytics
  *
  * Membership and ordering are guarded by behavioural tests instead ([ChargeCausalStabilityTest]:
  * appending a night must not disturb earlier days; dropping the oldest night must move a later one).
- * Two failure classes, two mechanisms — neither substitutes for the other.
+ * Two failure classes, two mechanisms — neither substitutes for the other. When a membership change does
+ * ship, [INPUT_REVISION] is what carries it into the fingerprint so the one-off rebuild still happens.
  *
  * COST: a handful of pure function calls, once per process, behind `by lazy`. No I/O, no clock, no
  * randomness, so the value is stable across launches and identical on every device running the build.
  */
 object ScoringFingerprint {
 
-    /** The current scoring fingerprint, e.g. "chg-1f3a9c02". Stable for a given build. */
-    val value: String by lazy { "chg-%08x".format(hashOfFixtureOutputs()) }
+    /**
+     * Covers the gap the fixture cannot see: a change to WHICH NIGHTS reach the scorers.
+     *
+     * Bump it when a change alters the SET of values folded into a baseline — a driver that starts being
+     * persisted, a membership rule that changes, a source that joins or leaves the fold — while leaving
+     * the arithmetic alone. The fixture supplies its own nights, so none of that moves the hash, and
+     * without a bump the stored history would keep values the current build would no longer produce.
+     *
+     * Yes, this is a hand-maintained constant, the very thing the derived hash exists to avoid. It is a
+     * SUPPLEMENT, not a substitute: forgetting the hash meant a real scoring change went un-rebuilt,
+     * whereas forgetting this one leaves exactly the behaviour that existed before it — no worse than the
+     * status quo, and the behavioural membership tests still fail loudly if the rule itself is wrong.
+     *
+     * History:
+     *   1 , the derived hash alone
+     *   2 , the nightly skin-temp mean is persisted, so its baseline folds over the whole record
+     */
+    const val INPUT_REVISION: Int = 2
+
+    /** The current scoring fingerprint, e.g. "chg-1f3a9c02-i2". Stable for a given build. */
+    val value: String by lazy {
+        // Locale.US, like r4 below: the value is compared for equality and persisted, so a locale whose
+        // digits render differently must not read as a scoring change and trigger a rebuild.
+        "chg-%08x-i%d".format(java.util.Locale.US, hashOfFixtureOutputs(), INPUT_REVISION)
+    }
 
     /**
      * A deliberately varied nightly HRV history: a settling trend, a missing night (skip-and-hold), and
