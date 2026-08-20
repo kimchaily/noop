@@ -2165,7 +2165,11 @@ private suspend fun buildSeriesVitalDetail(vm: AppViewModel, key: String, days: 
         title = "Steps",
         unit = "steps",
         color = Palette.metricCyan,
-        points = vm.repo.resolvedSeries("steps_est", "my-whoop", "0000-00-00", "9999-99-99").values,
+        // #1008: thread the ACTIVE strap id so the estimate spans a strap re-add (the step estimate is
+        // computed per lineage, so a canonical-only read stopped at the switch).
+        points = vm.repo.resolvedSeries(
+            "steps_est", "my-whoop", "0000-00-00", "9999-99-99", strapDeviceId = vm.activeStrapId,
+        ).values,
         format = { it.roundToInt().toString() },
     )
     "active_kcal" -> {

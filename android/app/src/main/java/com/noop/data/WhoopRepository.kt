@@ -774,6 +774,19 @@ class WhoopRepository(private val dao: WhoopDao) {
     suspend fun rrIntervals(deviceId: String, from: Long, to: Long, limit: Int = DEFAULT_LIMIT) =
         dao.rrIntervals(deviceId, from, to, limit)
 
+    /**
+     * RR intervals over the read-side UNION of the active strap id AND the canonical "my-whoop" (SPINE /
+     * #814), deduped by ts with the active strap winning — the [hrSamplesUnion] twin for the beat-to-beat
+     * stream the HRV engines read.
+     *
+     * #1008: a re-added strap banks live RR under its OWN id, so a read pinned to the canonical id saw
+     * nothing from the switch onward and every RR-derived readout (daytime Stress, Stress Index, the HRV
+     * frequency-domain rows, the Coach's stress line) silently fell back to its empty state. A
+     * single-WHOOP install resolves to ONE id ⇒ byte-identical read.
+     */
+    suspend fun rrIntervalsUnion(activeDeviceId: String, from: Long, to: Long, limit: Int = DEFAULT_LIMIT):
+        List<RrInterval> = mergeRrByTs(importedSourceIds(activeDeviceId).map { dao.rrIntervals(it, from, to, limit) })
+
     suspend fun events(deviceId: String, from: Long, to: Long, limit: Int = DEFAULT_LIMIT) =
         dao.events(deviceId, from, to, limit)
 
@@ -1777,6 +1790,18 @@ class WhoopRepository(private val dao: WhoopDao) {
             if (lists.size == 1) return lists[0]
             val byTs = LinkedHashMap<Long, HrSample>()
             for (list in lists) for (s in list) byTs.putIfAbsent(s.ts, s)
+            return byTs.values.sortedBy { it.ts }
+        }
+
+        /**
+         * Merge RR-interval lists (the active-id ∪ canonical union) into one time-ordered stream, deduped
+         * by ts with the FIRST list (the active strap) winning on a tie — the [mergeHrByTs] twin for the
+         * beat-to-beat stream. Single-id ⇒ the list is handed back untouched ⇒ byte-identical. (#1008.)
+         */
+        internal fun mergeRrByTs(lists: List<List<RrInterval>>): List<RrInterval> {
+            if (lists.size == 1) return lists[0]
+            val byTs = LinkedHashMap<Long, RrInterval>()
+            for (list in lists) for (r in list) byTs.putIfAbsent(r.ts, r)
             return byTs.values.sortedBy { it.ts }
         }
 

@@ -136,9 +136,12 @@ fun DataSourcesScreen(vm: AppViewModel) {
 
     LaunchedEffect(Unit) {
         val now = System.currentTimeMillis() / 1000
-        whoopDays = vm.repo.days("my-whoop").size
-        whoopWorkouts = vm.repo.workouts("my-whoop", 0L, now).size
-        whoopHasHr = vm.repo.latestHrSampleTs("my-whoop") != null
+        // #1008: count the whole strap lineage (active ∪ canonical), not just the canonical id — after a
+        // strap re-add these figures understated what is actually on disk, which is exactly backwards for
+        // the screen people check to confirm their data arrived.
+        whoopDays = vm.repo.daysUnion(vm.activeStrapId).size
+        whoopWorkouts = vm.repo.workoutsUnion(vm.activeStrapId, 0L, now).size
+        whoopHasHr = vm.repo.importedSourceIds(vm.activeStrapId).any { vm.repo.latestHrSampleTs(it) != null }
         appleDays = vm.repo.appleDaily("apple-health", "0000-01-01", "9999-12-31").size
         appleWorkouts = vm.repo.workouts("apple-health", 0L, now).size
         hcDays = vm.repo.appleDaily("health-connect", "0000-01-01", "9999-12-31").size
@@ -206,9 +209,10 @@ fun DataSourcesScreen(vm: AppViewModel) {
 
     suspend fun refreshCounts() {
         val nowS = System.currentTimeMillis() / 1000
-        whoopDays = vm.repo.days("my-whoop").size
-        whoopWorkouts = vm.repo.workouts("my-whoop", 0L, nowS).size
-        whoopHasHr = vm.repo.latestHrSampleTs("my-whoop") != null
+        // #1008: same union as the initial load above.
+        whoopDays = vm.repo.daysUnion(vm.activeStrapId).size
+        whoopWorkouts = vm.repo.workoutsUnion(vm.activeStrapId, 0L, nowS).size
+        whoopHasHr = vm.repo.importedSourceIds(vm.activeStrapId).any { vm.repo.latestHrSampleTs(it) != null }
         appleDays = vm.repo.appleDaily("apple-health", "0000-01-01", "9999-12-31").size
         appleWorkouts = vm.repo.workouts("apple-health", 0L, nowS).size
         hcDays = vm.repo.appleDaily("health-connect", "0000-01-01", "9999-12-31").size
