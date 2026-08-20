@@ -1,0 +1,179 @@
+package com.noop.ui
+
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+// MARK: - NoopButton — the unified button system (Design Reset, 2026-06-22)
+//
+// Compose port of StrandDesign/NoopButton.swift. One button, four kinds, no glow. Beauty comes
+// from a crisp filled accent, honest surface fills, restrained spacing and a subtle press —
+// never neon, bloom or a halo. Labels are sentence-case (never ALL CAPS), single line, with the
+// optional leading icon as one unit, and degrade gracefully under Reduce Motion (the press scale
+// drops; only the dim remains).
+
+/** The four button roles. Colour + emphasis differ; geometry is identical across all four. */
+enum class NoopButtonKind {
+    Primary,
+    Secondary,
+    Tertiary,
+    Destructive,
+}
+
+// MARK: - Shared geometry (single source of truth for button shape)
+
+private object NoopButtonMetrics {
+    val height = 48.dp
+    val cornerRadius = 14.dp
+    val hPadding = 18.dp
+    val iconSpacing = 8.dp
+    val minHitTarget = 44.dp
+    const val pressedScale = 0.97f
+    const val pressedOpacity = 0.82f
+    const val disabledOpacity = 0.4f
+}
+
+// MARK: - Design-reset accent (WHOOP blue) — pinned to the iOS values, never gold
+
+/** The reset accent blue (iOS `StrandPalette.accent`: #234F9E light / #60A0E0 dark). */
+private val noopAccentBlue: Color
+    @Composable get() = if (Palette.isLight) Color(0xFF234F9E) else Color(0xFF60A0E0)
+
+/** Crisp white label/icon on accent + critical fills. */
+private val noopOnFill: Color = Color(0xFFFFFFFF)
+
+/** Resolves a [NoopButtonKind] to its concrete fill / label / border tokens. */
+private data class NoopButtonAppearance(
+    val fill: Color?,
+    val label: Color,
+    val border: Color?,
+)
+
+@Composable
+private fun appearanceFor(kind: NoopButtonKind): NoopButtonAppearance = when (kind) {
+    NoopButtonKind.Primary -> NoopButtonAppearance(
+        fill = noopAccentBlue, label = noopOnFill, border = null,
+    )
+    NoopButtonKind.Secondary -> NoopButtonAppearance(
+        fill = Palette.surfaceRaised, label = Palette.textPrimary, border = Palette.hairline,
+    )
+    NoopButtonKind.Tertiary -> NoopButtonAppearance(
+        fill = null, label = noopAccentBlue, border = null,
+    )
+    NoopButtonKind.Destructive -> NoopButtonAppearance(
+        fill = Palette.statusCritical, label = noopOnFill, border = null,
+    )
+}
+
+/**
+ * The unified button. A sentence-case title, an optional leading icon, a [NoopButtonKind], an
+ * optional [fullWidth], and an action. Crisp, flat, glow-free; subtle press; 44dp hit floor;
+ * Reduce-Motion aware.
+ */
+@Composable
+fun NoopButton(
+    text: String,
+    leadingIcon: ImageVector? = null,
+    kind: NoopButtonKind = NoopButtonKind.Primary,
+    fullWidth: Boolean = false,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val reduced = rememberReduceMotion()
+    val appearance = appearanceFor(kind)
+
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+
+    val targetScale = if (pressed && !reduced) NoopButtonMetrics.pressedScale else 1f
+    val scale by animateFloatAsState(
+        targetValue = targetScale,
+        animationSpec = if (reduced) tween(0) else NoopMotion.value(),
+        label = "NoopButton.scale",
+    )
+    val opacity = when {
+        !enabled -> NoopButtonMetrics.disabledOpacity
+        pressed -> NoopButtonMetrics.pressedOpacity
+        else -> 1f
+    }
+
+    val shape = RoundedCornerShape(NoopButtonMetrics.cornerRadius)
+
+    var box = modifier
+        .graphicsLayer { scaleX = scale; scaleY = scale }
+        .alpha(opacity)
+        .let { if (fullWidth) it.fillMaxWidth() else it }
+        .height(NoopButtonMetrics.height)
+        .defaultMinSize(minHeight = NoopButtonMetrics.minHitTarget)
+        .clip(shape)
+
+    if (appearance.fill != null) box = box.background(appearance.fill, shape)
+    if (appearance.border != null) box = box.border(BorderStroke(1.dp, appearance.border), shape)
+
+    box = box
+        .clickable(
+            interactionSource = interaction,
+            indication = null,
+            enabled = enabled,
+            role = Role.Button,
+            onClick = onClick,
+        )
+        .padding(horizontal = NoopButtonMetrics.hPadding)
+
+    Row(
+        modifier = box,
+        horizontalArrangement = Arrangement.spacedBy(
+            NoopButtonMetrics.iconSpacing, Alignment.CenterHorizontally,
+        ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (leadingIcon != null) {
+            Icon(
+                imageVector = leadingIcon,
+                contentDescription = null,
+                tint = appearance.label,
+                modifier = Modifier.height(18.dp),
+            )
+        }
+        Text(
+            text = text,
+            style = NoopType.headline.copy(
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.2.sp,
+            ),
+            color = appearance.label,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
