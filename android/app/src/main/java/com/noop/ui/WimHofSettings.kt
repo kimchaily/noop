@@ -88,7 +88,7 @@ internal fun WimHofSettingsSection(expanded: Boolean, onToggle: () -> Unit) {
         trackUri = uri.toString()
     }
 
-    SettingsSection(
+    NoopSettingsSection(
         icon = Icons.Filled.AcUnit,
         title = "Wim Hof breathwork",
         expanded = expanded,
@@ -96,7 +96,7 @@ internal fun WimHofSettingsSection(expanded: Boolean, onToggle: () -> Unit) {
         blurb = "Rounds of power breathing and breath holds, guided on their own screen. A finished session can add its completed rounds straight into your journal.",
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            ToggleRow(
+            SettingsToggleRow(
                 title = "Log rounds to the journal",
                 detail = "When a session ends, add the rounds you completed to your morning or evening breathwork item. Only rounds carried through their recovery hold are counted, and repeat sessions add to the day rather than replacing it.",
                 checked = autoJournal,
@@ -107,7 +107,7 @@ internal fun WimHofSettingsSection(expanded: Boolean, onToggle: () -> Unit) {
             )
 
             if (autoJournal) {
-                RowDivider()
+                SettingsRowDivider()
                 JournalTargetPicker(
                     label = "Morning item",
                     items = catalogItems,
@@ -127,7 +127,7 @@ internal fun WimHofSettingsSection(expanded: Boolean, onToggle: () -> Unit) {
                     },
                 )
 
-                RowDivider()
+                SettingsRowDivider()
                 FormRow(label = "Morning ends at") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(onClick = {
@@ -154,7 +154,7 @@ internal fun WimHofSettingsSection(expanded: Boolean, onToggle: () -> Unit) {
                 )
             }
 
-            RowDivider()
+            SettingsRowDivider()
 
             // Optional ambient track. Linked, never imported — and honest about why it can't be synced.
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -180,7 +180,7 @@ internal fun WimHofSettingsSection(expanded: Boolean, onToggle: () -> Unit) {
                 }
             }
 
-            RowDivider()
+            SettingsRowDivider()
 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Safety briefing", style = NoopType.subhead, color = Palette.textPrimary)
