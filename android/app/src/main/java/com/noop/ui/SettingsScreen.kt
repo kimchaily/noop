@@ -1215,6 +1215,15 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
             }
         }
 
+        // --- Wim Hof breathwork ---
+        // The guided session itself lives on its own screen; what belongs HERE is the wiring the screen
+        // can't sensibly ask for mid-session: which of the user's own journal items a finished session
+        // writes into, and where "morning" stops being morning.
+        WimHofSettingsSection(
+            expanded = sectionExpanded("Wim Hof breathwork"),
+            onToggle = { toggleSection("Wim Hof breathwork") },
+        )
+
         SettingsSection(
             icon = Icons.Filled.Storage,
             title = "Backup & restore",
@@ -2621,7 +2630,7 @@ private fun SettingsDisclosure(
  * content. A faint brand-green wash anchors the card to Choop's neutral chrome (mirrors macOS).
  */
 @Composable
-private fun SettingsSection(
+internal fun SettingsSection(
     icon: ImageVector,
     title: String,
     blurb: String,
@@ -2815,7 +2824,7 @@ private fun ThemeSwatchCard(
  * reads consistently. The switch colours mirror the rest of Settings (gold track when on).
  */
 @Composable
-private fun ToggleRow(
+internal fun ToggleRow(
     title: String,
     detail: String,
     checked: Boolean,
@@ -2870,7 +2879,7 @@ internal fun FormRow(label: String, control: @Composable () -> Unit) {
 // MARK: - Shared bits
 
 @Composable
-private fun RowDivider() {
+internal fun RowDivider() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
