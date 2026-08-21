@@ -579,7 +579,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         topBackground = if (showDayCycleBackground) { { LiquidScreenSky() } } else null,
     ) {
         // --- Appearance (Theme) ---
-        SettingsSection(
+        NoopSettingsSection(
             icon = Icons.Filled.Brightness6,
             title = "Appearance",
             expanded = sectionExpanded("Appearance"),
@@ -664,7 +664,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
             // keeps the calm identity colours; on tints the Today vital tiles, rows and Recovery-vitals
             // card green→amber→red by how far each reading sits from your personal baseline, exactly like
             // the Vital Signs screen (same VitalStatus banding).
-            ToggleRow(
+            SettingsToggleRow(
                 title = "Colour vitals by state on Today",
                 detail = "Tints the Today vital tiles, rows and Recovery-vitals card by state — green when a reading sits on your personal baseline, amber to red as it drifts, like the Vital Signs screen. Off by default (fixed identity colours). Note: these colours are baseline-relative, so the same reading can shift colour from day to day as your trailing baseline moves.",
                 checked = colourVitalsByState,
@@ -674,7 +674,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 },
             )
 
-            RowDivider()
+            SettingsRowDivider()
             // Today layout — reorder / hide the top-level Today sections (TodaySectionPrefs). Opens the
             // shared TodaySectionsEditorDialog; TodayScreen re-reads the layout when you return to it.
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -694,10 +694,10 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 )
             }
 
-            RowDivider()
+            SettingsRowDivider()
             // Support & donation visibility — one switch for all of it (Today header heart, the Support
             // card, the donation nudge, and the More → Support entry). On by default.
-            ToggleRow(
+            SettingsToggleRow(
                 title = "Show support & donation",
                 detail = "Shows the support heart in the Today header, the Support card, the donation nudge, and the More → Support entry. Turn it off to hide all of them. On by default.",
                 checked = showSupportSurfaces,
@@ -707,7 +707,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 },
             )
 
-            RowDivider()
+            SettingsRowDivider()
             // Units — folded in from its own card. Display-only: nothing stored changes; Choop keeps
             // everything in SI and converts at the point of display.
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -730,7 +730,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         },
                     )
                 }
-                RowDivider()
+                SettingsRowDivider()
                 FormRow(label = "Temperature") {
                     // Three-way: "Match" follows the system above; °C / °F pin it explicitly. Stored as an
                     // empty string ("match") or the TemperatureUnit raw value.
@@ -750,7 +750,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         },
                     )
                 }
-                RowDivider()
+                SettingsRowDivider()
                 // Effort scale (#268) — Choop's native 0–100 Effort or WHOOP's 0–21 Day Strain axis.
                 // Display-only; the stored value never changes, so a flip just re-labels every read-out.
                 FormRow(label = "Effort scale") {
@@ -766,7 +766,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 }
             }
 
-            RowDivider()
+            SettingsRowDivider()
             // App icon — folded in from its own card.
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("App icon", style = NoopType.body, color = Palette.textPrimary)
@@ -790,7 +790,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         }
 
         // --- Strap ---
-        SettingsSection(
+        NoopSettingsSection(
             icon = Icons.Filled.Sensors,
             title = "Strap",
             expanded = sectionExpanded("Strap"),
@@ -1086,7 +1086,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         }
 
         // --- Health & wellness (v5 opt-in toggles) ---
-        SettingsSection(
+        NoopSettingsSection(
             icon = Icons.Filled.Science,
             title = "Health & wellness",
             expanded = sectionExpanded("Health & wellness"),
@@ -1094,7 +1094,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
             blurb = "Optional, on-device wellness signals. Each is off by default, computed only on this phone from data you already have, and never a medical diagnosis.",
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                ToggleRow(
+                SettingsToggleRow(
                     title = "Illness heads-up",
                     detail = "Watches your resting heart rate, HRV and skin temperature for the pattern that often shows up before you feel unwell, and surfaces a gentle heads-up. An observation about your own numbers, not a diagnosis.",
                     checked = illnessWatch,
@@ -1103,14 +1103,14 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         vm.setIllnessWatchEnabled(it)
                     },
                 )
-                RowDivider()
+                SettingsRowDivider()
                 // #801 — not offered on a male profile (it would just sit at "Learning your pattern"). Hidden
                 // when off for a male profile so it can't be enabled here; still shown when already on so it
                 // can be turned off — mirroring HealthScreen's cycle opt-in gate (cycleOptInApplies). The
                 // sister surfaces (Health opt-in, the card's off-control) were sex-gated in v7.3.2; this
                 // Settings toggle was the one surface that was missed, so a male profile could enable it here.
                 if (cycleTracking || cycleOptInApplies(profile.sex)) {
-                    ToggleRow(
+                    SettingsToggleRow(
                         title = "Cycle awareness",
                         detail = "Reads a coarse menstrual-cycle phase from your nightly skin-temperature shift, on this device only. Awareness only: not contraception, not a fertility predictor, not a medical service.",
                         checked = cycleTracking,
@@ -1119,9 +1119,9 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                             vm.setCycleTrackingEnabled(it)
                         },
                     )
-                    RowDivider()
+                    SettingsRowDivider()
                 }
-                ToggleRow(
+                SettingsToggleRow(
                     title = "Hydration tracking",
                     detail = "Adds a simple fluid log with a daily goal that adjusts to your effort. Tap to add a sip, cup or bottle and watch a progress ring fill. On this phone only. Nothing is synced.",
                     checked = hydrationTracking,
@@ -1130,8 +1130,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         NoopPrefs.setHydrationTracking(context, it)
                     },
                 )
-                RowDivider()
-                ToggleRow(
+                SettingsRowDivider()
+                SettingsToggleRow(
                     title = "Auto-detect workouts",
                     detail = "After a sync, Choop looks over your recent heart rate for a sustained, raised stretch that looks like exercise and offers to save it. It only ever suggests. Nothing is saved until you tap Save, and you can dismiss any suggestion. Deliberately conservative, so the odd workout may be missed. On this phone only.",
                     checked = autoDetectWorkouts,
@@ -1140,8 +1140,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         NoopPrefs.setAutoDetectWorkouts(context, it)
                     },
                 )
-                RowDivider()
-                ToggleRow(
+                SettingsRowDivider()
+                SettingsToggleRow(
                     title = "Keep screen on during a workout",
                     detail = "Holds the screen awake while you're recording a workout, so your live heart rate stays visible without the phone dimming. Only applies during a recording. The screen sleeps normally the rest of the time. Leaving it on does use a bit more battery, and means your unlocked screen stays visible for the whole workout, so flip it off if that's a concern.",
                     checked = workoutKeepScreenOn,
@@ -1150,10 +1150,10 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         NoopPrefs.of(context).edit().putBoolean("workoutKeepScreenOn", it).apply()
                     },
                 )
-                RowDivider()
+                SettingsRowDivider()
                 // BETA + default ON (the one exception to this section's off-by-default rule): the flag
                 // gates the Today entry so anyone can wave the beta away here with one flip.
-                ToggleRow(
+                SettingsToggleRow(
                     title = "Live Sessions (beta)",
                     detail = "Silence-first strap coaching during workouts.",
                     checked = liveSessionsBeta,
@@ -1162,8 +1162,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         LiveSessionPrefs.setEnabled(context, it)
                     },
                 )
-                RowDivider()
-                ToggleRow(
+                SettingsRowDivider()
+                SettingsToggleRow(
                     title = "Stress check-ins (haptic)",
                     detail = "Lets Choop notice a fresh HRV dip while you're still and offer a minute to breathe. \"Stress\" here is an autonomic proxy from your own baseline, never a diagnosis. The strap gives one light confirming buzz; no push notification.",
                     checked = stressCheckIn,
@@ -1175,7 +1175,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     },
                 )
                 if (stressCheckIn) {
-                    ToggleRow(
+                    SettingsToggleRow(
                         title = "Offer a breath automatically",
                         detail = "When a dip is detected, surface the check-in card on its own (rate-limited, quiet-hours aware). Off keeps it manual.",
                         checked = stressAutoNudge,
@@ -1185,8 +1185,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         },
                     )
                 }
-                RowDivider()
-                ToggleRow(
+                SettingsRowDivider()
+                SettingsToggleRow(
                     title = "Rhythm (experimental)",
                     detail = "An experimental picture of your beat-to-beat timing: a Poincaré scatter and plain regularity stats from quiet resting windows. Not an ECG and not a diagnosis; you'll read a short disclaimer and accept before it turns on.",
                     checked = rhythmEnabled,
@@ -1202,8 +1202,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                         }
                     },
                 )
-                RowDivider()
-                ToggleRow(
+                SettingsRowDivider()
+                SettingsToggleRow(
                     title = "Share on-device signals with the Coach",
                     detail = "When the opt-in Coach is set up with your own key, also include a short summary of your strongest on-device patterns and Lab Book markers in its context. Summary only; no raw data leaves your phone. Requires the Coach's own data consent first.",
                     checked = coachSignals,
@@ -1215,7 +1215,16 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
             }
         }
 
-        SettingsSection(
+        // --- Wim Hof breathwork ---
+        // The guided session itself lives on its own screen; what belongs HERE is the wiring the screen
+        // can't sensibly ask for mid-session: which of the user's own journal items a finished session
+        // writes into, and where "morning" stops being morning.
+        WimHofSettingsSection(
+            expanded = sectionExpanded("Wim Hof breathwork"),
+            onToggle = { toggleSection("Wim Hof breathwork") },
+        )
+
+        NoopSettingsSection(
             icon = Icons.Filled.Storage,
             title = "Backup & restore",
             expanded = sectionExpanded("Backup & restore"),
@@ -1321,7 +1330,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         // A nav row into the Test Centre: the single home for the diagnostic, log and test controls (spec
         // section 7). The strap log, recalibrate, scheduled export and experimental toggles also live there
         // on the same bindings, so this is a faster door to the full set without growing this screen.
-        SettingsSection(
+        NoopSettingsSection(
             icon = Icons.Filled.BugReport,
             title = "Test Centre",
             blurb = "Turn on a test for the thing that's wrong, wear the strap, then tap Report. Your strap log, recalibrate, scheduled export and experimental probes all live here too.",
@@ -1342,7 +1351,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         // Recalibrate re-learns it from tonight onward. Writes now-seconds to BOTH noop.hrvBaselineEpoch
         // and noop.recoveryBaselineEpoch (so HRV plus resting HR / respiration / skin temp re-anchor);
         // foldHistory drops every night before that epoch and re-seeds. Mirrors the iOS/Mac button.
-        SettingsSection(
+        NoopSettingsSection(
             icon = Icons.Filled.Favorite,
             title = "Charge",
             blurb = "Charge is Choop's daily readiness score, learned from your own HRV, resting heart rate and more over time. Your history stays.",
@@ -1542,7 +1551,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
 
         // --- Experimental · WHOOP 5 / MG --- (hidden when the user is confidently on a 4.0, #22)
         if (showFiveMGControls) {
-        SettingsSection(
+        NoopSettingsSection(
             icon = Icons.Filled.Science,
             title = "Experimental · WHOOP 5 / MG",
             blurb = "Live heart rate already works on a WHOOP 5/MG strap. These probes go further and try to coax more out of it. They are guesses, off by default, and only ever touch a 5/MG strap. WHOOP 4.0 is never affected.",
@@ -1752,7 +1761,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
 
         // --- Diagnostics (every model) --- the raw-sensor CSV export is split out of the 5/MG card so it
         // stays available on a WHOOP 4.0 too (#22): a 4.0 owner still needs it to share decoded streams.
-        SettingsSection(
+        NoopSettingsSection(
             icon = Icons.Filled.Science,
             title = "Diagnostics",
             blurb = "A read-only export of the decoded sensor streams Choop already stores. Works on any strap. Nothing is written to your device, and nothing is uploaded.",
@@ -1839,7 +1848,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         // an intermittent overnight fault leaves a dated log waiting instead of needing a manual share. The
         // feature core lives in DebugExportScheduler/DebugExportSettings; this is just the controls. OFF by
         // default. SharedPreferences isn't reactive, so the Switch + time mirror into local state.
-        SettingsSection(
+        NoopSettingsSection(
             icon = Icons.Filled.Storage,
             title = "Scheduled debug export (#510)",
             blurb = "Once a day at a time you choose, Choop writes a timestamped strap log (plus the raw 5/MG capture, if you have one) to its export folder. No sharing, nothing leaves the phone. Useful for chasing an intermittent overnight fault. Off by default.",
@@ -1940,7 +1949,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         } // end SettingsDisclosure("Advanced")
 
         // --- About ---
-        SettingsSection(
+        NoopSettingsSection(
             icon = Icons.Filled.Info,
             title = "About",
             expanded = sectionExpanded("About"),
@@ -2333,7 +2342,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     )
                 }
 
-                RowDivider()
+                SettingsRowDivider()
 
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Overline("Built on")
@@ -2346,7 +2355,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     color = Palette.textTertiary,
                 )
 
-                RowDivider()
+                SettingsRowDivider()
 
                 // Support link — opens the project's contact email (same address the
                 // Support screen lists). Choop is anonymous, so email is the support channel.
@@ -2621,7 +2630,7 @@ private fun SettingsDisclosure(
  * content. A faint brand-green wash anchors the card to Choop's neutral chrome (mirrors macOS).
  */
 @Composable
-private fun SettingsSection(
+internal fun NoopSettingsSection(
     icon: ImageVector,
     title: String,
     blurb: String,
@@ -2815,7 +2824,7 @@ private fun ThemeSwatchCard(
  * reads consistently. The switch colours mirror the rest of Settings (gold track when on).
  */
 @Composable
-private fun ToggleRow(
+internal fun SettingsToggleRow(
     title: String,
     detail: String,
     checked: Boolean,
@@ -2870,7 +2879,7 @@ internal fun FormRow(label: String, control: @Composable () -> Unit) {
 // MARK: - Shared bits
 
 @Composable
-private fun RowDivider() {
+internal fun SettingsRowDivider() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
