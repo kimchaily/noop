@@ -36,10 +36,12 @@ class WimHofJournalTest {
     }
 
     @Test fun an_out_of_range_cutoff_is_clamped_rather_than_trusted() {
-        // 0 would make every session evening and 99 would make every session morning — neither is a
-        // reading the user could have meant, so both are pulled back into the supported band.
+        // A stored 0 would make every session evening; clamped up to 1, midnight is still morning.
         assertEquals(WimHofSlot.MORNING, wimHofSlot(0, cutoffHour = 0))
-        assertEquals(WimHofSlot.MORNING, wimHofSlot(23, cutoffHour = 99))
+        // A stored 99 would make every session morning; clamped down to 23, the last hour of the
+        // day is still evening. Both assertions fail if the clamp is removed.
+        assertEquals(WimHofSlot.EVENING, wimHofSlot(23, cutoffHour = 99))
+        assertEquals(WimHofSlot.MORNING, wimHofSlot(22, cutoffHour = 99))
     }
 
     @Test fun every_hour_of_the_day_resolves_to_a_slot() {
