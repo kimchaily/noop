@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "8.2.41"
+    const val CURRENT_VERSION = "8.2.42"
 
     data class Release(
         val version: String,
@@ -36,6 +36,20 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "8.2.42",
+            title = "Wim Hof breathwork, with your rounds logged to the journal",
+            date = "August 2026",
+            items = listOf(
+                "**Guided Wim Hof sessions.** Rounds of fast power breathing, then a breath hold on empty lungs, then a recovery hold on full lungs. Set the rounds (3 by default) and the breaths per round (30 by default), and Choop counts you through the whole thing.",
+                "**A breath you watch, not a number you read.** The vessel fills as you breathe in and empties as you let go, sits empty through the hold and full through the recovery breath. Your heart rate is off by default and one switch away — power breathing raises it on purpose, so the number is easy to misread.",
+                "**Hold it your way.** Hold as long as is comfortable and tap when you need to breathe, and Choop records the time and your longest yet. Or set a target per round and let it count you down.",
+                "**Your rounds land in your journal.** Finish a session and the rounds you completed are added to your own morning or evening breathwork item, chosen by the time of day. A second session later adds to the day rather than replacing it, and only rounds you carry through the recovery hold ever count.",
+                "**Guidance you can hear.** Soft tones at each phase, spoken cues in your phone's own voice, or silence. Wearing the strap, you also feel a buzz at every phase change, so the whole session works with your eyes shut.",
+                "**Bring your own music.** Point Choop at a track and it plays as a quiet loop underneath. The guide keeps the timing, and the file stays where it is on your phone.",
+                "**A safety briefing first.** Never in or near water, never standing or driving, and not for everyone. You read it and acknowledge it once before your first session, and can call it back up any time.",
+            ),
+        ),
         Release(
             version = "8.2.41",
             title = "Skin temperature counts again",
