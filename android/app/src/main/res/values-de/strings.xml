@@ -12,6 +12,8 @@
     <string name="nav_intervals">Intervalle</string>
     <string name="nav_sleep">Schlaf</string>
     <string name="nav_breathe">Atmen</string>
+    <!-- A person's name, so it stays as it is in German. -->
+    <string name="nav_wim_hof">Wim Hof</string>
     <string name="nav_stress">Stress</string>
     <string name="nav_workouts">Workouts</string>
     <string name="nav_trends">Trends</string>

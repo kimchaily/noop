@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.AutoAwesome
@@ -142,6 +143,10 @@ private enum class Destination(
     // Group: Recovery
     Sleep("sleep", R.string.nav_sleep, Icons.Filled.Bedtime),
     Breathe("breathe", R.string.nav_breathe, Icons.Filled.Air),
+    // Its own destination rather than a fourth Breathe mode: the protocol is the opposite of Breathe's
+    // (fast power breathing, not a downshift), its HRV readout would be actively misleading there, and
+    // it carries a first-run safety gate that has no business on the calm-breathing screen.
+    WimHof("wim_hof", R.string.nav_wim_hof, Icons.Filled.AcUnit),
     Stress("stress", R.string.nav_stress, Icons.Filled.Spa),
 
     // Group: Activity
@@ -221,8 +226,8 @@ private val drawerGroups: List<DrawerGroup> = listOf(
     ), defaultExpanded = true),
     DrawerGroup("Body", R.string.more_group_body, listOf(
         Destination.Live, Destination.Workouts, Destination.Health, Destination.VitalSigns,
-        Destination.LabBook, Destination.Stress, Destination.Breathe, Destination.Intervals,
-        Destination.Rhythm,
+        Destination.LabBook, Destination.Stress, Destination.Breathe, Destination.WimHof,
+        Destination.Intervals, Destination.Rhythm,
     ), defaultExpanded = true),
     DrawerGroup("Data", R.string.more_group_data, listOf(
         Destination.FusedRecord, Destination.AppleHealth, Destination.DataSources,
@@ -407,7 +412,20 @@ fun AppRoot(
                     )
                 }
                 composable(Destination.Intervals.route) { IntervalsScreen(viewModel) }
-                composable(Destination.Breathe.route) { BreatheScreen(viewModel) }
+                composable(Destination.Breathe.route) {
+                    BreatheScreen(
+                        viewModel,
+                        onOpenWimHof = { nav.navigateTopLevel(Destination.WimHof.route) },
+                    )
+                }
+                composable(Destination.WimHof.route) {
+                    WimHofScreen(
+                        viewModel,
+                        // The journal-item pickers live in Settings, so both the pre-session status card
+                        // and the post-session summary can hop straight there.
+                        onOpenSettings = { nav.navigateTopLevel(Destination.Settings.route) },
+                    )
+                }
                 composable(Destination.Coach.route) { CoachScreen() }
                 composable(Destination.Explore.route) { TrendsExploreScreen(viewModel) }
                 composable(Destination.Automations.route) { AutomationsScreen(viewModel) }

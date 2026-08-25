@@ -4,6 +4,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Air
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bolt
@@ -143,7 +146,7 @@ private enum class BreatheMode(val label: String) {
  * rolling RMSSD show the autonomic response building. Ports BreathingView.swift.
  */
 @Composable
-fun BreatheScreen(viewModel: AppViewModel) {
+fun BreatheScreen(viewModel: AppViewModel, onOpenWimHof: () -> Unit = {}) {
     val live by viewModel.live.collectAsStateWithLifecycle()
     val bpm by viewModel.bpm.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -560,6 +563,11 @@ fun BreatheScreen(viewModel: AppViewModel) {
         // Coherence estimate.
         CoherenceCard(rmssd)
 
+        // The other direction of breathing. Breathe downshifts; Wim Hof is fast power breathing with
+        // breath holds, and lives on its own screen (different protocol, different readout, its own
+        // safety gate). A link, not a fourth mode, so neither screen has to hedge about the other.
+        WimHofLink(onOpen = onOpenWimHof)
+
         if (!live.bonded) HapticHint()
     }
 }
@@ -699,6 +707,39 @@ internal fun leadingSignedPercent(s: String): Int? {
     val pct = s.indexOf('%')
     if (pct <= 0) return null
     return s.substring(0, pct).replace("+", "").trim().toIntOrNull()
+}
+
+// MARK: - Wim Hof link
+
+/** A tap-through to the Wim Hof screen — the opposite protocol, deliberately kept a screen apart. */
+@Composable
+private fun WimHofLink(onOpen: () -> Unit) {
+    NoopCard(padding = 14.dp) {
+        Row(
+            modifier = Modifier.fillMaxWidth().clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = onOpen,
+            ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.AcUnit, contentDescription = null, tint = Palette.accent,
+                modifier = Modifier.size(16.dp).padding(end = 10.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Wim Hof breathwork", style = NoopType.subhead, color = Palette.textPrimary)
+                Text(
+                    "Rounds of power breathing and breath holds. Guided, with a safety briefing first.",
+                    style = NoopType.caption, color = Palette.textTertiary,
+                )
+            }
+            Icon(
+                Icons.Filled.ArrowForward, contentDescription = null,
+                tint = Palette.textTertiary, modifier = Modifier.size(16.dp),
+            )
+        }
+    }
 }
 
 // MARK: - Haptic hint
