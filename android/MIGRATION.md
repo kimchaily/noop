@@ -74,18 +74,69 @@ GitHub → **Actions → "Android Release APK" → Run workflow**. When it's gre
   from unknown sources" for your file manager if prompted.
 - From now on, dropping a newer Choop APK on top updates **in place** — data intact, no uninstall.
 
-### 6. Restore your data
-Open Choop → **Settings → "Backup & restore" → Import** → pick your `.noopbak`. It validates the
-file (SQLite header, Room origin, `PRAGMA quick_check`) and swaps in your database, then asks you to
-**fully close and reopen** the app. Your entire history is back.
+### 6. Restore your data — at the START of setup
+Open Choop. The **second step of onboarding** ("Coming from another phone?") offers **Restore a backup
+(.noopbak)**; use it there, before pairing a strap or entering a profile. It validates the file (SQLite
+header, Room origin, `PRAGMA quick_check`) and swaps in your database, then asks you to **fully close
+and reopen** the app; the relaunch resumes at *pair your strap*. Your entire history — and your setup
+— is back.
+
+(Already past onboarding? The same restore lives in **Settings → "Backup & restore" → Import**.)
 
 ### 7. Re-grant what a fresh install can't carry over
-These are tied to the OS / the old signature and don't travel in a `.noopbak`:
-- **Re-pair your WHOOP strap** and re-grant runtime permissions: Bluetooth, Notifications, and (if you
-  use them) Health Connect and exact-alarm access.
-- **Re-enter your AI Coach API key** — it lives in the Android Keystore, which is scoped to the
-  app + signature, so it does not survive the reinstall.
-- Re-add the **home-screen widget** and re-pick your app-icon variant if you'd changed it.
+See the full inventory below. The short version: **re-pair your strap**, re-grant Bluetooth /
+Notifications / Health Connect / exact-alarm permissions, **re-enter your AI Coach API key**, re-pick
+your Backup & Sync folder, and re-add the home-screen widget. Everything else comes back with the
+backup.
+
+---
+
+## What a `.noopbak` carries (and the five things it can't)
+
+A `.noopbak` is a ZIP with three entries, and between them they are the whole app:
+
+| Entry | What's in it |
+|---|---|
+| `noop-backup.sqlite` | The database: every HR / HRV / SpO2 / skin-temp / step / respiratory / gravity sample, every sleep session and stage, workouts, daily metrics, the journal (answers *and* your renamed, regrouped, custom questions' history), lab markers, mood, hydration, naps, sleep marks, live sessions, Apple/Health-Connect rows, dismissed workouts and nights, **and the paired-device registry** — which strap owns which day. |
+| `settings.json` | Everything you set that isn't a measurement: profile (age, sex, weight, height, waist, HR-max override), units and the Effort axis, theme + light/dark + chart style, the Today layout (Key Metrics grid, Your-cards dashboard, section order, dismissed cards), the journal catalog (renames, groups, numeric types, custom and hidden questions), **the Charge/HRV baseline anchor dates**, smart alarm, wind-down, wrist alerts (per-app buzz patterns, quiet hours, call alerts), move reminders, nap detection, cycle/illness/hydration toggles, caffeine log and cutoff, Wim Hof settings **and session history**, breathing/biofeedback settings, the experiment you're running, the Updates inbox, manual step calibration, and the experimental opt-ins. |
+| `avatar.jpg` | Your profile photo, when you've set one. |
+
+**The five things that genuinely cannot travel**, because they belong to one install on one phone
+rather than to you:
+
+1. **The Bluetooth pairing.** A bond is negotiated between a strap and a phone; there is no format
+   that exports one. Your straps and all their readings come across — you just bond once on the new
+   phone, and it picks up exactly where the old one left off. (Moving to a *different* strap at the
+   same time? Add it in Settings → Devices rather than just pairing it, so its readings stay separate
+   from your old strap's.)
+2. **The AI Coach API key** and the Oura install key. Both are sealed by the phone's hardware
+   Keystore — they could not be decrypted elsewhere even if they were copied, and a backup file gets
+   put in cloud folders and attached to bug reports, so they are deliberately never written into one.
+3. **Android runtime permissions** (Bluetooth, notifications, Health Connect, exact alarms) and the
+   **Backup & Sync folder**. A permission grant is the OS's record about an install; the new one asks
+   for its own. Your retention setting survives, so you only re-pick the folder.
+4. **Terms acceptance.** A consent record with a timestamp, made on a device by a person — so the new
+   install asks once rather than inheriting someone else's answer.
+5. **Home-screen widgets.** Placed by the launcher, not by Choop.
+
+Deliberately left out because they'd be *wrong*, not because they couldn't be copied: sync cursors and
+"already alerted" latches (restoring them suppresses the first real alert on the new phone), alarms
+already scheduled with the old phone's AlarmManager, the analyze watermark and one-shot repair markers
+(a restore re-scores your history on purpose), and the day-digest / analyze-journal caches, which are
+recomputed work rather than data.
+
+### Restore FIRST, before anything else
+
+On a fresh install the restore is now the **second step of onboarding**, before Bluetooth, before your
+profile, before any source import — because a restore *replaces* the store rather than adding to it.
+Pair a strap or import a WHOOP export first and the restore overwrites what you just did. The other
+imports (WHOOP export, Health Connect, Apple Health) stay later in the flow, where they belong: those
+are additive.
+
+A restore swaps the database file underneath the app, so it ends with "fully close and reopen Choop".
+On that relaunch onboarding resumes at *pair your strap* — the one thing left — instead of starting
+over. Expect the dashboard to fill in over a minute or two: a restore deliberately re-scores your
+recent history in the background.
 
 ---
 

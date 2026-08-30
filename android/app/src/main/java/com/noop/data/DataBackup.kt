@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
+import com.noop.ui.ProfileAvatarStore
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -17,15 +18,22 @@ import java.util.zip.ZipOutputStream
 /**
  * Whole-store EXPORT / IMPORT for device migration.
  *
- * Choop keeps everything on-device in a single Room/SQLite file ([WhoopDatabase.DB_NAME]).
- * Moving to a new phone therefore means moving exactly that one file. There is no cloud,
- * no account, nothing leaves the device except through these two explicit, user-driven
- * file operations (a SAF document the user picks).
+ * Choop keeps every MEASUREMENT on-device in a single Room/SQLite file ([WhoopDatabase.DB_NAME]),
+ * so moving a history to a new phone is mostly moving that one file. What the user CONFIGURED,
+ * though, lives beside it — in SharedPreferences and (for the profile photo) in `filesDir` — so a
+ * `.noopbak` carries three things, and a restore is only a migration when it carries all three.
+ * There is no cloud, no account, nothing leaves the device except through these two explicit,
+ * user-driven file operations (a SAF document the user picks).
  *
- * Export: checkpoint the WAL into the main db file, then write a ZIP (the `.noopbak`
- * format) containing the SQLite file plus a small `settings.json` entry (#1000) with the
- * whitelisted profile/display settings (see [BackupSettingsCodec]), so a restore also
- * brings back weight/height/units and not just the rows. ZIP deflate typically reduces a
+ * Export: checkpoint the WAL into the main db file, then write a ZIP (the `.noopbak` format) with
+ *   1. the SQLite file — every sample, night, workout, journal answer, marker, paired device;
+ *   2. `settings.json` — the nine cross-platform profile/display keys ([BackupSettingsCodec]) plus
+ *      the whole-app-state block ([AppStateCodec]): Today layout, journal renames, theme, baseline
+ *      anchors, alert rules, and the rest of what the user set; and
+ *   3. `avatar.jpg` — the profile photo's bytes, when one is set.
+ *
+ * Entries 2 and 3 are optional and the DB entry stays FIRST, so an older importer (or the Apple
+ * one) reads what it understands and ignores the rest. ZIP deflate typically reduces a
  * 100 MB+ SQLite backup to 10–20 MB — SQLite's page-aligned text data compresses very
  * well. The ZIP is a standard container: users can rename `.noopbak` → `.zip` and
  * extract the SQLite manually with any archive tool on any OS.
@@ -46,6 +54,14 @@ object DataBackup {
 
     /** Entry name of the optional whitelisted-settings JSON (#1000). Matches the Apple exporter. */
     private const val SETTINGS_ENTRY_NAME = BackupSettingsCodec.ENTRY_NAME
+
+    /**
+     * Entry name of the optional profile-photo bytes. The avatar is the one piece of the user's setup
+     * that is a FILE rather than a preference (`filesDir/avatar.jpg`), and its "a photo is set" flag
+     * rides in `settings.json` — so without this entry a restore would claim a photo and show none.
+     * Optional and last, so an importer that doesn't know about it still reads the two entries it does.
+     */
+    private const val AVATAR_ENTRY_NAME = "avatar.jpg"
 
     /** First 16 bytes of every SQLite 3 file: "SQLite format 3\0". */
     private val SQLITE_MAGIC: ByteArray =
@@ -108,6 +124,9 @@ object DataBackup {
         // `.sqlite` entry, so entry order is part of the cross-platform container contract.
         val settingsJson = BackupSettingsBridge.snapshotJson(appContext)
 
+        // The profile photo's bytes (null when none is set — the entry is then simply absent).
+        val avatarFile = ProfileAvatarStore.backupFile(appContext).takeIf { it.isFile }
+
         val resolver = appContext.contentResolver
         val output = resolver.openOutputStream(uri)
             ?: throw IOException("Could not open the chosen file for writing.")
@@ -127,6 +146,11 @@ object DataBackup {
                     if (settingsJson != null) {
                         zip.putNextEntry(ZipEntry(SETTINGS_ENTRY_NAME))
                         zip.write(settingsJson.toByteArray(Charsets.UTF_8))
+                        zip.closeEntry()
+                    }
+                    if (avatarFile != null) {
+                        zip.putNextEntry(ZipEntry(AVATAR_ENTRY_NAME))
+                        avatarFile.inputStream().use { input -> input.copyTo(zip) }
                         zip.closeEntry()
                     }
                 }
@@ -161,17 +185,22 @@ object DataBackup {
         //    If it's a plain SQLite (legacy), copy it to the same temp file.
         //    The container-staging step is factored into [stageBackupSqlite] (a pure file/stream
         //    function) so it can be exercised under real file I/O in unit tests without Room/Context.
-        //    A `settings.json` entry (#1000) is staged alongside when present; the stale-delete first
-        //    matters, or a leftover from an earlier import could masquerade as THIS backup's settings.
+        //    The `settings.json` (#1000) and `avatar.jpg` entries are staged alongside when present;
+        //    the stale-delete first matters, or a leftover from an earlier import could masquerade as
+        //    THIS backup's settings or photo.
         val tempSqlite = File(appContext.cacheDir, "import-extract.sqlite")
         val tempSettings = File(appContext.cacheDir, "import-settings.json")
-        tempSettings.delete()
+        val tempAvatar = File(appContext.cacheDir, "import-avatar.jpg")
+        // The two sidecars are staged and cleaned up together, so no failure path can leave one of
+        // them behind to masquerade as the NEXT import's payload.
+        val sidecars = listOf(tempSettings, tempAvatar)
+        deleteAll(sidecars)
         try {
-            when (val staged = stageBackupSqlite(resolver.openInputStream(uri), header, tempSqlite, tempSettings)) {
+            when (val staged = stageBackupSqlite(resolver.openInputStream(uri), header, tempSqlite, tempSettings, tempAvatar)) {
                 StageResult.OK -> Unit
                 StageResult.CANNOT_OPEN -> return ImportResult.Failed("Could not open the chosen file.")
                 StageResult.NO_DB_IN_ZIP -> {
-                    tempSettings.delete()
+                    deleteAll(sidecars)
                     return ImportResult.Failed("The backup archive doesn't contain a database file.")
                 }
                 StageResult.NOT_A_BACKUP -> return ImportResult.Failed(
@@ -181,14 +210,14 @@ object DataBackup {
             }
         } catch (e: IOException) {
             tempSqlite.delete()
-            tempSettings.delete()
+            deleteAll(sidecars)
             return ImportResult.Failed("Could not read the chosen file: ${e.message}")
         }
 
         // 3. Validate the extracted file is a real SQLite database (magic-byte check).
         if (!isValidSqliteHeader(tempSqlite)) {
             tempSqlite.delete()
-            tempSettings.delete()
+            deleteAll(sidecars)
             return ImportResult.Failed("The backup archive doesn't contain a valid Choop database.")
         }
 
@@ -203,7 +232,7 @@ object DataBackup {
             BackupOrigin.MAC ->
                 return rejectForeign(
                     tempSqlite,
-                    tempSettings,
+                    sidecars,
                     "This isn't a Choop backup from this app. It looks like a backup from the Mac or " +
                         "iOS Choop app (it carries that platform's migration bookkeeping). Restoring it here " +
                         "would strand your store. To move your history across platforms, export the " +
@@ -213,7 +242,7 @@ object DataBackup {
                 if (holdsData(backupTables)) {
                     return rejectForeign(
                         tempSqlite,
-                        tempSettings,
+                        sidecars,
                         "This isn't a Choop backup from this app. It's missing the database bookkeeping a " +
                             "Choop backup carries (it looks like another app's database). Restoring it would " +
                             "strand your store.",
@@ -233,7 +262,7 @@ object DataBackup {
         //     DatabaseIntegrity gate.
         sqliteQuickCheckFailure(tempSqlite)?.let { complaint ->
             tempSqlite.delete()
-            tempSettings.delete()
+            deleteAll(sidecars)
             return ImportResult.Failed(
                 "This backup file is damaged and can't be restored (SQLite reports: $complaint). " +
                     "Your current data is untouched. Try an earlier backup file."
@@ -254,7 +283,7 @@ object DataBackup {
             if (dbFile.exists()) dbFile.copyTo(rollbackFile, overwrite = true)
         } catch (e: IOException) {
             tempSqlite.delete()
-            tempSettings.delete()
+            deleteAll(sidecars)
             return ImportResult.Failed("Could not back up the current data: ${e.message}")
         }
 
@@ -268,7 +297,7 @@ object DataBackup {
             runCatching { if (rollbackFile.exists()) rollbackFile.copyTo(dbFile, overwrite = true) }
             rollbackFile.delete()
             tempSqlite.delete()
-            tempSettings.delete()
+            deleteAll(sidecars)
             return ImportResult.Failed("Import failed, your data is unchanged: ${e.message}")
         }
 
@@ -280,7 +309,7 @@ object DataBackup {
         //     On failure, roll back to the `.import-bak` snapshot automatically and say so.
         sqliteQuickCheckFailure(dbFile)?.let { complaint ->
             tempSqlite.delete()
-            tempSettings.delete()
+            deleteAll(sidecars)
             walFile.delete()
             shmFile.delete()
             val message: String
@@ -306,16 +335,27 @@ object DataBackup {
             return ImportResult.Failed(message)
         }
 
-        // 7. #1000: re-apply the backup's whitelisted profile/display settings (weight, height, age,
-        //    sex, HR-max override, unit prefs) — but only NOW, after the DB swap landed. Every failure
-        //    path above returns without touching settings. Legacy single-entry backups staged no
-        //    settings file and restore exactly as before; a malformed settings entry degrades to
-        //    "fewer keys applied" inside the codec and can never fail the restore.
+        // 7. #1000: re-apply the backup's profile/display settings (weight, height, age, sex, HR-max
+        //    override, unit prefs) AND the whole-app-state block that now rides with them (the Today
+        //    layout, journal renames, theme, baseline anchors, alert rules…) — but only NOW, after the
+        //    DB swap landed. Every failure path above returns without touching settings. Legacy
+        //    single-entry backups staged no settings file and restore exactly as before; a malformed
+        //    settings entry degrades to "fewer keys applied" inside the codec and can never fail the
+        //    restore.
         if (tempSettings.exists()) {
             runCatching {
                 BackupSettingsBridge.apply(appContext, tempSettings.readText(Charsets.UTF_8))
             }
             tempSettings.delete()
+        }
+
+        // 7b. The profile photo's bytes, into the same `filesDir/avatar.jpg` the store reads at launch.
+        //     Its `avatar_present` flag came down with the settings above, so the two agree. A backup
+        //     with no photo leaves whatever this install had — a restore is not the place to delete a
+        //     photo the user set here. A copy that fails costs the photo, never the restore.
+        if (tempAvatar.exists()) {
+            runCatching { tempAvatar.copyTo(ProfileAvatarStore.backupFile(appContext), overwrite = true) }
+            tempAvatar.delete()
         }
 
         rollbackFile.delete()
@@ -351,9 +391,10 @@ object DataBackup {
      * the live import uses (no behaviour fork between test and production).
      *
      * When [settingsDest] is given, a `settings.json` entry (#1000) is ALSO staged there if the ZIP
-     * carries one (either platform's exporter may have written it, in either entry order). Its absence
-     * is not an error — every pre-#1000 backup is a single-entry ZIP — and it never affects the
-     * returned [StageResult]: the DB is the payload that decides success.
+     * carries one (either platform's exporter may have written it, in either entry order); likewise
+     * [avatarDest] for the profile-photo entry. Their absence is not an error — every pre-#1000 backup
+     * is a single-entry ZIP, and a user with no photo writes no avatar entry — and neither ever affects
+     * the returned [StageResult]: the DB is the payload that decides success.
      *
      * NOTE this does NOT validate the staged file's SQLite header or origin; [importFrom] does that
      * next, on the staged file. Keeping staging and validation separate keeps each pure-testable.
@@ -363,6 +404,7 @@ object DataBackup {
         header: ByteArray,
         dest: File,
         settingsDest: File? = null,
+        avatarDest: File? = null,
     ): StageResult {
         if (input == null) return StageResult.CANNOT_OPEN
         input.use { stream ->
@@ -370,6 +412,7 @@ object DataBackup {
                 header.startsWith(ZIP_MAGIC) -> {
                     var foundDb = false
                     var foundSettings = false
+                    var foundAvatar = false
                     ZipInputStream(stream).use { zip ->
                         var entry = zip.nextEntry
                         while (entry != null) {
@@ -383,9 +426,17 @@ object DataBackup {
                                     FileOutputStream(settingsDest).use { out -> zip.copyTo(out) }
                                     foundSettings = true
                                 }
+                                !entry.isDirectory && !foundAvatar && avatarDest != null &&
+                                    entry.name.substringAfterLast('/') == AVATAR_ENTRY_NAME -> {
+                                    FileOutputStream(avatarDest).use { out -> zip.copyTo(out) }
+                                    foundAvatar = true
+                                }
                             }
                             // Everything we could want is staged - stop reading the archive.
-                            if (foundDb && (settingsDest == null || foundSettings)) break
+                            if (foundDb &&
+                                (settingsDest == null || foundSettings) &&
+                                (avatarDest == null || foundAvatar)
+                            ) break
                             entry = zip.nextEntry
                         }
                     }
@@ -401,11 +452,11 @@ object DataBackup {
     }
 
     /** Write [dbFile]'s bytes into a deflate ZIP at [dest] (the `.noopbak` container), DB entry first,
-     *  plus the optional `settings.json` entry (#1000) when [settingsJson] is non-null. Context-free
-     *  twin of the stream the live [exportTo] writes, so tests round-trip a real archive of either
-     *  shape (legacy single-entry when [settingsJson] is null). */
+     *  plus the optional `settings.json` entry (#1000) when [settingsJson] is non-null and the optional
+     *  `avatar.jpg` entry when [avatarFile] is. Context-free twin of the stream the live [exportTo]
+     *  writes, so tests round-trip a real archive of any shape (legacy single-entry when both are null). */
     @Throws(IOException::class)
-    fun writeBackupZip(dbFile: File, dest: File, settingsJson: String? = null) {
+    fun writeBackupZip(dbFile: File, dest: File, settingsJson: String? = null, avatarFile: File? = null) {
         FileOutputStream(dest).use { out ->
             ZipOutputStream(out).use { zip ->
                 zip.putNextEntry(ZipEntry(ZIP_ENTRY_NAME))
@@ -414,6 +465,11 @@ object DataBackup {
                 if (settingsJson != null) {
                     zip.putNextEntry(ZipEntry(SETTINGS_ENTRY_NAME))
                     zip.write(settingsJson.toByteArray(Charsets.UTF_8))
+                    zip.closeEntry()
+                }
+                if (avatarFile != null) {
+                    zip.putNextEntry(ZipEntry(AVATAR_ENTRY_NAME))
+                    avatarFile.inputStream().use { input -> input.copyTo(zip) }
                     zip.closeEntry()
                 }
             }
@@ -512,10 +568,15 @@ object DataBackup {
     }
 
     /** Delete the staged temp files and return a Failed result, keeping the live DB untouched. */
-    private fun rejectForeign(tempSqlite: File, tempSettings: File, message: String): ImportResult {
+    private fun rejectForeign(tempSqlite: File, sidecars: List<File>, message: String): ImportResult {
         tempSqlite.delete()
-        tempSettings.delete()
+        deleteAll(sidecars)
         return ImportResult.Failed(message)
+    }
+
+    /** Best-effort delete of the staged sidecar files; a delete that fails must not fail an import. */
+    private fun deleteAll(files: List<File>) {
+        for (file in files) runCatching { file.delete() }
     }
 
     // ── Integrity gate (#1014 defence-in-depth; twin of the Apple DatabaseIntegrity) ─────

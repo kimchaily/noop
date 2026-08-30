@@ -23,6 +23,14 @@ import org.json.JSONObject
  * issues, so this file must stay safe to share. Unknown keys in an incoming `settings.json` are
  * dropped; a backup with no `settings.json` (every pre-#1000 backup) is a DB-only restore, as before.
  *
+ * Nine keys, however, is not a migration — everything else the user had configured (the Today layout,
+ * journal renames, the theme, baseline anchors, alert rules…) still arrived on the new phone as
+ * defaults. So the same `settings.json` now ALSO carries a `stores` block: a whole-app-state snapshot
+ * of every preferences file, under a deny-list rather than a whitelist. See [AppStateCodec], which
+ * owns that half and the reasoning for what is deliberately left out of it. The two layers are
+ * independent — either can be absent — and the flat keys below stay exactly what they were, so a
+ * backup written here still restores on the Apple side and vice versa.
+ *
  * [BackupSettingsCodec] is pure JSON + whitelist (plain-JVM unit-testable, no Context); the
  * SharedPreferences boundary lives in [BackupSettingsBridge] below.
  */
@@ -41,8 +49,13 @@ object BackupSettingsCodec {
      * Profile: the body metrics that power HR zones / calories / recovery baselines, plus the manual
      * HR-max override (`profile.hrMax`, 0 = auto/Tanaka). Display: the metric/imperial system, the
      * separate temperature override ("" = match the system), and the Effort axis (#268). Deliberately
-     * EXCLUDED: step calibration (per-strap, not per-person), the steps-engine fitted outputs
-     * (derived), and every noop.* toggle that is device- or install-specific.
+     * EXCLUDED from THIS list: step calibration (per-strap, not per-person), the steps-engine fitted
+     * outputs (derived), and every noop.* toggle that is device- or install-specific.
+     *
+     * Excluded here does not mean "lost": the `stores` block ([AppStateCodec]) carries the rest of
+     * this device's preferences, including the manual step calibration. This list stays exactly the
+     * nine because it is the CROSS-PLATFORM contract — adding a key here changes what the Apple side
+     * must also understand, and its twin has to be updated in the same change.
      */
     val WHITELIST: Map<String, Kind> = linkedMapOf(
         "profile.age" to Kind.INT,
@@ -61,14 +74,28 @@ object BackupSettingsCodec {
      * nothing whitelisted is present (the exporter then writes a DB-only backup — indistinguishable
      * from a legacy one, which is exactly the right degrade).
      */
-    fun encode(values: Map<String, Any?>): String? {
+    fun encode(values: Map<String, Any?>, stores: JSONObject? = null): String? {
         val obj = JSONObject()
         for ((key, kind) in WHITELIST) {
             val coerced = coerce(values[key], kind) ?: continue
             obj.put(key, coerced)
         }
+        // The whole-app-state block (#full-migration) rides alongside the flat keys, never instead of
+        // them: an older Choop and the Apple importer both drop unknown keys, so they keep reading a
+        // new backup exactly as they always did.
+        if (stores != null && stores.length() > 0) {
+            obj.put(AppStateCodec.SCHEMA_KEY, AppStateCodec.SCHEMA_VERSION)
+            obj.put(AppStateCodec.STORES_KEY, stores)
+        }
         return if (obj.length() == 0) null else obj.toString()
     }
+
+    /**
+     * The raw `stores` object of a `settings.json` payload, or null when it carries none (every
+     * backup written before the whole-app-state block, and every Apple-written one).
+     */
+    fun storesOf(json: String): JSONObject? =
+        runCatching { JSONObject(json) }.getOrNull()?.optJSONObject(AppStateCodec.STORES_KEY)
 
     /**
      * Decode a `settings.json` payload down to its whitelisted, correctly-typed subset. Malformed
@@ -107,10 +134,22 @@ object BackupSettingsCodec {
  *                   (canonical `profile.hrMax` ↔ ProfileStore's `hr_max_override`).
  *  - `units.*` / `effort.scale` → [NoopPrefs] under the SAME literal key strings as the canonical names
  *                   (they were already kept identical to the Apple @AppStorage keys).
+ *
+ * The `stores` half is read and written by [AppStateBridge]; this object drives both so a caller
+ * still has one snapshot call and one apply call.
  */
 object BackupSettingsBridge {
 
-    /** The whitelisted, user-SET settings of this device as the `settings.json` string, or null. */
+    /**
+     * This device's `settings.json` payload, or null when there is nothing at all to carry.
+     *
+     * Two layers in one object:
+     *  - the nine FLAT cross-platform keys ([BackupSettingsCodec]) — unchanged, still byte-for-byte
+     *    what the Apple exporter writes, so either platform reads either file; and
+     *  - the `stores` block ([AppStateCodec]) — every other preference this phone holds, so a restore
+     *    brings back the Today layout, journal renames, theme, baseline anchors, alert rules and the
+     *    rest instead of only the nine.
+     */
     fun snapshotJson(context: Context): String? {
         val values = LinkedHashMap<String, Any>()
         values.putAll(ProfileStore.from(context).backupSnapshot())
@@ -124,7 +163,8 @@ object BackupSettingsBridge {
         if (noop.contains(UnitPrefs.KEY_EFFORT_SCALE)) {
             noop.getString(UnitPrefs.KEY_EFFORT_SCALE, null)?.let { values["effort.scale"] = it }
         }
-        return BackupSettingsCodec.encode(values)
+        val stores = AppStateCodec.encodeStores(AppStateBridge.snapshot(context))
+        return BackupSettingsCodec.encode(values, stores)
     }
 
     /**
@@ -134,6 +174,11 @@ object BackupSettingsBridge {
      * normal ranges, so a hand-edited payload can't write absurd values.
      */
     fun apply(context: Context, json: String) {
+        // The `stores` block goes down FIRST, so the nine flat keys stay authoritative where the two
+        // overlap: they are the cross-platform contract, and `units.temperature` in particular means
+        // "" = clear-the-key there, which only the flat path below expresses.
+        AppStateBridge.apply(context, AppStateCodec.decodeStores(BackupSettingsCodec.storesOf(json)))
+
         val values = BackupSettingsCodec.decode(json)
         if (values.isEmpty()) return
 

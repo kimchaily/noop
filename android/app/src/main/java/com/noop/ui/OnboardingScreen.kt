@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Button
@@ -73,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.noop.ble.WhoopModel
+import com.noop.data.DataBackup
 import com.noop.data.ImportSummary
 import com.noop.ingest.AppleHealthImporter
 import com.noop.ingest.HealthConnectImporter
@@ -92,11 +94,34 @@ import kotlinx.coroutines.withContext
 fun OnboardingScreen(viewModel: AppViewModel, onFinished: () -> Unit) {
     val context = LocalContext.current
     val pages = remember { OnboardingPage.entries }
+
+    // Did the LAST run of this app restore a backup from the step below and ask for a restart? Read
+    // once and cleared immediately, so it steers exactly this relaunch: onboarding resumes at "pair
+    // your strap" rather than walking someone who just brought over years of history back through the
+    // welcome copy and a profile the backup already filled in.
+    //
+    // rememberSaveable, not remember: the initialiser (and so the clear) runs once, and the ANSWER
+    // survives a config change — with a plain remember, a rotation would re-read the already-cleared
+    // flag as false and silently drop the restore-aware copy for the rest of the flow.
+    val resumedAfterRestore = rememberSaveable {
+        NoopPrefs.restoredPendingSetup(context).also {
+            if (it) NoopPrefs.setRestoredPendingSetup(context, false)
+        }
+    }
+
     // rememberSaveable so a config change (rotation, dark-mode, font-scale, locale,
     // multi-window) doesn't recreate the Activity and throw the user back to page 1.
-    var pageIndex by rememberSaveable { mutableIntStateOf(0) }
+    var pageIndex by rememberSaveable {
+        mutableIntStateOf(if (resumedAfterRestore) pages.indexOf(OnboardingPage.Bluetooth) else 0)
+    }
     val page = pages[pageIndex]
     val live by viewModel.live.collectAsStateWithLifecycle()
+
+    // Set the instant a restore lands. From then on the flow is OVER for this launch: the database
+    // was swapped underneath Room, so continuing would run the rest of onboarding against a store the
+    // app can no longer read consistently. The screen becomes the restart instruction, with no footer
+    // to tap past it.
+    var restoreLanded by rememberSaveable { mutableStateOf(false) }
 
     // The bonded celebration only makes sense once a strap is actually bonded. Auto-advance to it
     // the moment that happens on the Connect step (mirrors macOS's scan → celebration), and skip
@@ -146,6 +171,14 @@ fun OnboardingScreen(viewModel: AppViewModel, onFinished: () -> Unit) {
         pageIndex++
     }
 
+    // A landed restore takes over the whole screen: no top bar, no footer, nothing to tap past. The
+    // only correct next action is to close and reopen the app, and offering any other one here would
+    // let the user drive the rest of onboarding over a database Room has already let go of.
+    if (restoreLanded) {
+        RestoreLandedScreen()
+        return
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Palette.surfaceBase,
@@ -180,9 +213,10 @@ fun OnboardingScreen(viewModel: AppViewModel, onFinished: () -> Unit) {
             ) {
                 when (page) {
                     OnboardingPage.Welcome -> WelcomeStep()
+                    OnboardingPage.Restore -> RestoreStep(onRestored = { restoreLanded = true })
                     OnboardingPage.WhatItDoes -> WhatItDoesStep()
                     OnboardingPage.Expectations -> ExpectationsStep()
-                    OnboardingPage.Bluetooth -> BluetoothStep()
+                    OnboardingPage.Bluetooth -> BluetoothStep(afterRestore = resumedAfterRestore)
                     OnboardingPage.Wear -> WearStep()
                     OnboardingPage.Connect -> ConnectStep(viewModel)
                     OnboardingPage.Bonded -> BondedStep(viewModel)
@@ -218,6 +252,11 @@ fun OnboardingScreen(viewModel: AppViewModel, onFinished: () -> Unit) {
 
 private enum class OnboardingPage(val cta: String) {
     Welcome("Begin"),
+    // Deliberately SECOND, before Bluetooth / Connect / Profile / Import. A `.noopbak` contains the
+    // whole app — history, profile, layout, settings — so restoring one first makes every step after
+    // it either already answered or unnecessary. Offering it late (or only from Settings) is how a
+    // returning user ends up pairing a strap and re-entering a profile they were about to overwrite.
+    Restore("Set up as new"),
     WhatItDoes("Continue"),
     Expectations("Continue"),
     Bluetooth("Continue"),
@@ -388,6 +427,158 @@ private fun WelcomeStep() {
     }
 }
 
+/**
+ * "Coming from another phone?" — the FIRST thing a fresh install offers, before Bluetooth, before the
+ * profile, before any of the source imports.
+ *
+ * A `.noopbak` is the whole app: every reading, every night and workout, the profile, the Today
+ * layout, journal renames, the theme, alert rules, baseline anchors, the profile photo. Restoring one
+ * makes every later step of this flow either already answered or actively harmful — a user who pairs
+ * a strap and types their weight first is entering values a restore is about to replace, and one who
+ * imports a WHOOP export first is building history the restore overwrites wholesale.
+ *
+ * The other imports (WHOOP export, Health Connect, Apple Health) stay where they are, later in the
+ * flow. They are ADDITIVE: they bring a history in from somewhere else. This one REPLACES the store,
+ * which is why it belongs here and nowhere near them.
+ *
+ * A restore swaps the database file underneath Room, so it ends the run: [onRestored] hands the
+ * screen over to [RestoreLandedScreen] and the app must be restarted.
+ */
+@Composable
+private fun RestoreStep(onRestored: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // Transient on purpose: a config change cancels the restore coroutine, so a persisted busy=true
+    // would strand the button disabled with nothing running.
+    var busy by remember { mutableStateOf(false) }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        busy = true
+        error = null
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { DataBackup.importFrom(context, uri) }
+            busy = false
+            when (result) {
+                is DataBackup.ImportResult.NeedsRestart -> {
+                    // Remember, for the relaunch this restore now requires, that onboarding should
+                    // resume at "pair your strap" instead of page one.
+                    NoopPrefs.setRestoredPendingSetup(context, true)
+                    onRestored()
+                }
+                is DataBackup.ImportResult.Failed -> error = result.message
+            }
+        }
+    }
+
+    StepShell(
+        title = "Coming from another phone?",
+        subtitle = "If you have a Choop backup, restore it now — before anything else.",
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            IconBadge(icon = Icons.Filled.Restore, tint = Palette.accent, size = 82)
+            InfoCard(
+                icon = Icons.Filled.Storage,
+                tint = Palette.accent,
+                title = "A backup is the whole app",
+                message = "Your readings, nights and workouts, your profile and photo, your Today layout, " +
+                    "journal, theme, alerts and baselines — all of it comes back exactly as you left it. " +
+                    "Do it first and the rest of this setup is already done for you.",
+            )
+
+            NoopCard(padding = 16.dp) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OnboardingActionButton(
+                        label = if (busy) "Restoring…" else "Restore a backup (.noopbak)",
+                        icon = Icons.Filled.Restore,
+                        enabled = !busy,
+                    ) { restoreLauncher.launch(arrayOf("*/*")) }
+                }
+            }
+
+            Checkline("No backup? Continue — you can restore later from Settings → Backup & restore.")
+            Checkline("Your strap pairs over Bluetooth on the next step, whichever way you go.")
+
+            error?.let {
+                Text(
+                    it,
+                    style = NoopType.footnote,
+                    color = Palette.statusCritical,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * What a first-run restore ends on: the app has to be fully closed and reopened before it can read
+ * the database that just replaced its own.
+ *
+ * Deliberately a dead end — no footer, no back, nothing to tap. Room has already let go of the old
+ * file, so every other affordance on this screen would be a way to keep using a store the app can no
+ * longer read consistently. The relaunch resumes at "pair your strap".
+ */
+@Composable
+private fun RestoreLandedScreen() {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Palette.surfaceBase,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = Metrics.screenPadding)
+                .padding(vertical = 16.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            IconBadge(icon = Icons.Filled.CheckCircle, tint = Palette.statusPositive, size = 96)
+            Spacer(Modifier.height(20.dp))
+            Text(
+                "Your data is back",
+                style = NoopType.display(30f),
+                color = Palette.textPrimary,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Now fully close Choop — swipe it away from your recent apps — and open it again. " +
+                    "It has to start fresh to read the restored data.",
+                style = NoopType.body,
+                color = Palette.textSecondary,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(20.dp))
+            InfoCard(
+                icon = Icons.Filled.Bluetooth,
+                tint = Palette.accent,
+                title = "Then: pair your strap",
+                message = "Choop picks up where you left off and asks for the one thing a backup can't " +
+                    "carry — a Bluetooth pairing, which belongs to one phone.",
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "The first few minutes after a restore are busy: Choop re-scores your recent history in " +
+                    "the background, so some dashboard tiles fill in a minute or two after you're back.",
+                style = NoopType.footnote,
+                color = Palette.textTertiary,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+}
+
 @Composable
 private fun WhatItDoesStep() {
     StepShell(
@@ -432,10 +623,15 @@ private fun ExpectationsStep() {
 }
 
 @Composable
-private fun BluetoothStep() {
+private fun BluetoothStep(afterRestore: Boolean = false) {
     StepShell(
-        title = "A quick word before you connect",
-        subtitle = "Choop uses Bluetooth to find your strap. When you continue, allow the permission so it can scan.",
+        title = if (afterRestore) "One thing left: your strap" else "A quick word before you connect",
+        subtitle = if (afterRestore) {
+            "Your history and settings are back. A Bluetooth pairing belongs to one phone, so this one " +
+                "needs to bond with your strap once — that's all that's left."
+        } else {
+            "Choop uses Bluetooth to find your strap. When you continue, allow the permission so it can scan."
+        },
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(),
@@ -443,6 +639,17 @@ private fun BluetoothStep() {
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             IconBadge(icon = Icons.Filled.Bluetooth, tint = Palette.accent, size = 86)
+            if (afterRestore) {
+                InfoCard(
+                    icon = Icons.Filled.CheckCircle,
+                    tint = Palette.statusPositive,
+                    title = "Everything else came across",
+                    message = "Your straps are still on file with all their readings, so pairing the SAME " +
+                        "strap picks up exactly where the old phone left off — nothing is re-imported or " +
+                        "duplicated. Moving to a different strap as well? Add it in Settings → Devices " +
+                        "instead, so its readings stay separate from your old one's.",
+                )
+            }
             InfoCard(
                 icon = Icons.Filled.Lock,
                 tint = Palette.statusPositive,
@@ -851,6 +1058,11 @@ private fun ImportStep(viewModel: AppViewModel) {
                     ) { appleImportLauncher.launch(arrayOf("*/*")) }
                 }
             }
+
+            Checkline(
+                "Holding a Choop backup (.noopbak)? That's the first step of this setup, not this one — " +
+                    "go back to it, or restore later from Settings → Backup & restore."
+            )
 
             if (!healthConnectAvailable) {
                 Text(
