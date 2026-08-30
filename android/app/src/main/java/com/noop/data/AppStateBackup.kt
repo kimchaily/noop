@@ -188,20 +188,8 @@ object AppStateCodec {
         "inactivity.lastBuzzedBoutEnd",
         "inactivity.lastProcessedGravityTs",
 
-        // A permission grant on a document tree this install holds. The user re-picks the folder;
-        // "auto" without a folder would be a schedule that silently writes nothing.
-        "tree_uri",
-        "auto",
-        "last_ms",
-
-        // A content:// grant for a picked audio track — same problem as the tree Uri.
+        // A content:// grant for a picked audio track — same problem as the tree Uri below.
         "wimhof.trackUri",
-
-        // Steps-engine FITTED outputs. Re-derived from the step samples that travel in the DB; the
-        // user's MANUAL calibration (step_ticks_per_step / steps_manual_*) does travel.
-        "steps_calibration_coefficient",
-        "steps_calibration_sample_days",
-        "steps_calibration_confidence",
     )
 
     /**
@@ -213,9 +201,35 @@ object AppStateCodec {
         "biofeedback.stOnset",
     )
 
-    /** True when [key] must be left out of a backup. Store-independent: no two files share a key. */
-    fun isExcluded(key: String): Boolean =
-        key in EXCLUDED_KEYS || EXCLUDED_PREFIXES.any { key.startsWith(it) }
+    /**
+     * Exclusions scoped to ONE store, for the files whose keys aren't namespaced.
+     *
+     * `auto`, `keep`, `tree_uri` are generic enough that another preferences file could reasonably
+     * use the same word for something entirely different; excluding them globally would silently
+     * drop that unrelated setting. Anything namespaced (`noop.*`, `alarm.*`, `inactivity.*`) is safe
+     * in [EXCLUDED_KEYS], where one entry covers it wherever it lives.
+     */
+    private val EXCLUDED_STORE_KEYS: Map<String, Set<String>> = mapOf(
+        // The Backup & Sync destination: a permission grant on a document tree this install holds.
+        // The user re-picks the folder on the new phone — and "auto" without one would be a daily
+        // schedule that silently writes nothing, so the switch waits for the folder too. `keep` (how
+        // many snapshots to retain) is a real preference and does travel.
+        "backup_sync" to setOf("tree_uri", "auto", "last_ms"),
+
+        // Steps-engine FITTED outputs. Re-derived from the step samples that travel in the database;
+        // the user's MANUAL calibration (step_ticks_per_step / steps_manual_*) does travel.
+        "noop_profile" to setOf(
+            "steps_calibration_coefficient",
+            "steps_calibration_sample_days",
+            "steps_calibration_confidence",
+        ),
+    )
+
+    /** True when [key], in [store], must be left out of a backup. */
+    fun isExcluded(store: String, key: String): Boolean =
+        key in EXCLUDED_KEYS ||
+            key in EXCLUDED_STORE_KEYS[store].orEmpty() ||
+            EXCLUDED_PREFIXES.any { key.startsWith(it) }
 
     // ── Encode / decode ─────────────────────────────────────────────────────────
 
@@ -230,7 +244,7 @@ object AppStateCodec {
             val values = stores[storeName] ?: continue
             val buckets = JSONObject()
             for ((key, value) in values) {
-                if (isExcluded(key)) continue
+                if (isExcluded(storeName, key)) continue
                 val (bucket, encoded) = bucketFor(value) ?: continue
                 val into = buckets.optJSONObject(bucket) ?: JSONObject().also { buckets.put(bucket, it) }
                 into.put(key, encoded)
@@ -261,7 +275,7 @@ object AppStateCodec {
                 val keys = entries.keys()
                 while (keys.hasNext()) {
                     val key = keys.next()
-                    if (isExcluded(key)) continue
+                    if (isExcluded(storeName, key)) continue
                     decodeValue(bucket, entries.opt(key))?.let { values[key] = it }
                 }
             }

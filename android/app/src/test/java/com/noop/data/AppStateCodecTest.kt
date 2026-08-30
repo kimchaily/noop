@@ -120,6 +120,24 @@ class AppStateCodecTest {
         assertEquals(10, AppStateCodec.decodeStores(encoded)["backup_sync"]!!["keep"])
     }
 
+    @Test fun genericExclusionsApplyToTheirOwnStoreOnly() {
+        // "auto" is the Backup & Sync daily schedule, which must not travel without the folder Uri it
+        // depends on. The same WORD in another file is a different setting and must survive — which is
+        // the whole reason unnamespaced exclusions are scoped to one store.
+        val encoded = AppStateCodec.encodeStores(
+            mapOf(
+                "backup_sync" to mapOf("auto" to true, "keep" to 7),
+                "noop_scoring_guide_prefs" to mapOf("auto" to true),
+            ),
+        )
+        val back = AppStateCodec.decodeStores(encoded)
+        assertNull(back["backup_sync"]!!["auto"])
+        assertEquals(7, back["backup_sync"]!!["keep"])
+        assertEquals(true, back["noop_scoring_guide_prefs"]!!["auto"])
+        assertFalse(AppStateCodec.isExcluded("noop_scoring_guide_prefs", "auto"))
+        assertTrue(AppStateCodec.isExcluded("backup_sync", "auto"))
+    }
+
     @Test fun theSecretPrefsFilesAreNotInTheBackupSet() {
         for (secret in AppStateCodec.SECRET_STORES) {
             assertFalse(
