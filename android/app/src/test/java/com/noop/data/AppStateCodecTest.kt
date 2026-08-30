@@ -31,7 +31,7 @@ class AppStateCodecTest {
 
     @Test fun everyPreferenceTypeRoundTripsAsItsOwnType() {
         val stores = mapOf(
-            "noop_prefs" to mapOf(
+            "noop_prefs" to mapOf<String, Any>(
                 "noop.showSupport" to true,
                 "noop.smartAlarmMinutes" to 30,
                 "noop.hrvBaselineEpoch" to 1_750_000_000L,
@@ -56,9 +56,13 @@ class AppStateCodecTest {
     @Test fun intAndLongStayDistinctAcrossTheWire() {
         // Both are the bare JSON number `30`, so only the type bucket can tell them apart. Getting
         // this wrong throws ClassCastException on the first getInt/getLong after a restore.
+        //
+        // The `<String, Any>` is load-bearing: without it Kotlin unifies the literal `30` to Long to
+        // give the map a common value type, so BOTH values reach the codec boxed as Longs and this
+        // test silently stops testing anything.
         val encoded = requireNotNull(
             AppStateCodec.encodeStores(
-                mapOf("noop_prefs" to mapOf("an.int" to 30, "a.long" to 30L)),
+                mapOf("noop_prefs" to mapOf<String, Any>("an.int" to 30, "a.long" to 30L)),
             ),
         )
         val back = AppStateCodec.decodeStores(encoded)["noop_prefs"]!!
@@ -93,7 +97,7 @@ class AppStateCodecTest {
     @Test fun secretsAndDeviceBoundStateNeverEnterABackup() {
         val encoded = AppStateCodec.encodeStores(
             mapOf(
-                "noop_prefs" to mapOf(
+                "noop_prefs" to mapOf<String, Any>(
                     "noop.lastDeviceAddress" to "AA:BB:CC:DD:EE:FF",
                     "noop.lastDeviceModel" to "WHOOP5",
                     "noop.acceptedTermsVersion" to "3",
@@ -103,7 +107,7 @@ class AppStateCodecTest {
                     "biofeedback.stOnsetLastFire" to 1_750_000_000L,
                     "today.keyMetrics" to "charge",
                 ),
-                "backup_sync" to mapOf(
+                "backup_sync" to mapOf<String, Any>(
                     "tree_uri" to "content://com.android.externalstorage.documents/tree/primary%3ABackups",
                     "keep" to 10,
                 ),
@@ -126,8 +130,8 @@ class AppStateCodecTest {
         // the whole reason unnamespaced exclusions are scoped to one store.
         val encoded = AppStateCodec.encodeStores(
             mapOf(
-                "backup_sync" to mapOf("auto" to true, "keep" to 7),
-                "noop_scoring_guide_prefs" to mapOf("auto" to true),
+                "backup_sync" to mapOf<String, Any>("auto" to true, "keep" to 7),
+                "noop_scoring_guide_prefs" to mapOf<String, Any>("auto" to true),
             ),
         )
         val back = AppStateCodec.decodeStores(encoded)
