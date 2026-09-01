@@ -281,6 +281,45 @@ class AppStateCodecTest {
         assertFalse("No avatar entry → nothing staged, no error", stagedAvatar.exists())
     }
 
+    // ── The swap itself: replacing a live database file ─────────────────────────
+
+    @Test fun overwritingAnExistingDatabaseReplacesItsContentInPlace() {
+        // The restore swap must not depend on being able to DELETE the live database — that is what
+        // File.copyTo(overwrite = true) does, and a refused delete is how a first-run restore failed
+        // with "Tried to overwrite the destination, but failed to delete it".
+        val dest = tmp.newFile("live.db").apply { writeBytes(ByteArray(4096) { 0xAB.toByte() }) }
+        val inode = dest.canonicalPath
+        val source = fakeSqlite("restored")
+
+        DataBackup.overwriteWith(source, dest)
+
+        assertEquals(source.readBytes().toList(), dest.readBytes().toList())
+        assertEquals("The destination is replaced in place, not recreated elsewhere", inode, dest.canonicalPath)
+    }
+
+    @Test fun overwritingTruncatesAShorterPayloadOverALongerOne() {
+        // Truncation is the half a naive "open and write" gets wrong: the tail of the OLD database
+        // would survive past the end of the restored one, and the result would fail quick_check.
+        val dest = tmp.newFile("long.db").apply { writeBytes(ByteArray(64 * 1024) { 0x7F }) }
+        val source = tmp.newFile("short.db").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+
+        DataBackup.overwriteWith(source, dest)
+
+        assertEquals(3L, dest.length())
+        assertEquals(listOf<Byte>(1, 2, 3), dest.readBytes().toList())
+    }
+
+    @Test fun overwritingCreatesTheDestinationAndItsDirectoryWhenAbsent() {
+        // The fresh-install shape: no databases/ directory yet, nothing to overwrite.
+        val dest = File(File(tmp.root, "databases"), "new.db")
+        val source = fakeSqlite("first")
+
+        DataBackup.overwriteWith(source, dest)
+
+        assertTrue(dest.isFile)
+        assertEquals(source.readBytes().toList(), dest.readBytes().toList())
+    }
+
     @Test fun aLegacyBackupStillStagesWhenAskedForAllThreeSidecars() {
         val liveDb = fakeSqlite("legacy")
         val backup = tmp.newFile("legacy.noopbak")

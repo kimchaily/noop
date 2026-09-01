@@ -274,66 +274,78 @@ object DataBackup {
         val shmFile = File(dbFile.path + "-shm")
         val rollbackFile = File(dbFile.path + ".import-bak")
 
-        // 4. Close the live Room singleton so the file handles are released.
-        WhoopDatabase.close()
-
-        // 5. Snapshot the current db so a failed copy can be rolled back.
-        try {
-            rollbackFile.delete()
-            if (dbFile.exists()) dbFile.copyTo(rollbackFile, overwrite = true)
-        } catch (e: IOException) {
-            tempSqlite.delete()
-            deleteAll(sidecars)
-            return ImportResult.Failed("Could not back up the current data: ${e.message}")
-        }
-
-        // 6. Overwrite the db file with the extracted backup, then drop the stale sidecars.
-        try {
-            dbFile.parentFile?.mkdirs()
-            tempSqlite.copyTo(dbFile, overwrite = true)
-            walFile.delete()
-            shmFile.delete()
-        } catch (e: IOException) {
-            runCatching { if (rollbackFile.exists()) rollbackFile.copyTo(dbFile, overwrite = true) }
-            rollbackFile.delete()
-            tempSqlite.delete()
-            deleteAll(sidecars)
-            return ImportResult.Failed("Import failed, your data is unchanged: ${e.message}")
-        }
-
-        // 6b. #1014 defence-in-depth, post-swap: re-verify the file that actually LANDED at the live
-        //     path with a second read-only quick_check. The staged file was verified in 3c, but the
-        //     copy itself can tear — disk-full mid-copy, a dying flash chip, the process killed at
-        //     the wrong instant — and the next launch would meet a corrupt store (which, before the
-        //     CorruptionPreservingOpenHelperFactory below, the platform would then silently DELETE).
-        //     On failure, roll back to the `.import-bak` snapshot automatically and say so.
-        sqliteQuickCheckFailure(dbFile)?.let { complaint ->
-            tempSqlite.delete()
-            deleteAll(sidecars)
-            walFile.delete()
-            shmFile.delete()
-            val message: String
-            if (rollbackFile.exists()) {
-                if (runCatching { rollbackFile.copyTo(dbFile, overwrite = true) }.isSuccess) {
-                    rollbackFile.delete()
-                    message = "The backup failed its integrity check after the copy (SQLite reports: " +
-                        "$complaint). Your previous data was rolled back automatically and is unchanged."
-                } else {
-                    // The roll-back copy itself failed: KEEP the snapshot on disk — it is now the
-                    // only good copy of the user's data — and tell the user exactly where it is.
-                    message = "The backup failed its integrity check after the copy (SQLite reports: " +
-                        "$complaint), and rolling back also failed. Your previous data is preserved at " +
-                        "${rollbackFile.name} next to the app's database."
-                }
-            } else {
-                // Fresh install: nothing existed before the import, so removing the damaged file
-                // returns to the exact pre-import (empty) state.
-                dbFile.delete()
-                message = "The backup failed its integrity check after the copy (SQLite reports: " +
-                    "$complaint). There was no previous data to roll back."
+        // 4-6b. The swap itself, with the Room singleton closed AND HELD closed for the duration.
+        //     Closing it and letting go is not enough: any background collector's next
+        //     WhoopDatabase.get() rebuilds the singleton and re-opens the file mid-swap — a live
+        //     connection, and possibly writes, on the file being replaced. A first-run restore is
+        //     where that window is widest, because onboarding is already querying while the user
+        //     picks their backup. Nothing inside may call WhoopDatabase.get(); the integrity probes
+        //     open the file directly through the framework helper.
+        //
+        //     The block returns the failure to report, or null when the swap landed cleanly.
+        val swapFailure: ImportResult? = WhoopDatabase.withDatabaseClosed {
+            // 5. Snapshot the current db so a failed copy can be rolled back.
+            try {
+                rollbackFile.delete()
+                if (dbFile.exists()) overwriteWith(dbFile, rollbackFile)
+            } catch (e: IOException) {
+                tempSqlite.delete()
+                deleteAll(sidecars)
+                return@withDatabaseClosed ImportResult.Failed("Could not back up the current data: ${e.message}")
             }
-            return ImportResult.Failed(message)
+
+            // 6. Overwrite the db file with the extracted backup, then drop the stale sidecars.
+            try {
+                overwriteWith(tempSqlite, dbFile)
+                walFile.delete()
+                shmFile.delete()
+            } catch (e: IOException) {
+                runCatching { if (rollbackFile.exists()) overwriteWith(rollbackFile, dbFile) }
+                rollbackFile.delete()
+                tempSqlite.delete()
+                deleteAll(sidecars)
+                return@withDatabaseClosed ImportResult.Failed("Import failed, your data is unchanged: ${e.message}")
+            }
+
+            // 6b. #1014 defence-in-depth, post-swap: re-verify the file that actually LANDED at the
+            //     live path with a second read-only quick_check. The staged file was verified in 3c,
+            //     but the copy itself can tear — disk-full mid-copy, a dying flash chip, the process
+            //     killed at the wrong instant — and the next launch would meet a corrupt store
+            //     (which, before the CorruptionPreservingOpenHelperFactory below, the platform would
+            //     then silently DELETE). On failure, roll back to the `.import-bak` snapshot
+            //     automatically and say so. Opens the file through the framework helper, never
+            //     WhoopDatabase.get(), so it is safe under the closed-database lock.
+            sqliteQuickCheckFailure(dbFile)?.let { complaint ->
+                tempSqlite.delete()
+                deleteAll(sidecars)
+                walFile.delete()
+                shmFile.delete()
+                val message: String
+                if (rollbackFile.exists()) {
+                    if (runCatching { overwriteWith(rollbackFile, dbFile) }.isSuccess) {
+                        rollbackFile.delete()
+                        message = "The backup failed its integrity check after the copy (SQLite reports: " +
+                            "$complaint). Your previous data was rolled back automatically and is unchanged."
+                    } else {
+                        // The roll-back copy itself failed: KEEP the snapshot on disk — it is now the
+                        // only good copy of the user's data — and tell the user exactly where it is.
+                        message = "The backup failed its integrity check after the copy (SQLite reports: " +
+                            "$complaint), and rolling back also failed. Your previous data is preserved at " +
+                            "${rollbackFile.name} next to the app's database."
+                    }
+                } else {
+                    // Fresh install: nothing existed before the import, so removing the damaged file
+                    // returns to the exact pre-import (empty) state.
+                    dbFile.delete()
+                    message = "The backup failed its integrity check after the copy (SQLite reports: " +
+                        "$complaint). There was no previous data to roll back."
+                }
+                return@withDatabaseClosed ImportResult.Failed(message)
+            }
+
+            null // the swap landed and verified
         }
+        if (swapFailure != null) return swapFailure
 
         // 7. #1000: re-apply the backup's profile/display settings (weight, height, age, sex, HR-max
         //    override, unit prefs) AND the whole-app-state block that now rides with them (the Today
@@ -577,6 +589,28 @@ object DataBackup {
     /** Best-effort delete of the staged sidecar files; a delete that fails must not fail an import. */
     private fun deleteAll(files: List<File>) {
         for (file in files) runCatching { file.delete() }
+    }
+
+    /**
+     * Write [source]'s bytes over [dest], truncating whatever was there.
+     *
+     * Deliberately NOT `File.copyTo(overwrite = true)`: that DELETES the destination first and fails
+     * the whole copy if the delete is refused — "Tried to overwrite the destination, but failed to
+     * delete it", which is how a first-run restore died. Making the swap depend on unlinking the live
+     * database was never necessary: opening for truncation needs no delete, and it keeps the SAME
+     * inode, so a handle another component is still holding sees the restored bytes instead of a
+     * stale unlinked file. The explicit fsync matters here in a way it would not for an ordinary
+     * copy: this file IS the user's whole history, and the next thing that happens is the app being
+     * force-stopped.
+     */
+    @Throws(IOException::class)
+    internal fun overwriteWith(source: File, dest: File) {
+        dest.parentFile?.mkdirs()
+        FileOutputStream(dest, /* append = */ false).use { out ->
+            source.inputStream().use { input -> input.copyTo(out) }
+            out.flush()
+            out.fd.sync()
+        }
     }
 
     // ── Integrity gate (#1014 defence-in-depth; twin of the Apple DatabaseIntegrity) ─────
