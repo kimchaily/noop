@@ -48,6 +48,8 @@ import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -74,6 +76,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.noop.ble.WhoopModel
+import com.noop.data.AppStateCodec
 import com.noop.data.DataBackup
 import com.noop.data.ImportSummary
 import com.noop.ingest.AppleHealthImporter
@@ -122,6 +125,10 @@ fun OnboardingScreen(viewModel: AppViewModel, onFinished: () -> Unit) {
     // app can no longer read consistently. The screen becomes the restart instruction, with no footer
     // to tap past it.
     var restoreLanded by rememberSaveable { mutableStateOf(false) }
+    // What the user asked for that the backup didn't contain, carried to that screen so it can say
+    // so. Held as ONE comma-joined string of enum names: rememberSaveable puts this in the Activity
+    // bundle, and neither the enum nor Kotlin's EmptyList singleton can go in one.
+    var restoreAbsent by rememberSaveable { mutableStateOf("") }
 
     // The bonded celebration only makes sense once a strap is actually bonded. Auto-advance to it
     // the moment that happens on the Connect step (mirrors macOS's scan → celebration), and skip
@@ -175,7 +182,11 @@ fun OnboardingScreen(viewModel: AppViewModel, onFinished: () -> Unit) {
     // only correct next action is to close and reopen the app, and offering any other one here would
     // let the user drive the rest of onboarding over a database Room has already let go of.
     if (restoreLanded) {
-        RestoreLandedScreen()
+        RestoreLandedScreen(
+            absent = restoreAbsent.split(',').mapNotNullTo(LinkedHashSet()) { name ->
+                AppStateCodec.MigrationGroup.entries.firstOrNull { it.name == name }
+            },
+        )
         return
     }
 
@@ -213,7 +224,12 @@ fun OnboardingScreen(viewModel: AppViewModel, onFinished: () -> Unit) {
             ) {
                 when (page) {
                     OnboardingPage.Welcome -> WelcomeStep()
-                    OnboardingPage.Restore -> RestoreStep(onRestored = { restoreLanded = true })
+                    OnboardingPage.Restore -> RestoreStep(
+                        onRestored = { absent ->
+                            restoreAbsent = absent.joinToString(",") { it.name }
+                            restoreLanded = true
+                        },
+                    )
                     OnboardingPage.WhatItDoes -> WhatItDoesStep()
                     OnboardingPage.Expectations -> ExpectationsStep()
                     OnboardingPage.Bluetooth -> BluetoothStep(afterRestore = resumedAfterRestore)
@@ -445,13 +461,24 @@ private fun WelcomeStep() {
  * screen over to [RestoreLandedScreen] and the app must be restarted.
  */
 @Composable
-private fun RestoreStep(onRestored: () -> Unit) {
+private fun RestoreStep(onRestored: (Set<AppStateCodec.MigrationGroup>) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // Transient on purpose: a config change cancels the restore coroutine, so a persisted busy=true
     // would strand the button disabled with nothing running.
     var busy by remember { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // What to bring across. Everything is ticked, because that is what almost everyone moving phones
+    // wants and an unticked box silently loses something; the checkboxes exist for the person who
+    // deliberately wants their history without the old phone's alert rules, or their setup without
+    // the data. A snapshot list so each tap recomposes.
+    val groups = remember { AppStateCodec.MigrationGroup.entries }
+    // A bitmask rather than a list of booleans, because rememberSaveable can put an Int in the
+    // Activity bundle and cannot put a SnapshotStateList in one — so a rotation half way through
+    // choosing would otherwise silently re-tick everything. -1 is every bit set: all groups.
+    var selectedMask by rememberSaveable { mutableIntStateOf(-1) }
+    val chosen = groups.filterIndexed { i, _ -> (selectedMask shr i) and 1 == 1 }.toSet()
 
     val restoreLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -460,14 +487,14 @@ private fun RestoreStep(onRestored: () -> Unit) {
         busy = true
         error = null
         scope.launch {
-            val result = withContext(Dispatchers.IO) { DataBackup.importFrom(context, uri) }
+            val result = withContext(Dispatchers.IO) { DataBackup.importFrom(context, uri, chosen) }
             busy = false
             when (result) {
                 is DataBackup.ImportResult.NeedsRestart -> {
                     // Remember, for the relaunch this restore now requires, that onboarding should
                     // resume at "pair your strap" instead of page one.
                     NoopPrefs.setRestoredPendingSetup(context, true)
-                    onRestored()
+                    onRestored(result.absent)
                 }
                 is DataBackup.ImportResult.Failed -> error = result.message
             }
@@ -495,10 +522,23 @@ private fun RestoreStep(onRestored: () -> Unit) {
 
             NoopCard(padding = 16.dp) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "Bring across",
+                        style = NoopType.headline,
+                        color = Palette.textPrimary,
+                    )
+                    groups.forEachIndexed { index, group ->
+                        RestoreGroupRow(
+                            group = group,
+                            checked = (selectedMask shr index) and 1 == 1,
+                            enabled = !busy,
+                            onToggle = { selectedMask = selectedMask xor (1 shl index) },
+                        )
+                    }
                     OnboardingActionButton(
                         label = if (busy) "Restoring…" else "Restore a backup (.noopbak)",
                         icon = Icons.Filled.Restore,
-                        enabled = !busy,
+                        enabled = !busy && chosen.isNotEmpty(),
                     ) { restoreLauncher.launch(arrayOf("*/*")) }
                 }
             }
@@ -518,6 +558,39 @@ private fun RestoreStep(onRestored: () -> Unit) {
     }
 }
 
+/** One "bring this across" checkbox: the group's name, what it covers, and its state. */
+@Composable
+private fun RestoreGroupRow(
+    group: AppStateCodec.MigrationGroup,
+    checked: Boolean,
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            // The whole row toggles, not just the 20dp box — a checkbox you have to aim at is a
+            // checkbox people mis-tap.
+            .clickable(enabled = enabled) { onToggle(!checked) },
+        verticalAlignment = Alignment.Top,
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = { onToggle(it) },
+            enabled = enabled,
+            colors = CheckboxDefaults.colors(checkedColor = Palette.accent),
+        )
+        Spacer(Modifier.width(4.dp))
+        Column(
+            modifier = Modifier.padding(top = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(group.title, style = NoopType.body, color = Palette.textPrimary)
+            Text(group.detail, style = NoopType.footnote, color = Palette.textTertiary)
+        }
+    }
+}
+
 /**
  * What a first-run restore ends on: the app has to be fully closed and reopened before it can read
  * the database that just replaced its own.
@@ -525,9 +598,14 @@ private fun RestoreStep(onRestored: () -> Unit) {
  * Deliberately a dead end — no footer, no back, nothing to tap. Room has already let go of the old
  * file, so every other affordance on this screen would be a way to keep using a store the app can no
  * longer read consistently. The relaunch resumes at "pair your strap".
+ *
+ * [absent] is what the user asked for that the backup turned out not to contain — always empty for a
+ * backup written by this version, and never empty for one written before Choop carried settings at
+ * all. Saying so here is the difference between a user thinking the restore is broken and a user
+ * knowing their old phone needs a newer Choop to export from.
  */
 @Composable
-private fun RestoreLandedScreen() {
+private fun RestoreLandedScreen(absent: Set<AppStateCodec.MigrationGroup>) {
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Palette.surfaceBase,
@@ -559,6 +637,18 @@ private fun RestoreLandedScreen() {
                 color = Palette.textSecondary,
                 textAlign = TextAlign.Center,
             )
+            if (absent.isNotEmpty()) {
+                Spacer(Modifier.height(20.dp))
+                InfoCard(
+                    icon = Icons.Filled.Storage,
+                    tint = Palette.statusWarning,
+                    title = "Not in this backup",
+                    message = absent.joinToString(", ") { it.title } +
+                        " — this file was written by a Choop that didn't carry them yet, so there was " +
+                        "nothing to restore. Export a fresh backup from your old phone once it's on " +
+                        "this version and restore again to bring them across.",
+                )
+            }
             Spacer(Modifier.height(20.dp))
             InfoCard(
                 icon = Icons.Filled.Bluetooth,

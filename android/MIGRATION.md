@@ -125,6 +125,27 @@ already scheduled with the old phone's AlarmManager, the analyze watermark and o
 (a restore re-scores your history on purpose), and the day-digest / analyze-journal caches, which are
 recomputed work rather than data.
 
+### The backup has to be written by a build that carries all this
+
+A `.noopbak` can only restore what is inside it, and the settings/photo half only started being
+written in the version that added this section. A backup exported by an **older** Choop contains the
+database and the nine profile/display keys and genuinely nothing else — so restoring one brings back
+your history, weight and units, and leaves the theme, Today layout and journal at their defaults.
+That is the file, not the restore.
+
+Choop says so rather than leaving you to guess: the restore reports **"Not in this backup"** and
+names what was missing. When you see that, the fix is to update the **old** phone first, export a
+fresh `.noopbak` from it, and restore that.
+
+### Choosing what to bring across
+
+The first-run restore lists what it can migrate as checkboxes — measurements & history, profile &
+body, profile photo, appearance & units, Today layout & journal, alerts & reminders, and baselines &
+everything else — all ticked. Untick anything you would rather keep as it is on this phone: taking a
+history across without the old phone's alert rules is a normal thing to want, and so is taking a
+setup across without the data (untick "Measurements & history" and the database is not touched at
+all). A restore from Settings has no picker and always brings everything.
+
 ### Restore FIRST, before anything else
 
 On a fresh install the restore is now the **second step of onboarding**, before Bluetooth, before your

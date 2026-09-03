@@ -561,7 +561,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 // that's what runAction reads to mark the banner red.
                 when (val result = DataBackup.importFrom(context, uri)) {
                     is DataBackup.ImportResult.NeedsRestart ->
-                        "Backup imported. Fully close and reopen Choop for it to take effect."
+                        "Backup imported. Fully close and reopen Choop for it to take effect." +
+                            restoreShortfall(result)
                     is DataBackup.ImportResult.Failed -> throw IllegalStateException(result.message)
                 }
             },
@@ -2970,3 +2971,17 @@ private fun baselineAnchorLine(anchorSeconds: Long): String {
     val shown = date.format(java.time.format.DateTimeFormatter.ofPattern("d MMM yyyy"))
     return "Counting nights from $shown - about $nights night${if (nights == 1L) "" else "s"} so far."
 }
+
+/**
+ * The "…and here's what wasn't in the file" tail for a restore message.
+ *
+ * A restore from Settings has no checkbox picker, so it always asks for everything — which means an
+ * [DataBackup.ImportResult.NeedsRestart.absent] that isn't empty says one specific thing: this
+ * backup was written by a Choop that didn't carry those parts yet. Left unsaid, the user restores,
+ * sees their theme and layout untouched, and reasonably concludes the restore is broken.
+ */
+internal fun restoreShortfall(result: DataBackup.ImportResult.NeedsRestart): String =
+    if (result.absent.isEmpty()) "" else {
+        " Not in this backup: " + result.absent.joinToString(", ") { it.title } +
+            " — it predates Choop carrying them. Export a fresh one from the old phone to bring them across."
+    }

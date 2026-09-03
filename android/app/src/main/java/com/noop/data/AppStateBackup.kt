@@ -93,6 +93,119 @@ object AppStateCodec {
     private const val T_STRING = "s"
     private const val T_STRING_SET = "ss"
 
+    // ── What a restore is allowed to bring across, in the user's terms ──────────
+
+    /**
+     * The pieces of a backup a user can choose between when restoring.
+     *
+     * A `.noopbak` is all-or-nothing on disk, but applying it doesn't have to be: moving to a new
+     * phone and wanting your history WITHOUT the old phone's alert rules is a reasonable thing to
+     * want, as is taking a setup across without the data. So every restorable thing belongs to
+     * exactly one group, the restore UI shows them as checkboxes, and only the ticked ones are
+     * written.
+     *
+     * The grouping is by what the user would call it, not by which preferences file it lives in —
+     * the Today layout and the journal catalog share a group because they are both "how my start
+     * page is set up", even though one is `noop_prefs` keys and the other is a whole store.
+     */
+    enum class MigrationGroup(val title: String, val detail: String) {
+        /** The database file itself — everything that was ever measured or logged. */
+        HISTORY(
+            "Measurements & history",
+            "Every reading, night, workout, journal answer, lab marker and paired strap.",
+        ),
+        PROFILE(
+            "Profile & body",
+            "Age, sex, weight, height, waist, HR-max override and your step calibration.",
+        ),
+        /** Not a preference: the `avatar.jpg` entry's bytes. */
+        PHOTO(
+            "Profile photo",
+            "The picture on your Today header.",
+        ),
+        APPEARANCE(
+            "Appearance & units",
+            "Theme, light/dark, chart colours, metric or imperial, and the Effort axis.",
+        ),
+        LAYOUT(
+            "Today layout & journal",
+            "Your Key Metrics, cards and sections, and your renamed, grouped and custom journal questions.",
+        ),
+        ALERTS(
+            "Alerts & reminders",
+            "Wrist alerts and buzz patterns, quiet hours, the smart alarm, wind-down and move reminders.",
+        ),
+        REST(
+            "Baselines & everything else",
+            "Charge baseline anchors, breathwork, caffeine, hydration, experiments and the remaining settings.",
+        ),
+        ;
+
+        companion object {
+            /** Everything — the default for a restore nobody has narrowed. */
+            val ALL: Set<MigrationGroup> = entries.toSet()
+        }
+    }
+
+    /** Keys that read as "appearance" to a user but carry no namespace saying so. */
+    private val APPEARANCE_KEYS: Set<String> = setOf(
+        "noop.showDayCycleBackground",
+        "noop.vitalStateColours",
+        "noop.appIconNavy",
+        "noop.showSupport",
+        "effort.scale",
+    )
+
+    /** Alert/reminder keys in the shared store, where the namespace doesn't group them. */
+    private val ALERT_KEYS: Set<String> = setOf(
+        "noop.batteryAlerts",
+        "noop.illnessWatch",
+        "noop.zoneCoaching",
+        "noop.zoneCoachRecovery",
+        "noop.buzzWhoop4WithAlarm",
+        "noop.napDetectionEnabled",
+        "noop.autoDetectWorkouts",
+    )
+
+    /**
+     * Which group a restored preference belongs to. Total by construction — anything not claimed by
+     * a more specific rule lands in [MigrationGroup.REST], so a key added later still restores (with
+     * the rest of the settings) instead of being dropped for having no home.
+     */
+    fun groupOf(store: String, key: String): MigrationGroup = when {
+        store == "noop_profile" -> MigrationGroup.PROFILE
+        store == "noop_notif_prefs" ||
+            store == "noop_inactivity_prefs" ||
+            store == "noop_smart_alarm" ||
+            store == "noop_wind_down" -> MigrationGroup.ALERTS
+        store == "noop_today_cards" -> MigrationGroup.LAYOUT
+
+        key.startsWith("today.") || key.startsWith("noop.journal") ||
+            key == "noop.more.expandedSections" || key == "noop.settings.collapsedSections" ||
+            key == "noop.settingsAdvancedOpen" -> MigrationGroup.LAYOUT
+
+        key.startsWith("profile.") -> MigrationGroup.PROFILE
+
+        key.startsWith("theme.") || key.startsWith("chart.") || key.startsWith("units.") ||
+            key.startsWith("sleep.") || key in APPEARANCE_KEYS -> MigrationGroup.APPEARANCE
+
+        // The trailing dot matters: `noop.caffeine.cutoffNudge` is an alert, while
+        // `noop.caffeineIntakes` is the log itself and belongs with the rest.
+        key.startsWith("noop.smartAlarm") || key.startsWith("noop.report.") ||
+            key.startsWith("noop.caffeine.") || key in ALERT_KEYS -> MigrationGroup.ALERTS
+
+        else -> MigrationGroup.REST
+    }
+
+    /** The groups a decoded `stores` payload actually carries — what a restore of it could apply. */
+    fun groupsPresent(stores: Map<String, Map<String, Any>>): Set<MigrationGroup> {
+        val out = LinkedHashSet<MigrationGroup>()
+        for ((store, values) in stores) {
+            for (key in values.keys) out += groupOf(store, key)
+        }
+        return out
+    }
+
     // ── Which preference files travel ───────────────────────────────────────────
 
     /**
@@ -345,18 +458,27 @@ object AppStateBridge {
     /**
      * Write a decoded snapshot back into this device's preferences files.
      *
+     * Only the [groups] the user ticked are written; everything else in [stores] is left alone.
+     *
      * MERGES rather than replaces: a key the backup doesn't carry keeps whatever this install has.
      * That is what makes restoring onto a phone that has already been used safe — an excluded key
      * (this install's strap bond, its sync cursors) is left exactly as it was instead of being wiped
      * by a backup that was never allowed to contain it.
      */
-    fun apply(context: Context, stores: Map<String, Map<String, Any>>) {
+    fun apply(
+        context: Context,
+        stores: Map<String, Map<String, Any>>,
+        groups: Set<AppStateCodec.MigrationGroup> = AppStateCodec.MigrationGroup.ALL,
+    ) {
         val app = context.applicationContext
         for ((name, values) in stores) {
             if (name !in AppStateCodec.BACKED_UP_STORES || values.isEmpty()) continue
             runCatching {
                 val editor = app.getSharedPreferences(name, Context.MODE_PRIVATE).edit()
                 for ((key, value) in values) {
+                    // The user's choice is enforced HERE rather than at decode, so one decoded
+                    // payload can answer both "what does this backup carry" and "write this subset".
+                    if (AppStateCodec.groupOf(name, key) !in groups) continue
                     when (value) {
                         is Boolean -> editor.putBoolean(key, value)
                         is Int -> editor.putInt(key, value)

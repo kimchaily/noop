@@ -173,16 +173,26 @@ object BackupSettingsBridge {
      * from the payload leave the device's current values alone; the profile setters clamp to their
      * normal ranges, so a hand-edited payload can't write absurd values.
      */
-    fun apply(context: Context, json: String) {
+    fun apply(
+        context: Context,
+        json: String,
+        groups: Set<AppStateCodec.MigrationGroup> = AppStateCodec.MigrationGroup.ALL,
+    ) {
         // The `stores` block goes down FIRST, so the nine flat keys stay authoritative where the two
         // overlap: they are the cross-platform contract, and `units.temperature` in particular means
         // "" = clear-the-key there, which only the flat path below expresses.
-        AppStateBridge.apply(context, AppStateCodec.decodeStores(BackupSettingsCodec.storesOf(json)))
+        AppStateBridge.apply(context, AppStateCodec.decodeStores(BackupSettingsCodec.storesOf(json)), groups)
 
         val values = BackupSettingsCodec.decode(json)
         if (values.isEmpty()) return
 
-        ProfileStore.from(context).applyBackup(values)
+        // The flat keys split across two groups: the body metrics are Profile, the display ones
+        // Appearance. [AppStateCodec.groupOf] decides, so the two layers can never disagree about
+        // which checkbox a given setting sits under.
+        if (AppStateCodec.MigrationGroup.PROFILE in groups) {
+            ProfileStore.from(context).applyBackup(values)
+        }
+        if (AppStateCodec.MigrationGroup.APPEARANCE !in groups) return
 
         val editor = NoopPrefs.of(context).edit()
         (values["units.system"] as? String)?.let { editor.putString(NoopPrefs.KEY_UNIT_SYSTEM, it) }
@@ -193,5 +203,24 @@ object BackupSettingsBridge {
         }
         (values["effort.scale"] as? String)?.let { editor.putString(UnitPrefs.KEY_EFFORT_SCALE, it) }
         editor.apply()
+    }
+
+    /**
+     * The groups a `settings.json` payload can actually restore.
+     *
+     * This is what makes an old backup explain itself rather than look broken. Every `.noopbak`
+     * written before the whole-app-state block carries the nine flat keys and nothing else, so a
+     * restore of one brings back the profile and units and leaves the theme, Today layout and
+     * journal at their defaults — which reads exactly like a bug unless the app can say "that
+     * backup doesn't contain them". Reporting what the FILE holds, rather than assuming, is the
+     * only way to tell those two apart.
+     */
+    fun groupsIn(json: String): Set<AppStateCodec.MigrationGroup> {
+        val out = LinkedHashSet<AppStateCodec.MigrationGroup>()
+        out += AppStateCodec.groupsPresent(AppStateCodec.decodeStores(BackupSettingsCodec.storesOf(json)))
+        for (key in BackupSettingsCodec.decode(json).keys) {
+            out += AppStateCodec.groupOf(store = "", key = key)
+        }
+        return out
     }
 }

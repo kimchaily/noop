@@ -281,6 +281,99 @@ class AppStateCodecTest {
         assertFalse("No avatar entry → nothing staged, no error", stagedAvatar.exists())
     }
 
+    // ── Migration groups: what a restore checkbox actually covers ───────────────
+
+    @Test fun theSettingsTheUserNamesLandInTheGroupTheyWouldLookUnder() {
+        fun group(store: String, key: String) = AppStateCodec.groupOf(store, key)
+        val g = AppStateCodec.MigrationGroup
+
+        // "start page layouts" — the Today grid, the cards, the sections, and the journal setup.
+        assertEquals(g.LAYOUT, group("noop_prefs", "today.keyMetrics"))
+        assertEquals(g.LAYOUT, group("noop_prefs", "today.dashboardCards"))
+        assertEquals(g.LAYOUT, group("noop_prefs", "today.sections"))
+        assertEquals(g.LAYOUT, group("noop_prefs", "noop.journalCatalogV2"))
+        assertEquals(g.LAYOUT, group("noop_today_cards", "noop.todayCard.newHere.dismissed"))
+
+        // "theme choice"
+        assertEquals(g.APPEARANCE, group("noop_prefs", "theme.family"))
+        assertEquals(g.APPEARANCE, group("noop_prefs", "theme.appearance"))
+        assertEquals(g.APPEARANCE, group("noop_prefs", "chart.style"))
+        assertEquals(g.APPEARANCE, group("noop_prefs", "units.system"))
+        assertEquals(g.APPEARANCE, group("", "effort.scale"))
+
+        assertEquals(g.PROFILE, group("noop_profile", "weight_kg"))
+        assertEquals(g.PROFILE, group("", "profile.age"))
+
+        assertEquals(g.ALERTS, group("noop_notif_prefs", "notif.masterEnabled"))
+        assertEquals(g.ALERTS, group("noop_smart_alarm", "alarm.enabled"))
+        assertEquals(g.ALERTS, group("noop_prefs", "noop.smartAlarmEnabled"))
+        assertEquals(g.ALERTS, group("noop_prefs", "noop.batteryAlerts"))
+
+        // The caffeine CUTOFF NUDGE is an alert; the caffeine LOG is not. One trailing dot apart.
+        assertEquals(g.ALERTS, group("noop_prefs", "noop.caffeine.cutoffNudge"))
+        assertEquals(g.REST, group("noop_prefs", "noop.caffeineIntakes"))
+
+        // Baselines and anything unclaimed fall to REST rather than being dropped.
+        assertEquals(g.REST, group("noop_prefs", "noop.hrvBaselineEpoch"))
+        assertEquals(g.REST, group("noop_prefs", "wimhof.history"))
+        assertEquals(g.REST, group("noop_prefs", "a.key.invented.next.year"))
+    }
+
+    @Test fun groupsPresentReportsOnlyWhatThePayloadHolds() {
+        val present = AppStateCodec.groupsPresent(
+            mapOf("noop_prefs" to mapOf<String, Any>("theme.family" to "dusk", "today.sections" to "a")),
+        )
+        assertEquals(
+            setOf(AppStateCodec.MigrationGroup.APPEARANCE, AppStateCodec.MigrationGroup.LAYOUT),
+            present,
+        )
+    }
+
+    @Test fun aPreStoresBackupReportsOnlyTheGroupsItsFlatKeysCover() {
+        // The case that made a working restore look broken: every backup written before Choop carried
+        // app state has the nine flat keys and nothing else, so profile and units come back and the
+        // theme, layout and journal cannot. The restore has to be able to SAY that.
+        val legacy = """{"profile.age":34,"units.system":"metric"}"""
+        assertEquals(
+            setOf(AppStateCodec.MigrationGroup.PROFILE, AppStateCodec.MigrationGroup.APPEARANCE),
+            BackupSettingsBridge.groupsIn(legacy),
+        )
+
+        val current = requireNotNull(
+            BackupSettingsCodec.encode(
+                mapOf("profile.age" to 34),
+                AppStateCodec.encodeStores(
+                    mapOf("noop_prefs" to mapOf<String, Any>("theme.family" to "dusk", "today.sections" to "a")),
+                ),
+            ),
+        )
+        assertEquals(
+            setOf(
+                AppStateCodec.MigrationGroup.PROFILE,
+                AppStateCodec.MigrationGroup.APPEARANCE,
+                AppStateCodec.MigrationGroup.LAYOUT,
+            ),
+            BackupSettingsBridge.groupsIn(current),
+        )
+    }
+
+    @Test fun everyGroupIsReachableFromSomeRealKey() {
+        // A group nobody can produce is a checkbox that can never do anything. HISTORY and PHOTO are
+        // the two that are not preferences at all (the database file and the avatar entry), so they
+        // are excluded from this sweep by construction.
+        val reachable = listOf(
+            "noop_profile" to "weight_kg",
+            "noop_prefs" to "theme.family",
+            "noop_prefs" to "today.sections",
+            "noop_notif_prefs" to "notif.masterEnabled",
+            "noop_prefs" to "noop.hrvBaselineEpoch",
+        ).mapTo(HashSet()) { (store, key) -> AppStateCodec.groupOf(store, key) }
+
+        val expected = AppStateCodec.MigrationGroup.entries.toSet() -
+            setOf(AppStateCodec.MigrationGroup.HISTORY, AppStateCodec.MigrationGroup.PHOTO)
+        assertEquals(expected, reachable)
+    }
+
     // ── The swap itself: replacing a live database file ─────────────────────────
 
     @Test fun overwritingAnExistingDatabaseReplacesItsContentInPlace() {

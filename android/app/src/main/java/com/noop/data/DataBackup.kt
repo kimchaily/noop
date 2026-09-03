@@ -76,8 +76,18 @@ object DataBackup {
 
     /** Outcome of an [importFrom] call. On success the app must be restarted. */
     sealed interface ImportResult {
-        /** The new database is in place; tell the user to relaunch Choop. */
-        data object NeedsRestart : ImportResult
+        /**
+         * The restore landed; tell the user to relaunch Choop.
+         *
+         * [applied] is what actually came across and [absent] what the user asked for but the file
+         * did not contain — which is how a restore reports the difference between "your theme didn't
+         * come back because you unticked it", "…because this backup predates Choop carrying themes",
+         * and an outright bug. Without that, all three look identical to the person holding the phone.
+         */
+        data class NeedsRestart(
+            val applied: Set<AppStateCodec.MigrationGroup> = emptySet(),
+            val absent: Set<AppStateCodec.MigrationGroup> = emptySet(),
+        ) : ImportResult
 
         /** Import failed and the original database is untouched. */
         data class Failed(val message: String) : ImportResult
@@ -164,10 +174,19 @@ object DataBackup {
      * Accepts both the new `.noopbak` (ZIP) format and legacy plain `.sqlite`/`.noopdb`
      * files so older backups keep working after the format upgrade.
      *
+     * [groups] is what the user ticked. Anything not in it is left exactly as this device had it —
+     * including the database, so a settings-only restore is a supported thing to ask for. A restart
+     * is still required either way: nothing in this app watches SharedPreferences, so a restored
+     * theme or layout only takes effect on the next launch.
+     *
      * On any error the current database is left exactly as it was. On success the caller
      * MUST instruct the user to fully restart the app.
      */
-    fun importFrom(context: Context, uri: Uri): ImportResult {
+    fun importFrom(
+        context: Context,
+        uri: Uri,
+        groups: Set<AppStateCodec.MigrationGroup> = AppStateCodec.MigrationGroup.ALL,
+    ): ImportResult {
         val appContext = context.applicationContext
         val resolver = appContext.contentResolver
 
@@ -283,7 +302,12 @@ object DataBackup {
         //     open the file directly through the framework helper.
         //
         //     The block returns the failure to report, or null when the swap landed cleanly.
-        val swapFailure: ImportResult? = WhoopDatabase.withDatabaseClosed {
+        val swapFailure: ImportResult? = if (AppStateCodec.MigrationGroup.HISTORY !in groups) {
+            // Settings-only restore: the file was still validated above (it has to BE a Choop backup
+            // before any of it is trusted), we just don't swap the store. Nothing to close, nothing
+            // to roll back.
+            null
+        } else WhoopDatabase.withDatabaseClosed {
             // 5. Snapshot the current db so a failed copy can be rolled back.
             try {
                 rollbackFile.delete()
@@ -354,9 +378,14 @@ object DataBackup {
         //    single-entry backups staged no settings file and restore exactly as before; a malformed
         //    settings entry degrades to "fewer keys applied" inside the codec and can never fail the
         //    restore.
+        // What the FILE turned out to carry, so the caller can tell "you unticked it" apart from
+        // "this backup never had it" — the difference between a choice and a disappointment.
+        val carried = LinkedHashSet<AppStateCodec.MigrationGroup>()
         if (tempSettings.exists()) {
-            runCatching {
-                BackupSettingsBridge.apply(appContext, tempSettings.readText(Charsets.UTF_8))
+            val json = runCatching { tempSettings.readText(Charsets.UTF_8) }.getOrNull()
+            if (json != null) {
+                carried += BackupSettingsBridge.groupsIn(json)
+                runCatching { BackupSettingsBridge.apply(appContext, json, groups) }
             }
             tempSettings.delete()
         }
@@ -366,9 +395,16 @@ object DataBackup {
         //     with no photo leaves whatever this install had — a restore is not the place to delete a
         //     photo the user set here. A copy that fails costs the photo, never the restore.
         if (tempAvatar.exists()) {
-            runCatching { tempAvatar.copyTo(ProfileAvatarStore.backupFile(appContext), overwrite = true) }
+            carried += AppStateCodec.MigrationGroup.PHOTO
+            if (AppStateCodec.MigrationGroup.PHOTO in groups) {
+                runCatching { overwriteWith(tempAvatar, ProfileAvatarStore.backupFile(appContext)) }
+            }
             tempAvatar.delete()
         }
+
+        // A `.noopbak` always carries the database, so history is only "absent" if there was no
+        // database — which cannot happen: staging fails the import outright in that case.
+        carried += AppStateCodec.MigrationGroup.HISTORY
 
         rollbackFile.delete()
         tempSqlite.delete()
@@ -382,12 +418,19 @@ object DataBackup {
         // imported night under the data-driven family (AnalyticsEngine.inferSkinTempFamily), so any
         // interpretation-only fix reaches already-scored history. Written straight to SharedPreferences to
         // avoid a data→ui dependency; the name/key mirror com.noop.ui.NoopPrefs.NAME / KEY_ANALYZE_WATERMARK.
-        runCatching {
-            appContext.getSharedPreferences("noop_prefs", Context.MODE_PRIVATE)
-                .edit().remove("noop.analyzeWatermark").apply()
+        // Only when the history actually changed: a settings-only restore leaves the store exactly as
+        // it was, and forcing a multi-minute rescore of nights nothing touched would be pure cost.
+        if (AppStateCodec.MigrationGroup.HISTORY in groups) {
+            runCatching {
+                appContext.getSharedPreferences("noop_prefs", Context.MODE_PRIVATE)
+                    .edit().remove("noop.analyzeWatermark").apply()
+            }
         }
 
-        return ImportResult.NeedsRestart
+        return ImportResult.NeedsRestart(
+            applied = groups intersect carried,
+            absent = groups - carried,
+        )
     }
 
     // ── Container staging (pure file/stream layer, unit-tested under real file I/O) ──────
