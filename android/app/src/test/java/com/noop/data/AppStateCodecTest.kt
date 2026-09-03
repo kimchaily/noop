@@ -1,5 +1,6 @@
 package com.noop.data
 
+import com.noop.data.AppStateCodec.MigrationGroup
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -285,38 +286,37 @@ class AppStateCodecTest {
 
     @Test fun theSettingsTheUserNamesLandInTheGroupTheyWouldLookUnder() {
         fun group(store: String, key: String) = AppStateCodec.groupOf(store, key)
-        val g = AppStateCodec.MigrationGroup
 
         // "start page layouts" — the Today grid, the cards, the sections, and the journal setup.
-        assertEquals(g.LAYOUT, group("noop_prefs", "today.keyMetrics"))
-        assertEquals(g.LAYOUT, group("noop_prefs", "today.dashboardCards"))
-        assertEquals(g.LAYOUT, group("noop_prefs", "today.sections"))
-        assertEquals(g.LAYOUT, group("noop_prefs", "noop.journalCatalogV2"))
-        assertEquals(g.LAYOUT, group("noop_today_cards", "noop.todayCard.newHere.dismissed"))
+        assertEquals(MigrationGroup.LAYOUT, group("noop_prefs", "today.keyMetrics"))
+        assertEquals(MigrationGroup.LAYOUT, group("noop_prefs", "today.dashboardCards"))
+        assertEquals(MigrationGroup.LAYOUT, group("noop_prefs", "today.sections"))
+        assertEquals(MigrationGroup.LAYOUT, group("noop_prefs", "noop.journalCatalogV2"))
+        assertEquals(MigrationGroup.LAYOUT, group("noop_today_cards", "noop.todayCard.newHere.dismissed"))
 
         // "theme choice"
-        assertEquals(g.APPEARANCE, group("noop_prefs", "theme.family"))
-        assertEquals(g.APPEARANCE, group("noop_prefs", "theme.appearance"))
-        assertEquals(g.APPEARANCE, group("noop_prefs", "chart.style"))
-        assertEquals(g.APPEARANCE, group("noop_prefs", "units.system"))
-        assertEquals(g.APPEARANCE, group("", "effort.scale"))
+        assertEquals(MigrationGroup.APPEARANCE, group("noop_prefs", "theme.family"))
+        assertEquals(MigrationGroup.APPEARANCE, group("noop_prefs", "theme.appearance"))
+        assertEquals(MigrationGroup.APPEARANCE, group("noop_prefs", "chart.style"))
+        assertEquals(MigrationGroup.APPEARANCE, group("noop_prefs", "units.system"))
+        assertEquals(MigrationGroup.APPEARANCE, group("", "effort.scale"))
 
-        assertEquals(g.PROFILE, group("noop_profile", "weight_kg"))
-        assertEquals(g.PROFILE, group("", "profile.age"))
+        assertEquals(MigrationGroup.PROFILE, group("noop_profile", "weight_kg"))
+        assertEquals(MigrationGroup.PROFILE, group("", "profile.age"))
 
-        assertEquals(g.ALERTS, group("noop_notif_prefs", "notif.masterEnabled"))
-        assertEquals(g.ALERTS, group("noop_smart_alarm", "alarm.enabled"))
-        assertEquals(g.ALERTS, group("noop_prefs", "noop.smartAlarmEnabled"))
-        assertEquals(g.ALERTS, group("noop_prefs", "noop.batteryAlerts"))
+        assertEquals(MigrationGroup.ALERTS, group("noop_notif_prefs", "notif.masterEnabled"))
+        assertEquals(MigrationGroup.ALERTS, group("noop_smart_alarm", "alarm.enabled"))
+        assertEquals(MigrationGroup.ALERTS, group("noop_prefs", "noop.smartAlarmEnabled"))
+        assertEquals(MigrationGroup.ALERTS, group("noop_prefs", "noop.batteryAlerts"))
 
         // The caffeine CUTOFF NUDGE is an alert; the caffeine LOG is not. One trailing dot apart.
-        assertEquals(g.ALERTS, group("noop_prefs", "noop.caffeine.cutoffNudge"))
-        assertEquals(g.REST, group("noop_prefs", "noop.caffeineIntakes"))
+        assertEquals(MigrationGroup.ALERTS, group("noop_prefs", "noop.caffeine.cutoffNudge"))
+        assertEquals(MigrationGroup.REST, group("noop_prefs", "noop.caffeineIntakes"))
 
         // Baselines and anything unclaimed fall to REST rather than being dropped.
-        assertEquals(g.REST, group("noop_prefs", "noop.hrvBaselineEpoch"))
-        assertEquals(g.REST, group("noop_prefs", "wimhof.history"))
-        assertEquals(g.REST, group("noop_prefs", "a.key.invented.next.year"))
+        assertEquals(MigrationGroup.REST, group("noop_prefs", "noop.hrvBaselineEpoch"))
+        assertEquals(MigrationGroup.REST, group("noop_prefs", "wimhof.history"))
+        assertEquals(MigrationGroup.REST, group("noop_prefs", "a.key.invented.next.year"))
     }
 
     @Test fun groupsPresentReportsOnlyWhatThePayloadHolds() {
@@ -324,7 +324,7 @@ class AppStateCodecTest {
             mapOf("noop_prefs" to mapOf<String, Any>("theme.family" to "dusk", "today.sections" to "a")),
         )
         assertEquals(
-            setOf(AppStateCodec.MigrationGroup.APPEARANCE, AppStateCodec.MigrationGroup.LAYOUT),
+            setOf(MigrationGroup.APPEARANCE, MigrationGroup.LAYOUT),
             present,
         )
     }
@@ -335,7 +335,7 @@ class AppStateCodecTest {
         // theme, layout and journal cannot. The restore has to be able to SAY that.
         val legacy = """{"profile.age":34,"units.system":"metric"}"""
         assertEquals(
-            setOf(AppStateCodec.MigrationGroup.PROFILE, AppStateCodec.MigrationGroup.APPEARANCE),
+            setOf(MigrationGroup.PROFILE, MigrationGroup.APPEARANCE),
             BackupSettingsBridge.groupsIn(legacy),
         )
 
@@ -349,9 +349,9 @@ class AppStateCodecTest {
         )
         assertEquals(
             setOf(
-                AppStateCodec.MigrationGroup.PROFILE,
-                AppStateCodec.MigrationGroup.APPEARANCE,
-                AppStateCodec.MigrationGroup.LAYOUT,
+                MigrationGroup.PROFILE,
+                MigrationGroup.APPEARANCE,
+                MigrationGroup.LAYOUT,
             ),
             BackupSettingsBridge.groupsIn(current),
         )
@@ -369,8 +369,8 @@ class AppStateCodecTest {
             "noop_prefs" to "noop.hrvBaselineEpoch",
         ).mapTo(HashSet()) { (store, key) -> AppStateCodec.groupOf(store, key) }
 
-        val expected = AppStateCodec.MigrationGroup.entries.toSet() -
-            setOf(AppStateCodec.MigrationGroup.HISTORY, AppStateCodec.MigrationGroup.PHOTO)
+        val expected = MigrationGroup.entries.toSet() -
+            setOf(MigrationGroup.HISTORY, MigrationGroup.PHOTO)
         assertEquals(expected, reachable)
     }
 
