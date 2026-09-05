@@ -76,6 +76,7 @@ fun BackupSyncScreen() {
             val msg = when (r) {
                 is DataBackup.ImportResult.NeedsRestart ->
                     "Restored. Fully close and reopen Choop to load it." + restoreShortfall(r)
+                is DataBackup.ImportResult.Cancelled -> "Restore cancelled. Nothing was changed."
                 is DataBackup.ImportResult.Failed -> r.message
             }
             Toast.makeText(context, msg, Toast.LENGTH_LONG).show()

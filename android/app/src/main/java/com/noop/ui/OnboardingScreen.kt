@@ -51,6 +51,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -77,7 +78,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.noop.ble.WhoopModel
 import com.noop.data.AppStateCodec
-import com.noop.data.DataBackup
 import com.noop.data.ImportSummary
 import com.noop.ingest.AppleHealthImporter
 import com.noop.ingest.HealthConnectImporter
@@ -125,6 +125,12 @@ fun OnboardingScreen(viewModel: AppViewModel, onFinished: () -> Unit) {
     // app can no longer read consistently. The screen becomes the restart instruction, with no footer
     // to tap past it.
     var restoreLanded by rememberSaveable { mutableStateOf(false) }
+
+    // The restore's live state, from the ViewModel rather than this screen — which is what lets it
+    // survive a rotation or the app being backgrounded mid-restore.
+    val backgroundActions by viewModel.backgroundActions.collectAsStateWithLifecycle()
+    val restore = backgroundActions.firstOrNull { it.id == AppViewModel.ActionIds.BACKUP_IMPORT }
+    val restoring = restore?.running == true
     // What the user asked for that the backup didn't contain, carried to that screen so it can say
     // so. Held as ONE comma-joined string of enum names: rememberSaveable puts this in the Activity
     // bundle, and neither the enum nor Kotlin's EmptyList singleton can go in one.
@@ -225,6 +231,8 @@ fun OnboardingScreen(viewModel: AppViewModel, onFinished: () -> Unit) {
                 when (page) {
                     OnboardingPage.Welcome -> WelcomeStep()
                     OnboardingPage.Restore -> RestoreStep(
+                        viewModel = viewModel,
+                        restore = restore,
                         onRestored = { absent ->
                             restoreAbsent = absent.joinToString(",") { it.name }
                             restoreLanded = true
@@ -244,23 +252,37 @@ fun OnboardingScreen(viewModel: AppViewModel, onFinished: () -> Unit) {
                 }
             }
 
-            OnboardingFooter(
-                canGoBack = pageIndex > 0,
-                cta = page.cta,
-                onBack = {
-                    var target = pageIndex - 1
-                    // Skip the bonded celebration going back when nothing is bonded.
-                    if (target >= 0 && pages[target] == OnboardingPage.Bonded && !live.bonded) target--
-                    if (target >= 0) pageIndex = target
-                },
-                onNext = {
-                    if (pageIndex == pages.lastIndex) {
-                        complete()
-                    } else {
-                        advance()
-                    }
-                },
-            )
+            // While a restore is running the footer stops offering a way past it. "Set up as new"
+            // there would walk the user into the rest of onboarding over a store that is being
+            // replaced underneath them; the only sensible action is to stop, and only while stopping
+            // is still free (before the write starts), so the button disables itself for the rest.
+            if (restoring) {
+                OnboardingFooter(
+                    canGoBack = false,
+                    cta = if (restore?.cancellable == true) "Cancel restore" else "Finishing…",
+                    ctaEnabled = restore?.cancellable == true,
+                    onBack = {},
+                    onNext = { viewModel.cancelRestore() },
+                )
+            } else {
+                OnboardingFooter(
+                    canGoBack = pageIndex > 0,
+                    cta = page.cta,
+                    onBack = {
+                        var target = pageIndex - 1
+                        // Skip the bonded celebration going back when nothing is bonded.
+                        if (target >= 0 && pages[target] == OnboardingPage.Bonded && !live.bonded) target--
+                        if (target >= 0) pageIndex = target
+                    },
+                    onNext = {
+                        if (pageIndex == pages.lastIndex) {
+                            complete()
+                        } else {
+                            advance()
+                        }
+                    },
+                )
+            }
         }
         }
     }
@@ -329,6 +351,9 @@ private fun OnboardingFooter(
     cta: String,
     onBack: () -> Unit,
     onNext: () -> Unit,
+    /** Lets the primary action be shown but refused — the "Finishing…" state of a running restore,
+     *  where there is nothing to offer yet the button should not vanish and reflow the footer. */
+    ctaEnabled: Boolean = true,
 ) {
     Row(
         modifier = Modifier
@@ -350,9 +375,12 @@ private fun OnboardingFooter(
         }
         Button(
             onClick = onNext,
+            enabled = ctaEnabled,
             colors = ButtonDefaults.buttonColors(
                 containerColor = Palette.accent,
                 contentColor = Palette.surfaceBase,
+                disabledContainerColor = Palette.hairline,
+                disabledContentColor = Palette.textTertiary,
             ),
             modifier = Modifier.weight(1.4f),
         ) {
@@ -461,13 +489,18 @@ private fun WelcomeStep() {
  * screen over to [RestoreLandedScreen] and the app must be restarted.
  */
 @Composable
-private fun RestoreStep(onRestored: (Set<AppStateCodec.MigrationGroup>) -> Unit) {
+private fun RestoreStep(
+    viewModel: AppViewModel,
+    restore: AppViewModel.BackgroundAction?,
+    onRestored: (Set<AppStateCodec.MigrationGroup>) -> Unit,
+) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    // Transient on purpose: a config change cancels the restore coroutine, so a persisted busy=true
-    // would strand the button disabled with nothing running.
-    var busy by remember { mutableStateOf(false) }
-    var error by rememberSaveable { mutableStateOf<String?>(null) }
+    val busy = restore?.running == true
+    // A finished-but-not-dismissed restore: its message is the one thing worth saying on this screen,
+    // and it lives on the ViewModel so it survives a rotation. A SUCCESS never lands here — that
+    // hands over to the restart screen — so this is a failure or a cancellation, and those two read
+    // differently: cancelling is something the user chose, not something that went wrong.
+    val outcome = restore?.takeIf { !it.running && it.detail != null }
 
     // What to bring across. Everything is ticked, because that is what almost everyone moving phones
     // wants and an unticked box silently loses something; the checkboxes exist for the person who
@@ -484,20 +517,14 @@ private fun RestoreStep(onRestored: (Set<AppStateCodec.MigrationGroup>) -> Unit)
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
-        busy = true
-        error = null
-        scope.launch {
-            val result = withContext(Dispatchers.IO) { DataBackup.importFrom(context, uri, chosen) }
-            busy = false
-            when (result) {
-                is DataBackup.ImportResult.NeedsRestart -> {
-                    // Remember, for the relaunch this restore now requires, that onboarding should
-                    // resume at "pair your strap" instead of page one.
-                    NoopPrefs.setRestoredPendingSetup(context, true)
-                    onRestored(result.absent)
-                }
-                is DataBackup.ImportResult.Failed -> error = result.message
-            }
+        // Handed to the ViewModel rather than run here: a restore takes minutes on a real library, and
+        // a coroutine started from this screen dies the moment the screen does — rotate the phone or
+        // leave the app and the restore would vanish half way through.
+        viewModel.restoreFromBackup(uri, chosen) { absent ->
+            // Remember, for the relaunch this restore now requires, that onboarding should resume at
+            // "pair your strap" instead of page one.
+            NoopPrefs.setRestoredPendingSetup(context, true)
+            onRestored(absent)
         }
     }
 
@@ -535,26 +562,84 @@ private fun RestoreStep(onRestored: (Set<AppStateCodec.MigrationGroup>) -> Unit)
                             onToggle = { selectedMask = selectedMask xor (1 shl index) },
                         )
                     }
-                    OnboardingActionButton(
-                        label = if (busy) "Restoring…" else "Restore a backup (.noopbak)",
-                        icon = Icons.Filled.Restore,
-                        enabled = !busy && chosen.isNotEmpty(),
-                    ) { restoreLauncher.launch(arrayOf("*/*")) }
+                    if (busy) {
+                        RestoreProgress(restore)
+                    } else {
+                        OnboardingActionButton(
+                            label = "Restore a backup (.noopbak)",
+                            icon = Icons.Filled.Restore,
+                            enabled = chosen.isNotEmpty(),
+                        ) { restoreLauncher.launch(arrayOf("*/*")) }
+                    }
                 }
             }
 
             Checkline("No backup? Continue — you can restore later from Settings → Backup & restore.")
             Checkline("Your strap pairs over Bluetooth on the next step, whichever way you go.")
 
-            error?.let {
+            outcome?.let {
                 Text(
-                    it,
+                    it.detail.orEmpty(),
                     style = NoopType.footnote,
-                    color = Palette.statusCritical,
+                    color = if (it.ok) Palette.textSecondary else Palette.statusCritical,
                     textAlign = TextAlign.Center,
                 )
             }
         }
+    }
+}
+
+/**
+ * The live restore: a determinate bar, the phase under it, and a percentage.
+ *
+ * Determinate rather than a spinner because the honest question during a multi-minute restore is
+ * "how much longer", and only a real bar answers it. The read phase measures itself against the
+ * file's size and the swap against the staged database's; the two short phases in between hold their
+ * position rather than pretending to move.
+ */
+@Composable
+private fun RestoreProgress(action: AppViewModel.BackgroundAction?) {
+    val fraction = action?.progress ?: 0f
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                action?.note ?: "Restoring…",
+                style = NoopType.body,
+                color = Palette.textPrimary,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${(fraction * 100).toInt()}%",
+                style = NoopType.captionNumber,
+                color = Palette.textSecondary,
+            )
+        }
+        // Float `progress`, not the lambda overload: this module is on Compose BOM 2024.06.00 ⇒
+        // material3 1.2.1, where the lambda form does not exist yet (same note as SettingsScreen).
+        LinearProgressIndicator(
+            progress = fraction.coerceIn(0f, 1f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(50)),
+            color = Palette.accent,
+            trackColor = Palette.hairline,
+        )
+        Text(
+            if (action?.cancellable == true) {
+                "You can leave the app — this keeps going, and you can stop it until it starts writing."
+            } else {
+                "Writing your data now. This part can't be interrupted; it'll only be a moment."
+            },
+            style = NoopType.footnote,
+            color = Palette.textTertiary,
+        )
     }
 }
 

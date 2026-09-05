@@ -563,6 +563,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     is DataBackup.ImportResult.NeedsRestart ->
                         "Backup imported. Fully close and reopen Choop for it to take effect." +
                             restoreShortfall(result)
+                    // Nothing to cancel from here (this path never asks), but the branch has to exist.
+                    is DataBackup.ImportResult.Cancelled -> "Restore cancelled. Nothing was changed."
                     is DataBackup.ImportResult.Failed -> throw IllegalStateException(result.message)
                 }
             },

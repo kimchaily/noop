@@ -74,6 +74,39 @@ object DataBackup {
     private val ZIP_MAGIC: ByteArray =
         byteArrayOf(0x50, 0x4B, 0x03, 0x04)
 
+    /**
+     * How far a restore has got, for a progress bar the user can actually read.
+     *
+     * [fraction] is an OVERALL 0..1 estimate, not a per-phase one, so a single bar moves forward the
+     * whole way instead of resetting at each stage. The phase weights are rough — the read and the
+     * swap dominate on a real 100 MB+ library, the checks and the settings are near-instant — but
+     * they are monotonic, which is the property a progress bar actually needs.
+     */
+    enum class Phase(val label: String, internal val start: Float, internal val end: Float) {
+        READING("Reading the backup", 0f, 0.55f),
+        CHECKING("Checking it's intact", 0.55f, 0.65f),
+        SWAPPING("Restoring your data", 0.65f, 0.95f),
+        FINISHING("Applying your settings", 0.95f, 1f),
+        ;
+
+        /** This phase's own 0..1 progress mapped onto the overall bar. */
+        internal fun overall(within: Float): Float =
+            start + (end - start) * within.coerceIn(0f, 1f)
+    }
+
+    /** A progress tick: which phase, and how far along the whole restore is. */
+    data class Progress(val phase: Phase, val fraction: Float)
+
+    /**
+     * Thrown from the staging stream when the user cancels, so a blocking read unwinds promptly.
+     *
+     * An IOException subclass on purpose: every layer between here and [importFrom] already handles
+     * IOException, so cancellation travels the paths that clean up temp files instead of needing its
+     * own. [importFrom] catches this type FIRST and reports it as a cancellation rather than a
+     * failure — the two are not the same thing to the person who pressed the button.
+     */
+    internal class RestoreCancelled : IOException("Restore cancelled.")
+
     /** Outcome of an [importFrom] call. On success the app must be restarted. */
     sealed interface ImportResult {
         /**
@@ -91,6 +124,13 @@ object DataBackup {
 
         /** Import failed and the original database is untouched. */
         data class Failed(val message: String) : ImportResult
+
+        /**
+         * The user cancelled before anything was written. Distinct from [Failed] because nothing went
+         * wrong — reporting a deliberate cancellation as an error is how an app teaches people to
+         * ignore its error messages.
+         */
+        data object Cancelled : ImportResult
     }
 
     /**
@@ -186,6 +226,8 @@ object DataBackup {
         context: Context,
         uri: Uri,
         groups: Set<AppStateCodec.MigrationGroup> = AppStateCodec.MigrationGroup.ALL,
+        onProgress: (Progress) -> Unit = {},
+        isCancelled: () -> Boolean = { false },
     ): ImportResult {
         val appContext = context.applicationContext
         val resolver = appContext.contentResolver
@@ -215,7 +257,19 @@ object DataBackup {
         val sidecars = listOf(tempSettings, tempAvatar)
         deleteAll(sidecars)
         try {
-            when (val staged = stageBackupSqlite(resolver.openInputStream(uri), header, tempSqlite, tempSettings, tempAvatar)) {
+            // The read is the long half on a real library, and the only half where cancelling is
+            // free — nothing has been written yet. Wrapping the SOURCE stream (rather than teaching
+            // the staging function about progress) keeps that function the pure, unit-tested
+            // stream-in/files-out shape it already is, and counts the bytes whose total we actually
+            // know: the file's own size. The extracted database's size is not knowable up front from
+            // a streamed ZIP, so counting the output would have nothing to divide by.
+            val sourceBytes = fileSize(resolver, uri)
+            val counted = resolver.openInputStream(uri)?.let { raw ->
+                ProgressInputStream(raw, sourceBytes, isCancelled) { read ->
+                    onProgress(Progress(Phase.READING, Phase.READING.overall(read)))
+                }
+            }
+            when (val staged = stageBackupSqlite(counted, header, tempSqlite, tempSettings, tempAvatar)) {
                 StageResult.OK -> Unit
                 StageResult.CANNOT_OPEN -> return ImportResult.Failed("Could not open the chosen file.")
                 StageResult.NO_DB_IN_ZIP -> {
@@ -227,6 +281,10 @@ object DataBackup {
                 )
                 else -> error("unreachable stage result $staged")
             }
+        } catch (e: RestoreCancelled) {
+            tempSqlite.delete()
+            deleteAll(sidecars)
+            return ImportResult.Cancelled
         } catch (e: IOException) {
             tempSqlite.delete()
             deleteAll(sidecars)
@@ -288,6 +346,17 @@ object DataBackup {
             )
         }
 
+        onProgress(Progress(Phase.CHECKING, Phase.CHECKING.overall(1f)))
+
+        // LAST chance to stop: past here the live database gets overwritten. A cancel during the swap
+        // would land in exactly the window the rollback exists for, so rather than inviting that, the
+        // UI stops offering cancel once this point is passed.
+        if (isCancelled()) {
+            tempSqlite.delete()
+            deleteAll(sidecars)
+            return ImportResult.Cancelled
+        }
+
         val dbFile = appContext.getDatabasePath(WhoopDatabase.DB_NAME)
         val walFile = File(dbFile.path + "-wal")
         val shmFile = File(dbFile.path + "-shm")
@@ -320,7 +389,9 @@ object DataBackup {
 
             // 6. Overwrite the db file with the extracted backup, then drop the stale sidecars.
             try {
-                overwriteWith(tempSqlite, dbFile)
+                overwriteWith(tempSqlite, dbFile) { written ->
+                    onProgress(Progress(Phase.SWAPPING, Phase.SWAPPING.overall(written)))
+                }
                 walFile.delete()
                 shmFile.delete()
             } catch (e: IOException) {
@@ -380,6 +451,8 @@ object DataBackup {
         //    restore.
         // What the FILE turned out to carry, so the caller can tell "you unticked it" apart from
         // "this backup never had it" — the difference between a choice and a disappointment.
+        onProgress(Progress(Phase.FINISHING, Phase.FINISHING.overall(0f)))
+
         val carried = LinkedHashSet<AppStateCodec.MigrationGroup>()
         if (tempSettings.exists()) {
             val json = runCatching { tempSettings.readText(Charsets.UTF_8) }.getOrNull()
@@ -427,6 +500,7 @@ object DataBackup {
             }
         }
 
+        onProgress(Progress(Phase.FINISHING, 1f))
         return ImportResult.NeedsRestart(
             applied = groups intersect carried,
             absent = groups - carried,
@@ -647,12 +721,79 @@ object DataBackup {
      * force-stopped.
      */
     @Throws(IOException::class)
-    internal fun overwriteWith(source: File, dest: File) {
+    internal fun overwriteWith(source: File, dest: File, onProgress: (Float) -> Unit = {}) {
         dest.parentFile?.mkdirs()
+        val total = source.length()
         FileOutputStream(dest, /* append = */ false).use { out ->
-            source.inputStream().use { input -> input.copyTo(out) }
+            source.inputStream().use { input ->
+                val buffer = ByteArray(COPY_BUFFER)
+                var copied = 0L
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    out.write(buffer, 0, read)
+                    copied += read
+                    // Deliberately NOT cancellable: this is the window where the live database is
+                    // half-replaced, and stopping in it is what the rollback is for, not a feature.
+                    if (total > 0) onProgress(copied.toFloat() / total)
+                }
+            }
             out.flush()
             out.fd.sync()
+        }
+    }
+
+    /** Copy buffer for the two byte pumps. 64 KiB — big enough that progress ticks aren't a hot loop. */
+    private const val COPY_BUFFER = 64 * 1024
+
+    /** The chosen document's size in bytes, or 0 when the provider won't say (progress then stays at 0). */
+    private fun fileSize(resolver: android.content.ContentResolver, uri: Uri): Long =
+        runCatching {
+            resolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)
+                ?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else 0L }
+                ?: 0L
+        }.getOrDefault(0L)
+
+    /**
+     * An [java.io.InputStream] that reports how far through [total] it is and aborts when the user
+     * cancels.
+     *
+     * Cancellation has to be checked HERE rather than by the coroutine: [importFrom] is ordinary
+     * blocking code on the IO dispatcher, and cancelling a coroutine does not interrupt a blocking
+     * `read`. Throwing from inside the read is what actually stops a 100 MB extract promptly.
+     *
+     * Progress is reported at most once per buffer, and only when the fraction actually moves by a
+     * visible amount — a 100 MB file is ~1600 reads, and repainting a progress bar 1600 times costs
+     * more than the copy.
+     */
+    private class ProgressInputStream(
+        private val delegate: java.io.InputStream,
+        private val total: Long,
+        private val isCancelled: () -> Boolean,
+        private val onFraction: (Float) -> Unit,
+    ) : java.io.InputStream() {
+        private var read = 0L
+        private var lastReported = -1
+
+        override fun read(): Int = delegate.read().also { if (it >= 0) advance(1) }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int =
+            delegate.read(b, off, len).also { if (it > 0) advance(it.toLong()) }
+
+        override fun available(): Int = delegate.available()
+
+        override fun close() = delegate.close()
+
+        private fun advance(count: Long) {
+            if (isCancelled()) throw RestoreCancelled()
+            read += count
+            if (total <= 0) return
+            // Whole percent granularity: 100 repaints across the whole read, not one per 64 KiB.
+            val percent = ((read * 100) / total).toInt().coerceIn(0, 100)
+            if (percent != lastReported) {
+                lastReported = percent
+                onFraction(percent / 100f)
+            }
         }
     }
 

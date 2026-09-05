@@ -374,6 +374,28 @@ class AppStateCodecTest {
         assertEquals(expected, reachable)
     }
 
+    // ── Restore progress: one bar that only ever moves forward ──────────────────
+
+    @Test fun theProgressBarNeverGoesBackwards() {
+        // A bar that resets at each phase is worse than no bar. Every phase's range has to start
+        // where the previous one ended, and each phase has to map its own 0..1 inside that range.
+        val phases = DataBackup.Phase.entries
+        var previousEnd = 0f
+        for (phase in phases) {
+            assertEquals("${phase.name} must start where the last phase ended", previousEnd, phase.overall(0f), 0.0001f)
+            assertTrue("${phase.name} must make progress", phase.overall(1f) > phase.overall(0f))
+            previousEnd = phase.overall(1f)
+        }
+        assertEquals("The last phase must finish the bar", 1f, previousEnd, 0.0001f)
+    }
+
+    @Test fun aPhaseFractionIsClampedIntoItsOwnRange() {
+        val reading = DataBackup.Phase.READING
+        // A provider that under- or over-reports the file size must not push the bar out of range.
+        assertEquals(reading.overall(0f), reading.overall(-5f), 0.0001f)
+        assertEquals(reading.overall(1f), reading.overall(9f), 0.0001f)
+    }
+
     // ── The swap itself: replacing a live database file ─────────────────────────
 
     @Test fun overwritingAnExistingDatabaseReplacesItsContentInPlace() {

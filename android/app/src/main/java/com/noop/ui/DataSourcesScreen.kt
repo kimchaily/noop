@@ -195,6 +195,7 @@ fun DataSourcesScreen(vm: AppViewModel) {
                 when (val result = DataBackup.importFrom(context, uri)) {
                     is DataBackup.ImportResult.NeedsRestart ->
                         "Imported. Fully close and reopen Choop to load it." + restoreShortfall(result)
+                    is DataBackup.ImportResult.Cancelled -> "Restore cancelled. Nothing was changed."
                     // A RESULT, not a throw — turn it into one so the banner reads as a failure.
                     is DataBackup.ImportResult.Failed -> throw IllegalStateException(result.message)
                 }

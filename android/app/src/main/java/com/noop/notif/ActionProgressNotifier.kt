@@ -65,6 +65,27 @@ object ActionProgressNotifier {
         }
     }
 
+    /**
+     * Update a running action's line with REAL progress.
+     *
+     * The indeterminate bar in [onRunning] says "something is happening"; for a restore that can run
+     * for minutes over a 100 MB library, the honest question is "how much longer", and only a
+     * determinate bar answers it. [percent] is 0..100 and [note] is the phase in the user's terms
+     * ("Reading the backup"). setOnlyAlertOnce is already set on every builder here, so repeated
+     * updates never buzz.
+     */
+    @SuppressLint("MissingPermission")
+    fun onProgress(context: Context, actionId: String, label: String, percent: Int, note: String?) {
+        post(context, actionId) {
+            it.setContentTitle(label)
+                .setContentText(note ?: "Running… you can leave this screen.")
+                .setProgress(100, percent.coerceIn(0, 100), false)
+                .setOngoing(true)
+                .setAutoCancel(false)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+        }
+    }
+
     /** Drop the system line when the user dismisses the in-app banner, so the two stay in step. */
     fun cancel(context: Context, actionId: String) {
         runCatching { NotificationManagerCompat.from(context).cancel(notifId(actionId)) }
