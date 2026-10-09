@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "8.2.42"
+    const val CURRENT_VERSION = "8.2.43"
 
     data class Release(
         val version: String,
@@ -36,6 +36,19 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "8.2.43",
+            title = "Move to a new phone with your whole setup, not just your data",
+            date = "October 2026",
+            items = listOf(
+                "**A backup is the whole app now.** Alongside your readings, nights and workouts, a .noopbak carries your profile and photo, your Today layout, your journal's renamed and custom questions, your theme and units, your alert rules and smart alarm, your breathwork settings and history, and your Charge baseline anchors. Restoring one on a new phone brings back the setup you actually had, not a fresh install with your numbers in it.",
+                "**Restoring is the first thing a new install offers.** It sits at step two of setup, before Bluetooth and before your profile — because a restore replaces everything, and doing it after pairing a strap or typing in your weight only overwrites what you just did. The WHOOP, Health Connect and Apple Health imports stay where they were; those add to your history rather than replacing it.",
+                "**You choose what comes across.** Seven checkboxes — measurements and history, profile and body, profile photo, appearance and units, Today layout and journal, alerts and reminders, and baselines and everything else — all ticked to begin with. Untick anything you would rather keep as it is on this phone. Untick measurements and you get your setup back without touching this phone's data.",
+                "**Choop tells you what a backup does not contain.** A backup written by an older Choop only carries your history and basic profile, so restoring one leaves your theme and layout at their defaults. Rather than looking broken, the restore now names exactly what was missing and tells you to export a fresh backup from the old phone.",
+                "**A restore keeps running when you leave the app.** A real progress bar with the stage it is on, in the app and in the notification shade, so a long restore is never mistaken for a stuck one. You can cancel while it is still reading, and switching apps or rotating the phone no longer kills it.",
+                "**Your strap is the one thing that cannot travel.** A Bluetooth pairing belongs to one phone, so that is the single step left on the new one. Everything else comes across, and after the restart Choop picks up at \"pair your strap\" instead of starting setup over.",
+            ),
+        ),
         Release(
             version = "8.2.42",
             title = "Wim Hof breathwork, with your rounds logged to the journal",
