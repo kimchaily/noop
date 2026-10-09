@@ -34,6 +34,7 @@ import com.noop.ble.WhoopConnectionService
 import com.noop.ble.WhoopModel
 import androidx.health.connect.client.HealthConnectClient
 import com.noop.data.DailyMetric
+import com.noop.data.DataBackup
 import com.noop.data.HrSample
 import com.noop.data.WhoopRepository
 import com.noop.data.WorkoutRow
@@ -1487,6 +1488,85 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * be weeks old, and every day AFTER a changed night has to be re-derived too, which is more than
      * the ordinary 21-day window reaches.
      */
+    /**
+     * Restore a `.noopbak`, as a tracked background action.
+     *
+     * On [viewModelScope] rather than a screen's scope, and that is the whole point: a restore of a
+     * real library runs for minutes, and the first-run version of this ran on the composable's scope,
+     * so backgrounding the app or rotating the phone killed it half way through. The ViewModel
+     * outlives every screen, so the work — its progress bar, its notification, and its result —
+     * survives leaving the screen and leaving the app.
+     *
+     * Cancellation is cooperative and only offered while it is FREE: right up until the live database
+     * starts being overwritten, at which point [DataBackup] stops honouring it and the UI stops
+     * offering it. Stopping mid-swap is what the rollback exists for, not something to invite.
+     *
+     * [onLanded] fires only on success, on the main thread, with what the backup turned out not to
+     * contain — the caller uses it to send the user to the restart screen.
+     */
+    fun restoreFromBackup(
+        uri: android.net.Uri,
+        groups: Set<com.noop.data.AppStateCodec.MigrationGroup>,
+        onLanded: (Set<com.noop.data.AppStateCodec.MigrationGroup>) -> Unit,
+    ) {
+        if (isActionRunning(ActionIds.BACKUP_IMPORT)) return
+        restoreCancelRequested = false
+        actionBegin(ActionIds.BACKUP_IMPORT, "Restoring your backup")
+        actionProgress(ActionIds.BACKUP_IMPORT, 0f, DataBackup.Phase.READING.label, cancellable = true)
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    DataBackup.importFrom(
+                        appContext, uri, groups,
+                        onProgress = { p ->
+                            // Hop to the main thread: this fires from the IO copy loop, and the
+                            // StateFlow behind the banner is read by composition.
+                            viewModelScope.launch {
+                                actionProgress(
+                                    ActionIds.BACKUP_IMPORT, p.fraction, p.phase.label,
+                                    // Past the read, stopping is no longer free.
+                                    cancellable = p.phase == DataBackup.Phase.READING,
+                                )
+                            }
+                        },
+                        isCancelled = { restoreCancelRequested },
+                    )
+                }
+            }.onFailure { if (it is kotlin.coroutines.cancellation.CancellationException) throw it }
+                .getOrElse { DataBackup.ImportResult.Failed(it.message ?: "Something went wrong.") }
+
+            when (result) {
+                is DataBackup.ImportResult.Failed ->
+                    actionFinish(ActionIds.BACKUP_IMPORT, ok = false, detail = result.message)
+                is DataBackup.ImportResult.Cancelled ->
+                    actionFinish(
+                        ActionIds.BACKUP_IMPORT, ok = true,
+                        detail = "Restore cancelled. Nothing on this phone was changed.",
+                    )
+                is DataBackup.ImportResult.NeedsRestart -> {
+                    actionFinish(
+                        ActionIds.BACKUP_IMPORT, ok = true,
+                        detail = "Restored. Fully close and reopen Choop to load it.",
+                    )
+                    onLanded(result.absent)
+                }
+            }
+            restoreCancelRequested = false
+        }
+    }
+
+    /**
+     * Ask a running restore to stop. Honoured only while it is still reading — see
+     * [restoreFromBackup]. Volatile because it is set on the main thread and read from the IO copy
+     * loop, with no lock between them.
+     */
+    @Volatile
+    private var restoreCancelRequested: Boolean = false
+
+    fun cancelRestore() {
+        restoreCancelRequested = true
+    }
+
     fun mergeFromBackup(uri: android.net.Uri) {
         if (isActionRunning(ActionIds.BACKUP_MERGE)) return
         actionBegin(ActionIds.BACKUP_MERGE, "Adding what's missing from the backup")
@@ -1540,6 +1620,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val running: Boolean = true,
         val ok: Boolean = true,
         val detail: String? = null,
+        /** 0..1 while the action can measure itself; null = indeterminate (most of them). */
+        val progress: Float? = null,
+        /** What it is doing right now, in the user's terms — the phase under the bar. */
+        val note: String? = null,
+        /** True while the action is at a point where stopping is safe and offered. */
+        val cancellable: Boolean = false,
     )
 
     private val _backgroundActions = MutableStateFlow<List<BackgroundAction>>(emptyList())
@@ -1562,6 +1648,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Update a running action's measured progress, phase note and whether stopping is still offered.
+     *
+     * Ignores an unknown or finished id, so a late tick from work that has already reported its
+     * outcome cannot resurrect a banner the user has moved past.
+     */
+    fun actionProgress(id: String, fraction: Float?, note: String?, cancellable: Boolean) {
+        var label: String? = null
+        _backgroundActions.value = _backgroundActions.value.map {
+            if (it.id == id && it.running) {
+                label = it.label
+                it.copy(progress = fraction, note = note, cancellable = cancellable)
+            } else {
+                it
+            }
+        }
+        val pct = fraction?.let { (it * 100).toInt() } ?: return
+        label?.let { ActionProgressNotifier.onProgress(appContext, id, it, pct, note) }
+    }
+
+    /**
      * Record the outcome. The entry STAYS (running = false) until [dismissAction] — that is the whole
      * point: a result you were not looking at when it landed is still there when you come back.
      */
@@ -1570,7 +1676,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _backgroundActions.value = _backgroundActions.value.map {
             if (it.id == id) {
                 label = it.label
-                it.copy(running = false, ok = ok, detail = detail)
+                it.copy(running = false, ok = ok, detail = detail, cancellable = false, progress = null)
             } else {
                 it
             }

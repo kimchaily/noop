@@ -830,6 +830,28 @@ object NoopPrefs {
         of(context).edit().remove(KEY_LAST_DEVICE_ADDR).remove(KEY_LAST_DEVICE_MODEL).apply()
     }
 
+    /**
+     * Set while a backup restored during first-run onboarding is waiting for the mandated app
+     * restart. A restore swaps the database file underneath Room, so the user must fully close and
+     * reopen Choop — and on that relaunch onboarding would otherwise start again at page one, asking
+     * someone who has just brought over years of history to read the welcome copy and re-enter the
+     * profile the backup already restored.
+     *
+     * This flag makes the relaunch resume at "pair your strap", which is genuinely the only thing
+     * left to do: a Bluetooth bond belongs to one phone and is the one part of a setup a backup can
+     * never carry. Cleared the moment onboarding reads it, so it drives exactly one relaunch, and
+     * excluded from backups (see [com.noop.data.AppStateCodec]) so it can't ride into another
+     * install's first run.
+     */
+    const val KEY_RESTORED_PENDING_SETUP = "noop.restoredPendingSetup"
+
+    fun restoredPendingSetup(context: Context): Boolean =
+        of(context).getBoolean(KEY_RESTORED_PENDING_SETUP, false)
+
+    fun setRestoredPendingSetup(context: Context, pending: Boolean) {
+        of(context).edit().putBoolean(KEY_RESTORED_PENDING_SETUP, pending).apply()
+    }
+
     /** Wall-clock (unix seconds) of the last history offload that ran to HISTORY_COMPLETE. Persisted
      *  (reimpl of @tavelli's PR #556) so the Live screen's "Last synced N ago" SURVIVES a BLE-client
      *  recreation / process restart and stops reverting to "Never". 0 = never synced on this install. */

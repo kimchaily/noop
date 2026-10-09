@@ -79,6 +79,29 @@ abstract class WhoopDatabase : RoomDatabase() {
         }
 
         /**
+         * Run [block] with the singleton closed AND held closed for its whole duration.
+         *
+         * [close] on its own is not enough to swap the database file underneath the app: it drops the
+         * instance, but the very next [get] — from a background flow, the source coordinator, any
+         * collector still running — rebuilds one and re-opens the file in the middle of the swap, and
+         * can then write to the very file being replaced. A first-run restore is where that window is
+         * widest: onboarding constructs the view model and starts querying (the source coordinator
+         * reads the device registry at launch) while the user is still picking their backup.
+         *
+         * Holding the same monitor [get] takes closes the window: a concurrent [get] blocks until the
+         * swap finishes and then builds against the file that actually landed.
+         *
+         * [block] MUST NOT call [get]. Java monitors are reentrant, so it would not deadlock — it
+         * would quietly re-open the database mid-swap, which is the exact bug this prevents. The
+         * import's own integrity probes open the file directly through the framework helper.
+         */
+        fun <T> withDatabaseClosed(block: () -> T): T = synchronized(this) {
+            instance?.close()
+            instance = null
+            block()
+        }
+
+        /**
          * v2 → v3: ADDITIVE ONLY, adds the stepSample table + dailyMetric.steps/activeKcalEst.
          * A real (non-destructive) migration so an existing user's already-offloaded raw streams are
          * PRESERVED (the strap trims acked history chunks and will not re-send them, so a destructive

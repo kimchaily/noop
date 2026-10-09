@@ -68,6 +68,17 @@ object ProfileAvatarStore {
     private fun avatarFile(ctx: Context): File =
         File(ctx.applicationContext.filesDir, FILE_NAME)
 
+    /**
+     * The avatar's on-disk file, for the backup layer.
+     *
+     * The `avatar_present` FLAG travels inside `settings.json` (it lives in the `noop_profile` prefs,
+     * which the whole-app-state block carries), but a flag with no bytes is worse than neither — the
+     * store would report a photo and render nothing. So [com.noop.data.DataBackup] copies these bytes
+     * into the `.noopbak` as its own entry and writes them back on restore, and both halves land
+     * together. May not exist (no photo set); callers check.
+     */
+    fun backupFile(ctx: Context): File = avatarFile(ctx)
+
     /** The decoded avatar for composition; null = no photo set (fall back to the person icon). */
     var bitmap by mutableStateOf<ImageBitmap?>(null)
         private set

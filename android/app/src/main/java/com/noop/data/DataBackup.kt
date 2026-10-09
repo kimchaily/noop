@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
+import com.noop.ui.ProfileAvatarStore
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -17,15 +18,22 @@ import java.util.zip.ZipOutputStream
 /**
  * Whole-store EXPORT / IMPORT for device migration.
  *
- * Choop keeps everything on-device in a single Room/SQLite file ([WhoopDatabase.DB_NAME]).
- * Moving to a new phone therefore means moving exactly that one file. There is no cloud,
- * no account, nothing leaves the device except through these two explicit, user-driven
- * file operations (a SAF document the user picks).
+ * Choop keeps every MEASUREMENT on-device in a single Room/SQLite file ([WhoopDatabase.DB_NAME]),
+ * so moving a history to a new phone is mostly moving that one file. What the user CONFIGURED,
+ * though, lives beside it — in SharedPreferences and (for the profile photo) in `filesDir` — so a
+ * `.noopbak` carries three things, and a restore is only a migration when it carries all three.
+ * There is no cloud, no account, nothing leaves the device except through these two explicit,
+ * user-driven file operations (a SAF document the user picks).
  *
- * Export: checkpoint the WAL into the main db file, then write a ZIP (the `.noopbak`
- * format) containing the SQLite file plus a small `settings.json` entry (#1000) with the
- * whitelisted profile/display settings (see [BackupSettingsCodec]), so a restore also
- * brings back weight/height/units and not just the rows. ZIP deflate typically reduces a
+ * Export: checkpoint the WAL into the main db file, then write a ZIP (the `.noopbak` format) with
+ *   1. the SQLite file — every sample, night, workout, journal answer, marker, paired device;
+ *   2. `settings.json` — the nine cross-platform profile/display keys ([BackupSettingsCodec]) plus
+ *      the whole-app-state block ([AppStateCodec]): Today layout, journal renames, theme, baseline
+ *      anchors, alert rules, and the rest of what the user set; and
+ *   3. `avatar.jpg` — the profile photo's bytes, when one is set.
+ *
+ * Entries 2 and 3 are optional and the DB entry stays FIRST, so an older importer (or the Apple
+ * one) reads what it understands and ignores the rest. ZIP deflate typically reduces a
  * 100 MB+ SQLite backup to 10–20 MB — SQLite's page-aligned text data compresses very
  * well. The ZIP is a standard container: users can rename `.noopbak` → `.zip` and
  * extract the SQLite manually with any archive tool on any OS.
@@ -47,6 +55,14 @@ object DataBackup {
     /** Entry name of the optional whitelisted-settings JSON (#1000). Matches the Apple exporter. */
     private const val SETTINGS_ENTRY_NAME = BackupSettingsCodec.ENTRY_NAME
 
+    /**
+     * Entry name of the optional profile-photo bytes. The avatar is the one piece of the user's setup
+     * that is a FILE rather than a preference (`filesDir/avatar.jpg`), and its "a photo is set" flag
+     * rides in `settings.json` — so without this entry a restore would claim a photo and show none.
+     * Optional and last, so an importer that doesn't know about it still reads the two entries it does.
+     */
+    private const val AVATAR_ENTRY_NAME = "avatar.jpg"
+
     /** First 16 bytes of every SQLite 3 file: "SQLite format 3\0". */
     private val SQLITE_MAGIC: ByteArray =
         byteArrayOf(
@@ -58,13 +74,63 @@ object DataBackup {
     private val ZIP_MAGIC: ByteArray =
         byteArrayOf(0x50, 0x4B, 0x03, 0x04)
 
+    /**
+     * How far a restore has got, for a progress bar the user can actually read.
+     *
+     * [fraction] is an OVERALL 0..1 estimate, not a per-phase one, so a single bar moves forward the
+     * whole way instead of resetting at each stage. The phase weights are rough — the read and the
+     * swap dominate on a real 100 MB+ library, the checks and the settings are near-instant — but
+     * they are monotonic, which is the property a progress bar actually needs.
+     */
+    enum class Phase(val label: String, internal val start: Float, internal val end: Float) {
+        READING("Reading the backup", 0f, 0.55f),
+        CHECKING("Checking it's intact", 0.55f, 0.65f),
+        SWAPPING("Restoring your data", 0.65f, 0.95f),
+        FINISHING("Applying your settings", 0.95f, 1f),
+        ;
+
+        /** This phase's own 0..1 progress mapped onto the overall bar. */
+        internal fun overall(within: Float): Float =
+            start + (end - start) * within.coerceIn(0f, 1f)
+    }
+
+    /** A progress tick: which phase, and how far along the whole restore is. */
+    data class Progress(val phase: Phase, val fraction: Float)
+
+    /**
+     * Thrown from the staging stream when the user cancels, so a blocking read unwinds promptly.
+     *
+     * An IOException subclass on purpose: every layer between here and [importFrom] already handles
+     * IOException, so cancellation travels the paths that clean up temp files instead of needing its
+     * own. [importFrom] catches this type FIRST and reports it as a cancellation rather than a
+     * failure — the two are not the same thing to the person who pressed the button.
+     */
+    internal class RestoreCancelled : IOException("Restore cancelled.")
+
     /** Outcome of an [importFrom] call. On success the app must be restarted. */
     sealed interface ImportResult {
-        /** The new database is in place; tell the user to relaunch Choop. */
-        data object NeedsRestart : ImportResult
+        /**
+         * The restore landed; tell the user to relaunch Choop.
+         *
+         * [applied] is what actually came across and [absent] what the user asked for but the file
+         * did not contain — which is how a restore reports the difference between "your theme didn't
+         * come back because you unticked it", "…because this backup predates Choop carrying themes",
+         * and an outright bug. Without that, all three look identical to the person holding the phone.
+         */
+        data class NeedsRestart(
+            val applied: Set<AppStateCodec.MigrationGroup> = emptySet(),
+            val absent: Set<AppStateCodec.MigrationGroup> = emptySet(),
+        ) : ImportResult
 
         /** Import failed and the original database is untouched. */
         data class Failed(val message: String) : ImportResult
+
+        /**
+         * The user cancelled before anything was written. Distinct from [Failed] because nothing went
+         * wrong — reporting a deliberate cancellation as an error is how an app teaches people to
+         * ignore its error messages.
+         */
+        data object Cancelled : ImportResult
     }
 
     /**
@@ -108,6 +174,9 @@ object DataBackup {
         // `.sqlite` entry, so entry order is part of the cross-platform container contract.
         val settingsJson = BackupSettingsBridge.snapshotJson(appContext)
 
+        // The profile photo's bytes (null when none is set — the entry is then simply absent).
+        val avatarFile = ProfileAvatarStore.backupFile(appContext).takeIf { it.isFile }
+
         val resolver = appContext.contentResolver
         val output = resolver.openOutputStream(uri)
             ?: throw IOException("Could not open the chosen file for writing.")
@@ -129,6 +198,11 @@ object DataBackup {
                         zip.write(settingsJson.toByteArray(Charsets.UTF_8))
                         zip.closeEntry()
                     }
+                    if (avatarFile != null) {
+                        zip.putNextEntry(ZipEntry(AVATAR_ENTRY_NAME))
+                        avatarFile.inputStream().use { input -> input.copyTo(zip) }
+                        zip.closeEntry()
+                    }
                 }
             }
         }
@@ -140,10 +214,21 @@ object DataBackup {
      * Accepts both the new `.noopbak` (ZIP) format and legacy plain `.sqlite`/`.noopdb`
      * files so older backups keep working after the format upgrade.
      *
+     * [groups] is what the user ticked. Anything not in it is left exactly as this device had it —
+     * including the database, so a settings-only restore is a supported thing to ask for. A restart
+     * is still required either way: nothing in this app watches SharedPreferences, so a restored
+     * theme or layout only takes effect on the next launch.
+     *
      * On any error the current database is left exactly as it was. On success the caller
      * MUST instruct the user to fully restart the app.
      */
-    fun importFrom(context: Context, uri: Uri): ImportResult {
+    fun importFrom(
+        context: Context,
+        uri: Uri,
+        groups: Set<AppStateCodec.MigrationGroup> = AppStateCodec.MigrationGroup.ALL,
+        onProgress: (Progress) -> Unit = {},
+        isCancelled: () -> Boolean = { false },
+    ): ImportResult {
         val appContext = context.applicationContext
         val resolver = appContext.contentResolver
 
@@ -161,17 +246,34 @@ object DataBackup {
         //    If it's a plain SQLite (legacy), copy it to the same temp file.
         //    The container-staging step is factored into [stageBackupSqlite] (a pure file/stream
         //    function) so it can be exercised under real file I/O in unit tests without Room/Context.
-        //    A `settings.json` entry (#1000) is staged alongside when present; the stale-delete first
-        //    matters, or a leftover from an earlier import could masquerade as THIS backup's settings.
+        //    The `settings.json` (#1000) and `avatar.jpg` entries are staged alongside when present;
+        //    the stale-delete first matters, or a leftover from an earlier import could masquerade as
+        //    THIS backup's settings or photo.
         val tempSqlite = File(appContext.cacheDir, "import-extract.sqlite")
         val tempSettings = File(appContext.cacheDir, "import-settings.json")
-        tempSettings.delete()
+        val tempAvatar = File(appContext.cacheDir, "import-avatar.jpg")
+        // The two sidecars are staged and cleaned up together, so no failure path can leave one of
+        // them behind to masquerade as the NEXT import's payload.
+        val sidecars = listOf(tempSettings, tempAvatar)
+        deleteAll(sidecars)
         try {
-            when (val staged = stageBackupSqlite(resolver.openInputStream(uri), header, tempSqlite, tempSettings)) {
+            // The read is the long half on a real library, and the only half where cancelling is
+            // free — nothing has been written yet. Wrapping the SOURCE stream (rather than teaching
+            // the staging function about progress) keeps that function the pure, unit-tested
+            // stream-in/files-out shape it already is, and counts the bytes whose total we actually
+            // know: the file's own size. The extracted database's size is not knowable up front from
+            // a streamed ZIP, so counting the output would have nothing to divide by.
+            val sourceBytes = fileSize(resolver, uri)
+            val counted = resolver.openInputStream(uri)?.let { raw ->
+                ProgressInputStream(raw, sourceBytes, isCancelled) { read ->
+                    onProgress(Progress(Phase.READING, Phase.READING.overall(read)))
+                }
+            }
+            when (val staged = stageBackupSqlite(counted, header, tempSqlite, tempSettings, tempAvatar)) {
                 StageResult.OK -> Unit
                 StageResult.CANNOT_OPEN -> return ImportResult.Failed("Could not open the chosen file.")
                 StageResult.NO_DB_IN_ZIP -> {
-                    tempSettings.delete()
+                    deleteAll(sidecars)
                     return ImportResult.Failed("The backup archive doesn't contain a database file.")
                 }
                 StageResult.NOT_A_BACKUP -> return ImportResult.Failed(
@@ -179,16 +281,20 @@ object DataBackup {
                 )
                 else -> error("unreachable stage result $staged")
             }
+        } catch (e: RestoreCancelled) {
+            tempSqlite.delete()
+            deleteAll(sidecars)
+            return ImportResult.Cancelled
         } catch (e: IOException) {
             tempSqlite.delete()
-            tempSettings.delete()
+            deleteAll(sidecars)
             return ImportResult.Failed("Could not read the chosen file: ${e.message}")
         }
 
         // 3. Validate the extracted file is a real SQLite database (magic-byte check).
         if (!isValidSqliteHeader(tempSqlite)) {
             tempSqlite.delete()
-            tempSettings.delete()
+            deleteAll(sidecars)
             return ImportResult.Failed("The backup archive doesn't contain a valid Choop database.")
         }
 
@@ -203,7 +309,7 @@ object DataBackup {
             BackupOrigin.MAC ->
                 return rejectForeign(
                     tempSqlite,
-                    tempSettings,
+                    sidecars,
                     "This isn't a Choop backup from this app. It looks like a backup from the Mac or " +
                         "iOS Choop app (it carries that platform's migration bookkeeping). Restoring it here " +
                         "would strand your store. To move your history across platforms, export the " +
@@ -213,7 +319,7 @@ object DataBackup {
                 if (holdsData(backupTables)) {
                     return rejectForeign(
                         tempSqlite,
-                        tempSettings,
+                        sidecars,
                         "This isn't a Choop backup from this app. It's missing the database bookkeeping a " +
                             "Choop backup carries (it looks like another app's database). Restoring it would " +
                             "strand your store.",
@@ -233,11 +339,22 @@ object DataBackup {
         //     DatabaseIntegrity gate.
         sqliteQuickCheckFailure(tempSqlite)?.let { complaint ->
             tempSqlite.delete()
-            tempSettings.delete()
+            deleteAll(sidecars)
             return ImportResult.Failed(
                 "This backup file is damaged and can't be restored (SQLite reports: $complaint). " +
                     "Your current data is untouched. Try an earlier backup file."
             )
+        }
+
+        onProgress(Progress(Phase.CHECKING, Phase.CHECKING.overall(1f)))
+
+        // LAST chance to stop: past here the live database gets overwritten. A cancel during the swap
+        // would land in exactly the window the rollback exists for, so rather than inviting that, the
+        // UI stops offering cancel once this point is passed.
+        if (isCancelled()) {
+            tempSqlite.delete()
+            deleteAll(sidecars)
+            return ImportResult.Cancelled
         }
 
         val dbFile = appContext.getDatabasePath(WhoopDatabase.DB_NAME)
@@ -245,78 +362,122 @@ object DataBackup {
         val shmFile = File(dbFile.path + "-shm")
         val rollbackFile = File(dbFile.path + ".import-bak")
 
-        // 4. Close the live Room singleton so the file handles are released.
-        WhoopDatabase.close()
+        // 4-6b. The swap itself, with the Room singleton closed AND HELD closed for the duration.
+        //     Closing it and letting go is not enough: any background collector's next
+        //     WhoopDatabase.get() rebuilds the singleton and re-opens the file mid-swap — a live
+        //     connection, and possibly writes, on the file being replaced. A first-run restore is
+        //     where that window is widest, because onboarding is already querying while the user
+        //     picks their backup. Nothing inside may call WhoopDatabase.get(); the integrity probes
+        //     open the file directly through the framework helper.
+        //
+        //     The block returns the failure to report, or null when the swap landed cleanly.
+        val swapFailure: ImportResult? = if (AppStateCodec.MigrationGroup.HISTORY !in groups) {
+            // Settings-only restore: the file was still validated above (it has to BE a Choop backup
+            // before any of it is trusted), we just don't swap the store. Nothing to close, nothing
+            // to roll back.
+            null
+        } else WhoopDatabase.withDatabaseClosed {
+            // 5. Snapshot the current db so a failed copy can be rolled back.
+            try {
+                rollbackFile.delete()
+                if (dbFile.exists()) overwriteWith(dbFile, rollbackFile)
+            } catch (e: IOException) {
+                tempSqlite.delete()
+                deleteAll(sidecars)
+                return@withDatabaseClosed ImportResult.Failed("Could not back up the current data: ${e.message}")
+            }
 
-        // 5. Snapshot the current db so a failed copy can be rolled back.
-        try {
-            rollbackFile.delete()
-            if (dbFile.exists()) dbFile.copyTo(rollbackFile, overwrite = true)
-        } catch (e: IOException) {
-            tempSqlite.delete()
-            tempSettings.delete()
-            return ImportResult.Failed("Could not back up the current data: ${e.message}")
-        }
-
-        // 6. Overwrite the db file with the extracted backup, then drop the stale sidecars.
-        try {
-            dbFile.parentFile?.mkdirs()
-            tempSqlite.copyTo(dbFile, overwrite = true)
-            walFile.delete()
-            shmFile.delete()
-        } catch (e: IOException) {
-            runCatching { if (rollbackFile.exists()) rollbackFile.copyTo(dbFile, overwrite = true) }
-            rollbackFile.delete()
-            tempSqlite.delete()
-            tempSettings.delete()
-            return ImportResult.Failed("Import failed, your data is unchanged: ${e.message}")
-        }
-
-        // 6b. #1014 defence-in-depth, post-swap: re-verify the file that actually LANDED at the live
-        //     path with a second read-only quick_check. The staged file was verified in 3c, but the
-        //     copy itself can tear — disk-full mid-copy, a dying flash chip, the process killed at
-        //     the wrong instant — and the next launch would meet a corrupt store (which, before the
-        //     CorruptionPreservingOpenHelperFactory below, the platform would then silently DELETE).
-        //     On failure, roll back to the `.import-bak` snapshot automatically and say so.
-        sqliteQuickCheckFailure(dbFile)?.let { complaint ->
-            tempSqlite.delete()
-            tempSettings.delete()
-            walFile.delete()
-            shmFile.delete()
-            val message: String
-            if (rollbackFile.exists()) {
-                if (runCatching { rollbackFile.copyTo(dbFile, overwrite = true) }.isSuccess) {
-                    rollbackFile.delete()
-                    message = "The backup failed its integrity check after the copy (SQLite reports: " +
-                        "$complaint). Your previous data was rolled back automatically and is unchanged."
-                } else {
-                    // The roll-back copy itself failed: KEEP the snapshot on disk — it is now the
-                    // only good copy of the user's data — and tell the user exactly where it is.
-                    message = "The backup failed its integrity check after the copy (SQLite reports: " +
-                        "$complaint), and rolling back also failed. Your previous data is preserved at " +
-                        "${rollbackFile.name} next to the app's database."
+            // 6. Overwrite the db file with the extracted backup, then drop the stale sidecars.
+            try {
+                overwriteWith(tempSqlite, dbFile) { written ->
+                    onProgress(Progress(Phase.SWAPPING, Phase.SWAPPING.overall(written)))
                 }
-            } else {
-                // Fresh install: nothing existed before the import, so removing the damaged file
-                // returns to the exact pre-import (empty) state.
-                dbFile.delete()
-                message = "The backup failed its integrity check after the copy (SQLite reports: " +
-                    "$complaint). There was no previous data to roll back."
+                walFile.delete()
+                shmFile.delete()
+            } catch (e: IOException) {
+                runCatching { if (rollbackFile.exists()) overwriteWith(rollbackFile, dbFile) }
+                rollbackFile.delete()
+                tempSqlite.delete()
+                deleteAll(sidecars)
+                return@withDatabaseClosed ImportResult.Failed("Import failed, your data is unchanged: ${e.message}")
             }
-            return ImportResult.Failed(message)
-        }
 
-        // 7. #1000: re-apply the backup's whitelisted profile/display settings (weight, height, age,
-        //    sex, HR-max override, unit prefs) — but only NOW, after the DB swap landed. Every failure
-        //    path above returns without touching settings. Legacy single-entry backups staged no
-        //    settings file and restore exactly as before; a malformed settings entry degrades to
-        //    "fewer keys applied" inside the codec and can never fail the restore.
+            // 6b. #1014 defence-in-depth, post-swap: re-verify the file that actually LANDED at the
+            //     live path with a second read-only quick_check. The staged file was verified in 3c,
+            //     but the copy itself can tear — disk-full mid-copy, a dying flash chip, the process
+            //     killed at the wrong instant — and the next launch would meet a corrupt store
+            //     (which, before the CorruptionPreservingOpenHelperFactory below, the platform would
+            //     then silently DELETE). On failure, roll back to the `.import-bak` snapshot
+            //     automatically and say so. Opens the file through the framework helper, never
+            //     WhoopDatabase.get(), so it is safe under the closed-database lock.
+            sqliteQuickCheckFailure(dbFile)?.let { complaint ->
+                tempSqlite.delete()
+                deleteAll(sidecars)
+                walFile.delete()
+                shmFile.delete()
+                val message: String
+                if (rollbackFile.exists()) {
+                    if (runCatching { overwriteWith(rollbackFile, dbFile) }.isSuccess) {
+                        rollbackFile.delete()
+                        message = "The backup failed its integrity check after the copy (SQLite reports: " +
+                            "$complaint). Your previous data was rolled back automatically and is unchanged."
+                    } else {
+                        // The roll-back copy itself failed: KEEP the snapshot on disk — it is now the
+                        // only good copy of the user's data — and tell the user exactly where it is.
+                        message = "The backup failed its integrity check after the copy (SQLite reports: " +
+                            "$complaint), and rolling back also failed. Your previous data is preserved at " +
+                            "${rollbackFile.name} next to the app's database."
+                    }
+                } else {
+                    // Fresh install: nothing existed before the import, so removing the damaged file
+                    // returns to the exact pre-import (empty) state.
+                    dbFile.delete()
+                    message = "The backup failed its integrity check after the copy (SQLite reports: " +
+                        "$complaint). There was no previous data to roll back."
+                }
+                return@withDatabaseClosed ImportResult.Failed(message)
+            }
+
+            null // the swap landed and verified
+        }
+        if (swapFailure != null) return swapFailure
+
+        // 7. #1000: re-apply the backup's profile/display settings (weight, height, age, sex, HR-max
+        //    override, unit prefs) AND the whole-app-state block that now rides with them (the Today
+        //    layout, journal renames, theme, baseline anchors, alert rules…) — but only NOW, after the
+        //    DB swap landed. Every failure path above returns without touching settings. Legacy
+        //    single-entry backups staged no settings file and restore exactly as before; a malformed
+        //    settings entry degrades to "fewer keys applied" inside the codec and can never fail the
+        //    restore.
+        // What the FILE turned out to carry, so the caller can tell "you unticked it" apart from
+        // "this backup never had it" — the difference between a choice and a disappointment.
+        onProgress(Progress(Phase.FINISHING, Phase.FINISHING.overall(0f)))
+
+        val carried = LinkedHashSet<AppStateCodec.MigrationGroup>()
         if (tempSettings.exists()) {
-            runCatching {
-                BackupSettingsBridge.apply(appContext, tempSettings.readText(Charsets.UTF_8))
+            val json = runCatching { tempSettings.readText(Charsets.UTF_8) }.getOrNull()
+            if (json != null) {
+                carried += BackupSettingsBridge.groupsIn(json)
+                runCatching { BackupSettingsBridge.apply(appContext, json, groups) }
             }
             tempSettings.delete()
         }
+
+        // 7b. The profile photo's bytes, into the same `filesDir/avatar.jpg` the store reads at launch.
+        //     Its `avatar_present` flag came down with the settings above, so the two agree. A backup
+        //     with no photo leaves whatever this install had — a restore is not the place to delete a
+        //     photo the user set here. A copy that fails costs the photo, never the restore.
+        if (tempAvatar.exists()) {
+            carried += AppStateCodec.MigrationGroup.PHOTO
+            if (AppStateCodec.MigrationGroup.PHOTO in groups) {
+                runCatching { overwriteWith(tempAvatar, ProfileAvatarStore.backupFile(appContext)) }
+            }
+            tempAvatar.delete()
+        }
+
+        // A `.noopbak` always carries the database, so history is only "absent" if there was no
+        // database — which cannot happen: staging fails the import outright in that case.
+        carried += AppStateCodec.MigrationGroup.HISTORY
 
         rollbackFile.delete()
         tempSqlite.delete()
@@ -330,12 +491,20 @@ object DataBackup {
         // imported night under the data-driven family (AnalyticsEngine.inferSkinTempFamily), so any
         // interpretation-only fix reaches already-scored history. Written straight to SharedPreferences to
         // avoid a data→ui dependency; the name/key mirror com.noop.ui.NoopPrefs.NAME / KEY_ANALYZE_WATERMARK.
-        runCatching {
-            appContext.getSharedPreferences("noop_prefs", Context.MODE_PRIVATE)
-                .edit().remove("noop.analyzeWatermark").apply()
+        // Only when the history actually changed: a settings-only restore leaves the store exactly as
+        // it was, and forcing a multi-minute rescore of nights nothing touched would be pure cost.
+        if (AppStateCodec.MigrationGroup.HISTORY in groups) {
+            runCatching {
+                appContext.getSharedPreferences("noop_prefs", Context.MODE_PRIVATE)
+                    .edit().remove("noop.analyzeWatermark").apply()
+            }
         }
 
-        return ImportResult.NeedsRestart
+        onProgress(Progress(Phase.FINISHING, 1f))
+        return ImportResult.NeedsRestart(
+            applied = groups intersect carried,
+            absent = groups - carried,
+        )
     }
 
     // ── Container staging (pure file/stream layer, unit-tested under real file I/O) ──────
@@ -351,9 +520,10 @@ object DataBackup {
      * the live import uses (no behaviour fork between test and production).
      *
      * When [settingsDest] is given, a `settings.json` entry (#1000) is ALSO staged there if the ZIP
-     * carries one (either platform's exporter may have written it, in either entry order). Its absence
-     * is not an error — every pre-#1000 backup is a single-entry ZIP — and it never affects the
-     * returned [StageResult]: the DB is the payload that decides success.
+     * carries one (either platform's exporter may have written it, in either entry order); likewise
+     * [avatarDest] for the profile-photo entry. Their absence is not an error — every pre-#1000 backup
+     * is a single-entry ZIP, and a user with no photo writes no avatar entry — and neither ever affects
+     * the returned [StageResult]: the DB is the payload that decides success.
      *
      * NOTE this does NOT validate the staged file's SQLite header or origin; [importFrom] does that
      * next, on the staged file. Keeping staging and validation separate keeps each pure-testable.
@@ -363,6 +533,7 @@ object DataBackup {
         header: ByteArray,
         dest: File,
         settingsDest: File? = null,
+        avatarDest: File? = null,
     ): StageResult {
         if (input == null) return StageResult.CANNOT_OPEN
         input.use { stream ->
@@ -370,6 +541,7 @@ object DataBackup {
                 header.startsWith(ZIP_MAGIC) -> {
                     var foundDb = false
                     var foundSettings = false
+                    var foundAvatar = false
                     ZipInputStream(stream).use { zip ->
                         var entry = zip.nextEntry
                         while (entry != null) {
@@ -383,9 +555,17 @@ object DataBackup {
                                     FileOutputStream(settingsDest).use { out -> zip.copyTo(out) }
                                     foundSettings = true
                                 }
+                                !entry.isDirectory && !foundAvatar && avatarDest != null &&
+                                    entry.name.substringAfterLast('/') == AVATAR_ENTRY_NAME -> {
+                                    FileOutputStream(avatarDest).use { out -> zip.copyTo(out) }
+                                    foundAvatar = true
+                                }
                             }
                             // Everything we could want is staged - stop reading the archive.
-                            if (foundDb && (settingsDest == null || foundSettings)) break
+                            if (foundDb &&
+                                (settingsDest == null || foundSettings) &&
+                                (avatarDest == null || foundAvatar)
+                            ) break
                             entry = zip.nextEntry
                         }
                     }
@@ -401,11 +581,11 @@ object DataBackup {
     }
 
     /** Write [dbFile]'s bytes into a deflate ZIP at [dest] (the `.noopbak` container), DB entry first,
-     *  plus the optional `settings.json` entry (#1000) when [settingsJson] is non-null. Context-free
-     *  twin of the stream the live [exportTo] writes, so tests round-trip a real archive of either
-     *  shape (legacy single-entry when [settingsJson] is null). */
+     *  plus the optional `settings.json` entry (#1000) when [settingsJson] is non-null and the optional
+     *  `avatar.jpg` entry when [avatarFile] is. Context-free twin of the stream the live [exportTo]
+     *  writes, so tests round-trip a real archive of any shape (legacy single-entry when both are null). */
     @Throws(IOException::class)
-    fun writeBackupZip(dbFile: File, dest: File, settingsJson: String? = null) {
+    fun writeBackupZip(dbFile: File, dest: File, settingsJson: String? = null, avatarFile: File? = null) {
         FileOutputStream(dest).use { out ->
             ZipOutputStream(out).use { zip ->
                 zip.putNextEntry(ZipEntry(ZIP_ENTRY_NAME))
@@ -414,6 +594,11 @@ object DataBackup {
                 if (settingsJson != null) {
                     zip.putNextEntry(ZipEntry(SETTINGS_ENTRY_NAME))
                     zip.write(settingsJson.toByteArray(Charsets.UTF_8))
+                    zip.closeEntry()
+                }
+                if (avatarFile != null) {
+                    zip.putNextEntry(ZipEntry(AVATAR_ENTRY_NAME))
+                    avatarFile.inputStream().use { input -> input.copyTo(zip) }
                     zip.closeEntry()
                 }
             }
@@ -512,10 +697,104 @@ object DataBackup {
     }
 
     /** Delete the staged temp files and return a Failed result, keeping the live DB untouched. */
-    private fun rejectForeign(tempSqlite: File, tempSettings: File, message: String): ImportResult {
+    private fun rejectForeign(tempSqlite: File, sidecars: List<File>, message: String): ImportResult {
         tempSqlite.delete()
-        tempSettings.delete()
+        deleteAll(sidecars)
         return ImportResult.Failed(message)
+    }
+
+    /** Best-effort delete of the staged sidecar files; a delete that fails must not fail an import. */
+    private fun deleteAll(files: List<File>) {
+        for (file in files) runCatching { file.delete() }
+    }
+
+    /**
+     * Write [source]'s bytes over [dest], truncating whatever was there.
+     *
+     * Deliberately NOT `File.copyTo(overwrite = true)`: that DELETES the destination first and fails
+     * the whole copy if the delete is refused — "Tried to overwrite the destination, but failed to
+     * delete it", which is how a first-run restore died. Making the swap depend on unlinking the live
+     * database was never necessary: opening for truncation needs no delete, and it keeps the SAME
+     * inode, so a handle another component is still holding sees the restored bytes instead of a
+     * stale unlinked file. The explicit fsync matters here in a way it would not for an ordinary
+     * copy: this file IS the user's whole history, and the next thing that happens is the app being
+     * force-stopped.
+     */
+    @Throws(IOException::class)
+    internal fun overwriteWith(source: File, dest: File, onProgress: (Float) -> Unit = {}) {
+        dest.parentFile?.mkdirs()
+        val total = source.length()
+        FileOutputStream(dest, /* append = */ false).use { out ->
+            source.inputStream().use { input ->
+                val buffer = ByteArray(COPY_BUFFER)
+                var copied = 0L
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    out.write(buffer, 0, read)
+                    copied += read
+                    // Deliberately NOT cancellable: this is the window where the live database is
+                    // half-replaced, and stopping in it is what the rollback is for, not a feature.
+                    if (total > 0) onProgress(copied.toFloat() / total)
+                }
+            }
+            out.flush()
+            out.fd.sync()
+        }
+    }
+
+    /** Copy buffer for the two byte pumps. 64 KiB — big enough that progress ticks aren't a hot loop. */
+    private const val COPY_BUFFER = 64 * 1024
+
+    /** The chosen document's size in bytes, or 0 when the provider won't say (progress then stays at 0). */
+    private fun fileSize(resolver: android.content.ContentResolver, uri: Uri): Long =
+        runCatching {
+            resolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)
+                ?.use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else 0L }
+                ?: 0L
+        }.getOrDefault(0L)
+
+    /**
+     * An [java.io.InputStream] that reports how far through [total] it is and aborts when the user
+     * cancels.
+     *
+     * Cancellation has to be checked HERE rather than by the coroutine: [importFrom] is ordinary
+     * blocking code on the IO dispatcher, and cancelling a coroutine does not interrupt a blocking
+     * `read`. Throwing from inside the read is what actually stops a 100 MB extract promptly.
+     *
+     * Progress is reported at most once per buffer, and only when the fraction actually moves by a
+     * visible amount — a 100 MB file is ~1600 reads, and repainting a progress bar 1600 times costs
+     * more than the copy.
+     */
+    private class ProgressInputStream(
+        private val delegate: java.io.InputStream,
+        private val total: Long,
+        private val isCancelled: () -> Boolean,
+        private val onFraction: (Float) -> Unit,
+    ) : java.io.InputStream() {
+        private var read = 0L
+        private var lastReported = -1
+
+        override fun read(): Int = delegate.read().also { if (it >= 0) advance(1) }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int =
+            delegate.read(b, off, len).also { if (it > 0) advance(it.toLong()) }
+
+        override fun available(): Int = delegate.available()
+
+        override fun close() = delegate.close()
+
+        private fun advance(count: Long) {
+            if (isCancelled()) throw RestoreCancelled()
+            read += count
+            if (total <= 0) return
+            // Whole percent granularity: 100 repaints across the whole read, not one per 64 KiB.
+            val percent = ((read * 100) / total).toInt().coerceIn(0, 100)
+            if (percent != lastReported) {
+                lastReported = percent
+                onFraction(percent / 100f)
+            }
+        }
     }
 
     // ── Integrity gate (#1014 defence-in-depth; twin of the Apple DatabaseIntegrity) ─────
