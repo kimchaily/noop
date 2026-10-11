@@ -32,12 +32,19 @@ import kotlin.math.roundToInt
  * Anonymous: the only branding is the provider name the user selected. The system prompt does
  * not name any app author or model vendor.
  */
-class AiCoach(private val repo: WhoopRepository) {
+class AiCoach(private val repo: WhoopRepository, activeStrapId: String = "my-whoop") {
 
     /** The device key the rest of the app reads/writes daily metrics under. Coach reads go
      *  through the MERGED raw+computed view ([WhoopRepository.daysMerged]), the same per-field
-     *  coalesce every screen uses, so on-device "-noop" scores are visible too (#124). */
-    private val deviceId = "my-whoop"
+     *  coalesce every screen uses, so on-device "-noop" scores are visible too (#124).
+     *
+     *  #1008: this is the registry's ACTIVE strap id, threaded in by [CoachViewModel], NOT a hardcoded
+     *  "my-whoop". Every read below resolves the active ∪ canonical union off it (daysMerged and
+     *  rrIntervalsUnion both take the active id and union internally), so a strap re-added under its own
+     *  id doesn't strand the Coach on pre-switch history , it was answering from a frozen snapshot while
+     *  its stress line, which reads live RR, went permanently silent. Single-WHOOP ⇒ "my-whoop" ⇒
+     *  byte-identical. */
+    private val deviceId = activeStrapId
 
     /** The source id native (in-app) journal answers are stored under (matches the UI's
      *  JOURNAL_DEVICE_ID); used for the opt-in on-device-signals context only. */
@@ -137,7 +144,7 @@ class AiCoach(private val repo: WhoopRepository) {
         val tzOffset = java.util.TimeZone.getDefault().getOffset(nowSeconds * 1_000L) / 1_000L
         val localNow = nowSeconds + tzOffset
         val from = (localNow - Math.floorMod(localNow, 86_400L)) - tzOffset
-        val rr = repo.rrIntervals(deviceId, from, nowSeconds, limit = 200_000)
+        val rr = repo.rrIntervalsUnion(deviceId, from, nowSeconds, limit = 200_000)
         return stressIndexLine(rr)
     }
 
