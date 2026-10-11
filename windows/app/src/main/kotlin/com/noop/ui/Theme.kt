@@ -1,0 +1,496 @@
+package com.noop.ui
+
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
+import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+// MARK: - Palette — the active colour token surface
+//
+// PUBLIC API IS FROZEN: every token NAME below is depended on by screens across the app, so the
+// names never change — only the VALUES are re-themed. `Palette.active` is snapshot state, so a flip
+// re-resolves every read below (in composables AND Canvas DrawScopes) with no call-site changes.
+
+object Palette {
+
+    // The active scheme's tokens — snapshot state, so a flip re-resolves every read below. Set by
+    // NoopTheme.
+    internal var active by mutableStateOf(DarkTokens)
+    // Whether the ACTIVE scheme is the light variant. NoopTheme sets this flag alongside `active`.
+    internal var activeIsLight by mutableStateOf(false)
+    /** True when the light scheme is active (surface code uses this for the per-scheme idiom). */
+    val isLight: Boolean get() = activeIsLight
+
+    // Chart style — when CLASSIC, the DATA accessors below return the throwback red->green ramps.
+    val isClassic: Boolean get() = ChartStylePrefs.style == ChartStyle.CLASSIC
+    private val classic: ClassicRamp get() = if (isLight) ClassicLight else ClassicDark
+
+    // Surfaces.
+    val surfaceBase get() = active.surfaceBase
+    val surfaceRaised get() = active.surfaceRaised
+    val surfaceOverlay get() = active.surfaceOverlay
+    val surfaceInset get() = active.surfaceInset
+    val hairline get() = active.hairline
+    val hairlineStrong get() = active.hairlineStrong
+
+    // Text.
+    val textPrimary get() = active.textPrimary
+    val textSecondary get() = active.textSecondary
+    val textTertiary get() = active.textTertiary
+
+    // Glow.
+    val glowAmbient get() = active.glowAmbient
+
+    // Accent.
+    val accent get() = active.accent
+    val accentHover get() = active.accentHover
+    val accentMuted get() = active.accentMuted
+    val focusRing get() = active.focusRing
+    const val disabledOpacity = 0.45f
+
+    // Recovery / Charge gradient.
+    val recovery000 get() = active.recovery000
+    val recovery030 get() = active.recovery030
+    val recovery055 get() = active.recovery055
+    val recovery078 get() = active.recovery078
+    val recovery100 get() = active.recovery100
+
+    /** Ordered gradient stops for the recovery scale (Titanium gold, or Classic red->green). */
+    val recoveryStops: List<Pair<Float, Color>>
+        get() = if (isClassic) classic.recovery
+                else listOf(0.00f to recovery000, 0.30f to recovery030, 0.55f to recovery055, 0.78f to recovery078, 1.00f to recovery100)
+
+    // Strain / Effort ramp.
+    val strain000 get() = active.strain000
+    val strain033 get() = active.strain033
+    val strain066 get() = active.strain066
+    val strain100 get() = active.strain100
+
+    val strainStops: List<Pair<Float, Color>>
+        get() = if (isClassic) classic.strain
+                else listOf(0.00f to strain000, 0.33f to strain033, 0.66f to strain066, 1.00f to strain100)
+
+    // Sleep stages (Classic adds a purple REM).
+    val sleepAwake get() = if (isClassic) classic.sleepAwake else active.sleepAwake
+    val sleepLight get() = if (isClassic) classic.sleepLight else active.sleepLight
+    val sleepDeep get() = if (isClassic) classic.sleepDeep else active.sleepDeep
+    val sleepREM get() = if (isClassic) classic.sleepREM else active.sleepREM
+
+    // HR zones (Classic = grey->green->yellow->orange->red).
+    val zone1 get() = if (isClassic) classic.zone1 else active.zone1
+    val zone2 get() = if (isClassic) classic.zone2 else active.zone2
+    val zone3 get() = if (isClassic) classic.zone3 else active.zone3
+    val zone4 get() = if (isClassic) classic.zone4 else active.zone4
+    val zone5 get() = if (isClassic) classic.zone5 else active.zone5
+
+    /** HR zones indexed 1..5; index 0 mirrors zone1 for convenience. */
+    val hrZones: List<Color> get() = listOf(zone1, zone1, zone2, zone3, zone4, zone5)
+
+    // Status (Classic = green/amber/red).
+    val statusPositive get() = if (isClassic) classic.statusPositive else active.statusPositive
+    val statusWarning get() = if (isClassic) classic.statusWarning else active.statusWarning
+    val statusCritical get() = if (isClassic) classic.statusCritical else active.statusCritical
+
+    // Per-metric accents (Classic = purple HRV, red risk).
+    val metricCyan get() = if (isClassic) classic.metricCyan else active.metricCyan
+    val metricPurple get() = if (isClassic) classic.metricPurple else active.metricPurple
+    val metricAmber get() = if (isClassic) classic.metricAmber else active.metricAmber
+    val metricRose get() = if (isClassic) classic.metricRose else active.metricRose
+
+    // Domain "colour worlds" (Classic: Charge green, Effort blue, Rest indigo, Stress amber).
+    val chargeColor get() = if (isClassic) classic.chargeColor else active.chargeColor
+    val chargeDeep get() = if (isClassic) classic.chargeDeep else active.chargeDeep
+    val chargeBright get() = if (isClassic) classic.chargeBright else active.chargeBright
+    val chargeGlow get() = if (isClassic) classic.chargeColor else active.chargeGlow
+
+    val effortColor get() = if (isClassic) classic.effortColor else active.effortColor
+    val effortDeep get() = if (isClassic) classic.effortDeep else active.effortDeep
+    val effortBright get() = if (isClassic) classic.effortBright else active.effortBright
+    val effortGlow get() = if (isClassic) classic.effortColor else active.effortGlow
+
+    val restColor get() = if (isClassic) classic.restColor else active.restColor
+    val restDeep get() = if (isClassic) classic.restDeep else active.restDeep
+    val restBright get() = if (isClassic) classic.restBright else active.restBright
+    val restGlow get() = if (isClassic) classic.restColor else active.restGlow
+
+    val stressColor get() = if (isClassic) classic.stressColor else active.stressColor
+    val stressDeep get() = if (isClassic) classic.stressDeep else active.stressDeep
+    val stressBright get() = if (isClassic) classic.stressBright else active.stressBright
+    val stressGlow get() = if (isClassic) classic.stressColor else active.stressGlow
+
+    /** Deep -> bright accent pairs (gauge stroke + diagonal card wash) per domain. */
+    val chargeGradientStops: List<Pair<Float, Color>> get() = listOf(0.0f to chargeDeep, 1.0f to chargeBright)
+    val effortGradientStops: List<Pair<Float, Color>> get() = listOf(0.0f to effortDeep, 1.0f to effortBright)
+    val restGradientStops: List<Pair<Float, Color>> get() = listOf(0.0f to restDeep, 1.0f to restBright)
+    val stressGradientStops: List<Pair<Float, Color>>
+        get() = if (isClassic) classic.stress else listOf(0.0f to stressDeep, 0.5f to stressColor, 1.0f to stressBright)
+
+    // Scenic background.
+    val scenicCenter get() = active.scenicCenter
+    val scenicEdge get() = active.scenicEdge
+    val scenicStar get() = active.scenicStar
+
+    /** Frosted-card tint endpoints (the accent wash sits over them). */
+    val cardFillTop get() = active.cardFillTop
+    val cardFillBottom get() = active.cardFillBottom
+
+    // Gold & Titanium ramps.
+    val gold get() = active.gold
+    val goldLight get() = active.goldLight
+    val goldDeep get() = active.goldDeep
+    val goldDeepText get() = active.goldDeepText
+    val signalYellow get() = active.signalYellow
+
+    /** Gold gradient stops (light -> gold -> deep). */
+    val goldGradient: List<Pair<Float, Color>> get() = listOf(0.0f to goldLight, 0.5f to gold, 1.0f to goldDeep)
+
+    val titaniumTop get() = active.titaniumTop
+    val titaniumMid get() = active.titaniumMid
+    val titaniumLow get() = active.titaniumLow
+    val titaniumDeep get() = active.titaniumDeep
+
+    /** Titanium gradient stops (top -> mid -> low -> deep). */
+    val titaniumGradient: List<Pair<Float, Color>>
+        get() = listOf(0.0f to titaniumTop, 0.40f to titaniumMid, 0.75f to titaniumLow, 1.0f to titaniumDeep)
+
+    /** Gauge-tip / sparkline-head core — white on dark, deep ink on light. */
+    val tipCore get() = active.tipCore
+
+    // MARK: - Sampling helpers
+
+    /** Linear-interpolate two colors in sRGB space. */
+    private fun lerp(a: Color, b: Color, t: Float): Color {
+        val tt = t.coerceIn(0f, 1f)
+        return Color(
+            red = a.red + (b.red - a.red) * tt,
+            green = a.green + (b.green - a.green) * tt,
+            blue = a.blue + (b.blue - a.blue) * tt,
+            alpha = a.alpha + (b.alpha - a.alpha) * tt,
+        )
+    }
+
+    /** Sample a set of (location, color) stops at a normalized position 0..1. */
+    fun sample(stops: List<Pair<Float, Color>>, position: Float): Color {
+        if (stops.isEmpty()) return Color.Transparent
+        if (stops.size == 1) return stops.first().second
+        val t = position.coerceIn(0f, 1f)
+        var lower = stops.first()
+        var upper = stops.last()
+        for (i in 0 until stops.size - 1) {
+            val a = stops[i]
+            val b = stops[i + 1]
+            if (t >= a.first && t <= b.first) {
+                lower = a; upper = b; break
+            }
+        }
+        val span = upper.first - lower.first
+        val localT = if (span > 0f) (t - lower.first) / span else 0f
+        return lerp(lower.second, upper.second, localT)
+    }
+
+    /** Sample the recovery gradient at a recovery score 0..100. */
+    fun recoveryColor(score: Double): Color = sample(recoveryStops, (score / 100.0).toFloat())
+
+    /** Sample the strain gradient at an Effort value on the 0..100 scale. */
+    fun strainColor(strain: Double): Color = sample(strainStops, (strain / 100.0).toFloat())
+
+    /** Effort tint sampled by a 0..1 fraction, spreading the full ramp. */
+    fun effortTint(fraction: Double): Color = sample(strainStops, fraction.coerceIn(0.0, 1.0).toFloat())
+
+    /** The state word for a recovery score. */
+    fun recoveryState(score: Double): String = when {
+        score < 25 -> "DEPLETED"
+        score < 50 -> "LOW"
+        score < 70 -> "MODERATE"
+        score < 88 -> "PRIMED"
+        else -> "PEAK"
+    }
+
+    /** HR-zone color for a 1..5 zone index (clamped). */
+    fun hrZoneColor(zone: Int): Color = hrZones[zone.coerceIn(1, 5)]
+
+    /** The signature recovery gradient as a horizontal sweep brush (for bars). */
+    fun recoveryBrush(): Brush =
+        Brush.horizontalGradient(*recoveryStops.toTypedArray())
+
+    /** The strain ramp as a horizontal sweep brush. */
+    fun strainBrush(): Brush =
+        Brush.horizontalGradient(*strainStops.toTypedArray())
+}
+
+// MARK: - DomainTheme — per-domain colour worlds
+
+enum class DomainTheme {
+    Charge,
+    Effort,
+    Rest,
+    Stress;
+
+    val color: Color
+        get() = when (this) {
+            Charge -> Palette.chargeColor
+            Effort -> Palette.effortColor
+            Rest -> Palette.restColor
+            Stress -> Palette.stressColor
+        }
+
+    val deep: Color
+        get() = when (this) {
+            Charge -> Palette.chargeDeep
+            Effort -> Palette.effortDeep
+            Rest -> Palette.restDeep
+            Stress -> Palette.stressDeep
+        }
+
+    val bright: Color
+        get() = when (this) {
+            Charge -> Palette.chargeBright
+            Effort -> Palette.effortBright
+            Rest -> Palette.restBright
+            Stress -> Palette.stressBright
+        }
+
+    val glow: Color
+        get() = when (this) {
+            Charge -> Palette.chargeGlow
+            Effort -> Palette.effortGlow
+            Rest -> Palette.restGlow
+            Stress -> Palette.stressGlow
+        }
+
+    val gradientStops: List<Pair<Float, Color>>
+        get() = when (this) {
+            Charge -> Palette.chargeGradientStops
+            Effort -> Palette.effortGradientStops
+            Rest -> Palette.restGradientStops
+            Stress -> Palette.stressGradientStops
+        }
+
+    val dataStops: List<Pair<Float, Color>>
+        get() = when (this) {
+            Effort -> Palette.strainStops
+            else -> Palette.recoveryStops
+        }
+
+    val label: String get() = name
+}
+
+// MARK: - Motion (physiological — breathe / pulse / flow, no cartoon bounce)
+
+object Motion {
+    const val durationFast = 180
+    const val durationStandard = 300
+    const val durationSlow = 900
+    const val breathPeriodMs = 3200
+
+    val easeOut: Easing = LinearOutSlowInEasing
+    val easeInOut: Easing = FastOutSlowInEasing
+    val drawIn: Easing = LinearOutSlowInEasing
+    val interactive: Easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
+}
+
+// MARK: - Shared UI tokens
+
+object StrandAlpha {
+    const val subtleLine = 0.60f
+    const val selectedFill = 0.12f
+    const val selectedBorder = 0.55f
+    const val chartFillStrong = 0.28f
+    const val chartFillSoft = 0.04f
+    const val chartMarker = 0.35f
+    const val chartShadow = 0.28f
+    const val chartLabel = 0.95f
+    const val unselectedBar = 0.88f
+    const val warningFill = 0.12f
+    const val warningBorder = 0.40f
+}
+
+object Metrics {
+    val space2 = 2.dp
+    val space4 = 4.dp
+    val space6 = 6.dp
+    val space8 = 8.dp
+    val space10 = 10.dp
+    val space12 = 12.dp
+    val space14 = 14.dp
+    val space16 = 16.dp
+    val space18 = 18.dp
+    val space24 = 24.dp
+    val cardRadius = 18.dp
+    val cornerXs = 2.dp
+    val cornerSm = 12.dp
+    val cornerBadge = 6.dp
+    val cornerPill = 50.dp
+    val cardPadding = 16.dp
+    val gap = 12.dp
+    val sectionGap = 28.dp
+    val screenRowSpacing = 20.dp
+    val screenPadding = 24.dp
+    val tileHeight = 108.dp
+    val chartHeight = 220.dp
+    val divider = 1.dp
+    val compactChartHeight = chartHeight - 90.dp
+    val selectorTopUp = sectionGap - screenRowSpacing
+    val iconButton = 36.dp
+    val iconSmall = 18.dp
+    val selectorPadding = 10.dp
+    val selectorSpacing = 8.dp
+    val sparkWidthWide = 48.dp
+    val sparkWidth = 58.dp
+    val sparkHeight = 22.dp
+    val stageStripHeight = 34.dp
+    val motionStripHeight = 40.dp
+    val trendStripHeight = 120.dp
+    val sparklineHeight = 28.dp
+    val segmentBarHeight = 18.dp
+    val legendSwatch = 9.dp
+    val legendLineWidth = 14.dp
+    val legendLineHeight = 3.dp
+    val progressHeight = 10.dp
+}
+
+// MARK: - Typography
+
+object NoopType {
+    internal var activeFont by mutableStateOf<FontFamily>(FontFamily.SansSerif)
+
+    private val sans: FontFamily get() = activeFont
+    private val monoFamily: FontFamily get() = FontFamily.Monospace
+
+    fun display(size: Float = 72f) = TextStyle(
+        fontFamily = sans, fontWeight = FontWeight.Bold, fontSize = size.sp,
+        letterSpacing = displayTracking(size).sp, fontFeatureSettings = "tnum",
+    )
+
+    fun displayTracking(size: Float = 72f): Float = -size * 0.04f
+
+    val title1 get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Bold, fontSize = 28.sp)
+    val title2 get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 22.sp)
+    val headline get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+    val body get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 15.sp)
+    val subhead get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 13.sp)
+    val caption get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 12.sp)
+    val footnote get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Normal, fontSize = 11.sp)
+
+    val overline get() = TextStyle(
+        fontFamily = sans, fontWeight = FontWeight.Bold, fontSize = 11.sp,
+        letterSpacing = 1.4.sp,
+    )
+
+    val mono get() = TextStyle(fontFamily = monoFamily, fontWeight = FontWeight.Normal, fontSize = 13.sp)
+
+    fun number(size: Float, weight: FontWeight = FontWeight.SemiBold) = TextStyle(
+        fontFamily = sans, fontWeight = weight, fontSize = size.sp, fontFeatureSettings = "tnum",
+    )
+
+    fun mono(size: Float, weight: FontWeight = FontWeight.Normal) = TextStyle(
+        fontFamily = monoFamily, fontWeight = weight, fontSize = size.sp,
+    )
+
+    val bodyNumber get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 15.sp, fontFeatureSettings = "tnum")
+    val captionNumber get() = TextStyle(fontFamily = sans, fontWeight = FontWeight.Medium, fontSize = 12.sp, fontFeatureSettings = "tnum")
+    val metricInline get() = number(15f)
+    val chartValue get() = number(18f)
+    val chartValueLarge get() = number(22f)
+    val tileValue get() = number(24f)
+    val tileValueLarge get() = number(26f)
+
+    const val overlineTracking = 1.4f
+}
+
+// MARK: - Material3 bridge
+
+/** Build the Material3 colour scheme from a token set. */
+private fun noopColorScheme(t: PaletteTokens, dark: Boolean): ColorScheme {
+    val base = if (dark) darkColorScheme() else lightColorScheme()
+    return base.copy(
+        primary = t.accent,
+        onPrimary = if (dark) t.surfaceBase else t.goldDeepText,
+        primaryContainer = t.accentMuted,
+        onPrimaryContainer = if (dark) t.accentHover else t.accent,
+        secondary = t.metricPurple,
+        onSecondary = if (dark) t.surfaceBase else Color(0xFFFFFFFF),
+        background = t.surfaceBase,
+        onBackground = t.textPrimary,
+        surface = t.surfaceRaised,
+        onSurface = t.textPrimary,
+        surfaceVariant = t.surfaceOverlay,
+        onSurfaceVariant = t.textSecondary,
+        outline = t.hairline,
+        outlineVariant = t.hairlineStrong,
+        error = t.statusCritical,
+        onError = if (dark) t.surfaceBase else Color(0xFFFFFFFF),
+    )
+}
+
+/** Build the Material typography from the CURRENT [NoopType] styles. */
+private fun noopMaterialTypography() = Typography(
+    displayLarge = NoopType.display(72f),
+    titleLarge = NoopType.title1,
+    titleMedium = NoopType.title2,
+    titleSmall = NoopType.headline,
+    bodyLarge = NoopType.body,
+    bodyMedium = NoopType.subhead,
+    bodySmall = NoopType.caption,
+    labelLarge = NoopType.headline,
+    labelMedium = NoopType.caption,
+    labelSmall = NoopType.overline,
+)
+
+private val NoopShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(Metrics.cardRadius),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp),
+)
+
+/**
+ * NoopTheme — instrument-grade, now Theme family x (System / Light / Dark). The selected [AppTheme]
+ * family and the chosen mode drive `Palette.active` (so every `Palette.*` read re-resolves), the app
+ * typeface (`NoopType.activeFont`) and the Material scheme. All three writes are guarded + idempotent
+ * and happen before children compose, so there's no flash and no recomposition loop.
+ *
+ * On the JVM there is no Activity window / status bar to tint (the Android twin called
+ * `WindowCompat.getInsetsController` here); the desktop window chrome is owned by the platform
+ * window, so this composable just resolves the palette + Material scheme.
+ */
+@Composable
+fun NoopTheme(content: @Composable () -> Unit) {
+    val dark = when (AppearancePrefs.mode) {
+        AppearanceMode.LIGHT -> false
+        AppearanceMode.DARK -> true
+        AppearanceMode.SYSTEM -> isSystemInDarkTheme()
+    }
+    val family = ThemePrefs.family
+    val tokens = family.tokens(dark)
+    if (Palette.active !== tokens) Palette.active = tokens
+    if (Palette.activeIsLight != !dark) Palette.activeIsLight = !dark
+    if (NoopType.activeFont != family.fontFamily) NoopType.activeFont = family.fontFamily
+
+    MaterialTheme(
+        colorScheme = noopColorScheme(tokens, dark),
+        typography = noopMaterialTypography(),
+        shapes = NoopShapes,
+        content = content,
+    )
+}

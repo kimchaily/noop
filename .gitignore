@@ -61,6 +61,16 @@ android/app/release/
 *.keystore
 *.jks
 
+# ── Windows (Gradle / Compose Desktop / .NET) ───────────────────
+windows/.gradle/
+windows/app/build/
+windows/local.properties
+# .NET build artifacts (WhoopBleBridge, WhoopBleTest)
+**/obj/
+**/bin/
+# App backups (never commit real WHOOP data)
+*.noopbak
+
 # ── IDE / editor ────────────────────────────────────────────────
 .idea/
 .vscode/
