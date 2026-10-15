@@ -1131,8 +1131,12 @@ fun ScreenScaffold(
     // Mirrors the iOS ScreenScaffold `topBackground` slot — the scene is a SCREEN-level backdrop the
     // cards float OVER, not a card-clipped hero atmosphere.
     topBackground: (@Composable () -> Unit)? = null,
+    // Widest the content column grows on a wide window (unfolded foldable, tablet) before it is centred
+    // with equal margins. Phones never reach it, so their 28dp gutters are unchanged (AdaptiveLayout.kt).
+    maxContentWidth: Dp = ReadableMaxContentWidth,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val sideInset = adaptiveSideInset(maxContentWidth)
     // The scrolling content column. Its OUTER modifier differs by path: with no topBackground it is the
     // original root Column (the caller's `modifier` + an opaque-canvas background — byte-for-byte the old
     // layout); with a topBackground the canvas + scene paint in the wrapping Box's background (below) and
@@ -1148,7 +1152,7 @@ fun ScreenScaffold(
         Column(
             modifier = columnModifier
                 .verticalScroll(rememberScrollState())
-                .padding(start = 28.dp, end = 28.dp, top = topPadding, bottom = 28.dp),
+                .padding(start = sideInset, end = sideInset, top = topPadding, bottom = 28.dp),
             // #765: one shared inter-card spacing token (was a bare `20.dp`), so the eager + lazy scaffolds
             // and every screen through them keep the SAME uniform gap between top-level cards.
             verticalArrangement = Arrangement.spacedBy(Metrics.screenRowSpacing),
@@ -1249,8 +1253,12 @@ fun LazyScreenScaffold(
     // the scene paints in the wrapping Box (promoted to its own compositing layer) and the LazyColumn is
     // transparent so the scene shows through behind the rows. Mirrors the iOS scaffold's topBackground.
     topBackground: (@Composable () -> Unit)? = null,
+    // Same contract as ScreenScaffold.maxContentWidth: the content is centred and capped on a wide window,
+    // untouched on a phone. The two-lane Today passes the wider dashboard cap.
+    maxContentWidth: Dp = ReadableMaxContentWidth,
     content: LazyListScope.() -> Unit,
 ) {
+    val sideInset = adaptiveSideInset(maxContentWidth)
     // The header row: optional leading action, the title/subtitle, optional trailing action. Omitted
     // entirely when both title and subtitle are null (a screen supplying its own custom header). Matches
     // ScreenScaffold's header block so the eager + lazy scaffolds read identically.
@@ -1293,7 +1301,7 @@ fun LazyScreenScaffold(
     val list: @Composable () -> Unit = {
         LazyColumn(
             modifier = listModifier,
-            contentPadding = PaddingValues(start = 28.dp, top = topPadding, end = 28.dp, bottom = 28.dp),
+            contentPadding = PaddingValues(start = sideInset, top = topPadding, end = sideInset, bottom = 28.dp),
             // #765: the shared inter-card spacing token by default (Today/Explore + the eager screens share
             // one uniform card rhythm); a caller may pass a tighter [rowSpacing] (the liquid Today does, for
             // the iOS-compact section rhythm).

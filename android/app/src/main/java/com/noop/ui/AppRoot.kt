@@ -658,6 +658,9 @@ private fun BackgroundActionBanners(viewModel: AppViewModel, modifier: Modifier 
     if (actions.isEmpty()) return
     Column(
         modifier = modifier
+            // On a wide window (unfolded foldable, tablet) keep the banners a centred card rather than a strip
+            // across the whole screen; a phone is narrower than the cap, so it is unchanged there.
+            .widthIn(max = 560.dp)
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),

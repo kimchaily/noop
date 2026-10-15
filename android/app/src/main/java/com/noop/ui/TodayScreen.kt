@@ -1039,8 +1039,15 @@ fun TodayScreen(
         )
     }
 
+    // Foldables / tablets / landscape (AdaptiveLayout.kt): on a wide window the Today sections are dealt into
+    // two phone-width lanes instead of one stretched column. A folded cover screen or a phone in portrait
+    // keeps the single column, row for row.
+    val twoLanes = usesTwoLanes()
+
     LazyScreenScaffold(
         modifier = daySwipeModifier,
+        // The two-lane dashboard may grow wider than a single-column screen before it is centred.
+        maxContentWidth = DashboardMaxContentWidth,
         // title = null suppresses the big scaffold header (the nullable-title path); the compact
         // WHOOP-style top bar below replaces it, mirroring the iOS Today screen (todayTopBar).
         title = null,
@@ -1253,13 +1260,23 @@ fun TodayScreen(
         // emitted. The Hero carries its adjacent context cards (Live-session entry + effort-zero note),
         // so they travel and hide with it. Each section keeps its OWN gates (day 0, data presence) ANDed
         // with the enabled flag. Edited from Settings → Appearance → Today layout.
+        //
+        // Each section emits its rows through `block { }`. On a phone a block is its own lazy row, exactly as
+        // before; on a wide window (twoLanes) the section's blocks are collected and the sections are dealt
+        // into two lanes below, in the same user order. A section's blocks always travel together, so a
+        // header never lands in a different lane from its card.
+        val laneSections = mutableListOf<LaneSection>()
         enabledTodaySections.forEachIndexed { sectionPos, todaySection ->
             // Stagger the entrance by RENDER position (the header is index 0), so a reordered or
             // hidden section animates in at its NEW place instead of its old fixed index.
             val stagger = sectionPos + 1
+            val sectionBlocks = mutableListOf<@Composable () -> Unit>()
+            fun block(content: @Composable () -> Unit) {
+                if (twoLanes) sectionBlocks += content else item { content() }
+            }
             when (todaySection) {
                 TodaySection.HERO -> {
-                    item {
+                    block {
                     // The liquid hero CARD: a translucent near-black that floats over the day-of-sky so the vessels +
                     // white count-up numbers stay crisp — the card does the contrast work, not a muted sky. A rounded
                     // 26 corner + a faint white hairline give it the frosted-glass edge of the iOS liquid heroCard
@@ -1292,7 +1309,7 @@ fun TodayScreen(
                     // Effort accrues over a day and must never visibly drop: floor the in-progress value at the day's
                     // already-earned strain (#489/#506). displayMetric for today is today's row or null, never a prior
                     // day, so this can't resurrect a stale day, it only stops the gauge dropping below what's earned.
-                    item {
+                    block {
                     val todayEffort = if (selectedDayOffset == 0) {
                         val live = liveTodayStrain; val stored = displayMetric?.strain
                         if (live != null && stored != null) maxOf(live, stored) else (live ?: stored)
@@ -1320,7 +1337,7 @@ fun TodayScreen(
                     }
                 }
                 TodaySection.HEART_RATE -> {
-                    item {
+                    block {
                     // #991: HeartRateTrendCard emits its SectionHeader + card as two siblings; a Box overlaid them
                     // (the header showed THROUGH the card in the v8 layout). A spaced Column stacks them instead.
                     Column(
@@ -1332,7 +1349,7 @@ fun TodayScreen(
                     }
                 }
                 TodaySection.YOUR_CARDS -> {
-                    item {
+                    block {
                     val visibleDashboardCards = enabledDashboardCards.filter {
                         // Hydration is opt-in; the Coupled row is a navigation row into a TODAY-only screen
                         // (CoupledScreen reads the live day), so it drops off a scrolled-back day rather than
@@ -1382,7 +1399,7 @@ fun TodayScreen(
                     }
                 }
                 TodaySection.SYNTHESIS -> {
-                    item {
+                    block {
                     Box(modifier = Modifier.fillMaxWidth().staggeredAppear(stagger)) {
                         SynthesisHeroCard(
                             day = displayMetric,
@@ -1397,7 +1414,7 @@ fun TodayScreen(
                     }
                 }
                 TodaySection.RECOVERY_VITALS -> {
-                    item {
+                    block {
                     Box(modifier = Modifier.fillMaxWidth().staggeredAppear(stagger)) {
                         HeroMetricRows(
                             day = displayMetric,
@@ -1411,7 +1428,7 @@ fun TodayScreen(
                     }
                 }
                 TodaySection.KEY_METRICS -> {
-                    item {
+                    block {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.weight(1f)) {
                             SectionHeader("Key Metrics", overline = dayLabel, trailing = "14-day trend")
@@ -1430,7 +1447,7 @@ fun TodayScreen(
                         }
                     }
                     }
-                    item {
+                    block {
                     Box(modifier = Modifier.fillMaxWidth().staggeredAppear(stagger)) {
                         MetricGrid(
                             d = displayMetric,
@@ -1479,7 +1496,7 @@ fun TodayScreen(
                     // see LiveSessionRunner's lifetime note). The card swaps itself to "Session running" / "Session
                     // ended" (it scopes the runner's per-second snapshot internally, like WorkoutInProgressCard's clock).
                     if (selectedDayOffset == 0 && (liveSessionsEnabled || activeLiveSession != null)) {
-                        item {
+                        block {
                             LiveSessionEntryCard(
                                 onOpen = {
                                     // Only BEGIN when nothing is in flight: an active runner (running, or ended and
@@ -1493,7 +1510,7 @@ fun TodayScreen(
                             )
                         }
                     }
-                    item {
+                    block {
                     // #991: same fix as the HR card — TodayWorkoutsSection emits header + card as two siblings, so a
                     // Box overlaid them. Stack them in a spaced Column.
                     Column(
@@ -1505,6 +1522,12 @@ fun TodayScreen(
                     }
                 }
             }
+            if (sectionBlocks.isNotEmpty()) laneSections += LaneSection(todaySection.raw, sectionBlocks)
+        }
+        // Wide window: the collected sections as two lanes in one row (empty on a phone, where every block
+        // was already emitted as its own lazy row above). The lane gutter matches Today's row rhythm.
+        if (laneSections.isNotEmpty()) {
+            item { TwoLaneSections(sections = laneSections, spacing = 12.dp) }
         }
         // Auto-detect workouts (MVP, opt-in, default OFF), a NON-DESTRUCTIVE "looks like a workout?"
         // card that suggests logging a detected sustained-elevated-HR bout. Renders nothing when the
