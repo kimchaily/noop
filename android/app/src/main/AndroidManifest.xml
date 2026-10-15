@@ -136,6 +136,7 @@
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:networkSecurityConfig="@xml/network_security_config"
+        android:resizeableActivity="true"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.NOOP"
@@ -152,9 +153,17 @@
         <!--
           singleTop so a launcher shortcut fired while the app is already foregrounded is delivered
           to the live instance via onNewIntent (which routes it) instead of stacking a second copy.
+
+          configChanges: folding/unfolding a foldable (Honor Magic V5, Pixel Fold, Galaxy Z Fold), rotating,
+          or resizing a split-screen/freeform window no longer destroys and recreates the activity. The UI is
+          all Compose, which re-lays itself out from the new LocalConfiguration (see ui/AdaptiveLayout.kt),
+          so open sheets/dialogs, half-typed text and scroll positions survive the fold instead of resetting.
+          Deliberately NOT listed: density, uiMode and locale - those still recreate, so nothing that caches
+          pixel sizes, theme resources or strings outside Compose can go stale.
         -->
         <activity
             android:name="com.noop.ui.MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:exported="true"
             android:label="@string/app_name"
             android:launchMode="singleTop"
