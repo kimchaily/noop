@@ -110,12 +110,12 @@ fun InsightsHubScreen(vm: AppViewModel) {
         // --- What moves your Charge -------------------------------------------
         item { MoversSection(outcome = outcome, onOutcome = { outcome = it }, ranked = ranked) }
 
-        item { Spacer(Modifier.height(Metrics.sectionGap - 20.dp)) }
+        spacer(Metrics.sectionGap - 20.dp)
 
         // --- Dose-response (alcohol / caffeine) -------------------------------
         item { DoseSection(state.doseCards) }
 
-        item { Spacer(Modifier.height(Metrics.sectionGap - 20.dp)) }
+        spacer(Metrics.sectionGap - 20.dp)
 
         // --- Method / honesty note --------------------------------------------
         item {

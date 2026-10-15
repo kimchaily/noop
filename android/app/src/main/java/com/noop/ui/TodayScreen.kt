@@ -1039,15 +1039,8 @@ fun TodayScreen(
         )
     }
 
-    // Foldables / tablets / landscape (AdaptiveLayout.kt): on a wide window the Today sections are dealt into
-    // two phone-width lanes instead of one stretched column. A folded cover screen or a phone in portrait
-    // keeps the single column, row for row.
-    val twoLanes = usesTwoLanes()
-
     LazyScreenScaffold(
         modifier = daySwipeModifier,
-        // The two-lane dashboard may grow wider than a single-column screen before it is centred.
-        maxContentWidth = DashboardMaxContentWidth,
         // title = null suppresses the big scaffold header (the nullable-title path); the compact
         // WHOOP-style top bar below replaces it, mirroring the iOS Today screen (todayTopBar).
         title = null,
@@ -1070,7 +1063,9 @@ fun TodayScreen(
         // paints the plain dark surface canvas instead, mirroring iOS's `showDayCycleBackground ? ... : nil`.
         topBackground = if (showDayCycleBackground) { { LiquidScreenSky() } } else null,
     ) {
-        item {
+        // On a wide window (AdaptiveLayout.kt) the header, the in-progress workout, the score-state notes and
+        // the illness banner span every column; the Today sections and the footer cards flow into columns.
+        fullWidthItem {
         // LIQUID Today header (iOS LiquidTodayView.scene parity), a full structural rebuild to mirror the
         // iOS liquid Today element-for-element (NOT the old numeric-date + recording-light + bell header):
         //   LEFT  — a tappable title block: the big rounded-bold day title ("Today" / "Yesterday" / the
@@ -1152,7 +1147,7 @@ fun TodayScreen(
         // `activeWorkout`, so it auto-appears/clears with no extra lifecycle wiring. Its per-second clock
         // ticks inside the card's own LaunchedEffect, never recomposing the Today body.
         activeWorkout?.let { w ->
-            item {
+            fullWidthItem {
                 WorkoutInProgressCard(workout = w, onReturn = onOpenActiveWorkout)
             }
         }
@@ -1165,7 +1160,7 @@ fun TodayScreen(
         // below are explained rather than just dashed out. A small × dismisses it INTO
         // the Updates inbox (restorable from there). Only anchored to today (offset 0).
         if (displayMetric?.recovery == null) {
-            item {
+            fullWidthItem {
             // While the strap is mid-offload, say so, empty tiles read as final otherwise (#77).
             if (liveSnap.backfilling) SyncingHistoryNote(chunks = liveSnap.syncChunksThisSession)
             // Explained score state (COMPONENT 2): when there's no own number to show, say WHY and WHAT to
@@ -1253,7 +1248,7 @@ fun TodayScreen(
             }
         }
 
-        if (alert != null) item { IllnessBanner(alert!!) }
+        if (alert != null) fullWidthItem { IllnessBanner(alert!!) }
 
         // TODAY SECTIONS — customisable order + visibility (see TodaySections.kt / TodaySectionPrefs).
         // The seven top-level sections render in the user's saved order; a hidden section is simply not
@@ -1262,17 +1257,15 @@ fun TodayScreen(
         // with the enabled flag. Edited from Settings → Appearance → Today layout.
         //
         // Each section emits its rows through `block { }`. On a phone a block is its own lazy row, exactly as
-        // before; on a wide window (twoLanes) the section's blocks are collected and the sections are dealt
-        // into two lanes below, in the same user order. A section's blocks always travel together, so a
-        // header never lands in a different lane from its card.
-        val laneSections = mutableListOf<LaneSection>()
+        // before; on a multi-column window the section's blocks are gathered into ONE card that flows into the
+        // shortest column, so a section's header never lands in a different column from its card.
         enabledTodaySections.forEachIndexed { sectionPos, todaySection ->
             // Stagger the entrance by RENDER position (the header is index 0), so a reordered or
             // hidden section animates in at its NEW place instead of its old fixed index.
             val stagger = sectionPos + 1
             val sectionBlocks = mutableListOf<@Composable () -> Unit>()
             fun block(content: @Composable () -> Unit) {
-                if (twoLanes) sectionBlocks += content else item { content() }
+                if (isMultiColumn) sectionBlocks += content else item { content() }
             }
             when (todaySection) {
                 TodaySection.HERO -> {
@@ -1522,12 +1515,14 @@ fun TodayScreen(
                     }
                 }
             }
-            if (sectionBlocks.isNotEmpty()) laneSections += LaneSection(todaySection.raw, sectionBlocks)
-        }
-        // Wide window: the collected sections as two lanes in one row (empty on a phone, where every block
-        // was already emitted as its own lazy row above). The lane gutter matches Today's row rhythm.
-        if (laneSections.isNotEmpty()) {
-            item { TwoLaneSections(sections = laneSections, spacing = 12.dp) }
+            if (sectionBlocks.isNotEmpty()) {
+                item(key = "today-section-" + todaySection.raw) {
+                    // Same 12dp rhythm the blocks had as separate rows (Today's rowSpacing).
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        sectionBlocks.forEach { it() }
+                    }
+                }
+            }
         }
         // Auto-detect workouts (MVP, opt-in, default OFF), a NON-DESTRUCTIVE "looks like a workout?"
         // card that suggests logging a detected sustained-elevated-HR bout. Renders nothing when the

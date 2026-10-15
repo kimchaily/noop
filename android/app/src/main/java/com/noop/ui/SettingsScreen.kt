@@ -626,6 +626,28 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 )
             }
 
+            // Wide screens (foldables unfolded, tablets, landscape): how many card columns every screen uses.
+            // WideLayoutPrefs is snapshot state, so a pick re-lays out the app live. Phones and a folded
+            // cover screen always stay one column, whatever is chosen here (AdaptiveLayout.kt).
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Wide screens", style = NoopType.body, color = Palette.textPrimary)
+                    Text(
+                        "When a foldable is open, on a tablet or in landscape. Automatic fits as many columns " +
+                            "as the screen allows and fills each one so no column runs short. One column " +
+                            "keeps the phone layout, centred. A folded phone always uses one column.",
+                        style = NoopType.footnote,
+                        color = Palette.textTertiary,
+                    )
+                }
+                SegmentedPillControl(
+                    items = WideLayoutMode.entries.toList(),
+                    selection = WideLayoutPrefs.mode,
+                    label = { it.shortLabel },
+                    onSelect = { WideLayoutPrefs.set(context, it) },
+                )
+            }
+
             // Day-cycle background (#698): the time-of-day scene behind Today. On by default. Off swaps it
             // for a plain dark canvas for people who find the moving scene distracting. Takes effect next
             // time Today is opened (the pref is read once on entry, like the other Today-screen toggles).

@@ -101,6 +101,9 @@ class MainActivity : ComponentActivity() {
         ThemePrefs.load(this)
         AppearancePrefs.load(this)
         ChartStylePrefs.load(this)
+        // Wide-screen column choice (foldables/tablets, Settings → Appearance), read before first composition
+        // so an unfolded screen lays out in the chosen columns from the very first frame.
+        WideLayoutPrefs.load(this)
         // Decode the optional on-device profile photo (if set) before first composition so the Today
         // header + Settings avatars show it from the first frame. No-op when no photo is set.
         ProfileAvatarStore.load(this)

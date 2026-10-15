@@ -223,7 +223,8 @@ fun WorkoutsScreen(vm: AppViewModel) {
             val groups = sportGroups(windowRows)
             val fellBack = resolved != range
 
-            item {
+            // The range + filter bars drive every section below, so they span all columns on a wide window.
+            fullWidthItem {
             RangeBar(
                 range = range,
                 effectiveRange = resolved,
@@ -234,7 +235,7 @@ fun WorkoutsScreen(vm: AppViewModel) {
                 onAdd = { dialog = DialogTarget(null) },
             )
             }
-            item {
+            fullWidthItem {
             FilterBar(
                 filter = filter,
                 availableSports = availableSports,
@@ -244,7 +245,7 @@ fun WorkoutsScreen(vm: AppViewModel) {
                 onClear = { sportFilter = null; sourceFilter = null; searchText = "" },
             )
             }
-            postLogNote?.let { item { PostLogNoteBanner(it) } }
+            postLogNote?.let { fullWidthItem { PostLogNoteBanner(it) } }
             item { EffortHero(rows = windowRows, effectiveRange = resolved, groups = groups) }
             item { SummarySection(rows = windowRows, effectiveRange = resolved, groups = groups) }
             item { BreakdownSection(groups = groups, rows = windowRows) }

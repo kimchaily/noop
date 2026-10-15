@@ -1,45 +1,64 @@
 package com.noop.ui
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * Pins the adaptive-layout maths behind the foldable / tablet support (AdaptiveLayout.kt). What must never
  * regress: a phone (and a foldable's folded cover screen) renders exactly as before — one column, 28dp
- * gutters — while a wide window (an unfolded Honor Magic V5, Pixel Fold, Galaxy Z Fold, or a tablet) gets two
- * Today lanes and centred, capped content.
+ * gutters — while a wide window (an unfolded Honor Magic V5 ≈ 852dp, Pixel Fold, Galaxy Z Fold, a tablet)
+ * gets the columns the user chose, filled shortest-first so no column runs empty.
  */
 class AdaptiveLayoutTest {
 
+    private val auto = WideLayoutMode.AUTO
+
     @Test
     fun widthClassUsesMaterialBreakpoints() {
-        assertEquals(WindowWidthClass.COMPACT, AdaptiveLayout.widthClass(0))
-        assertEquals(WindowWidthClass.COMPACT, AdaptiveLayout.widthClass(411)) // typical phone / cover screen
+        assertEquals(WindowWidthClass.COMPACT, AdaptiveLayout.widthClass(411)) // phone / cover screen
         assertEquals(WindowWidthClass.COMPACT, AdaptiveLayout.widthClass(599))
         assertEquals(WindowWidthClass.MEDIUM, AdaptiveLayout.widthClass(600))
-        assertEquals(WindowWidthClass.MEDIUM, AdaptiveLayout.widthClass(780)) // unfolded book-style foldable
         assertEquals(WindowWidthClass.MEDIUM, AdaptiveLayout.widthClass(839))
         assertEquals(WindowWidthClass.EXPANDED, AdaptiveLayout.widthClass(840))
-        assertEquals(WindowWidthClass.EXPANDED, AdaptiveLayout.widthClass(1280)) // tablet landscape
+        assertEquals(WindowWidthClass.EXPANDED, AdaptiveLayout.widthClass(852)) // unfolded Magic V5
     }
 
     @Test
-    fun twoLanesOnlyFromMediumUp() {
-        assertFalse(AdaptiveLayout.usesTwoLanes(360))
-        assertFalse(AdaptiveLayout.usesTwoLanes(411))
-        assertFalse(AdaptiveLayout.usesTwoLanes(599))
-        assertTrue(AdaptiveLayout.usesTwoLanes(600))
-        assertTrue(AdaptiveLayout.usesTwoLanes(780))
-        assertTrue(AdaptiveLayout.usesTwoLanes(1280))
+    fun compactWindowsAreAlwaysOneColumnWhateverTheSetting() {
+        for (mode in WideLayoutMode.entries) {
+            assertEquals("$mode @411", 1, AdaptiveLayout.columnsFor(mode, 411))
+            assertEquals("$mode @599", 1, AdaptiveLayout.columnsFor(mode, 599))
+        }
+    }
+
+    @Test
+    fun automaticFitsPhoneWidthColumns() {
+        assertEquals(2, AdaptiveLayout.columnsFor(auto, 852))  // unfolded Magic V5
+        assertEquals(2, AdaptiveLayout.columnsFor(auto, 780))
+        assertEquals(1, AdaptiveLayout.columnsFor(auto, 700))  // too narrow for two 340dp columns
+        assertEquals(3, AdaptiveLayout.columnsFor(auto, 1280)) // landscape tablet
+        assertEquals(3, AdaptiveLayout.columnsFor(auto, 2000)) // capped
+    }
+
+    @Test
+    fun explicitChoicesWinOnWideWindows() {
+        assertEquals(1, AdaptiveLayout.columnsFor(WideLayoutMode.ONE, 852))
+        assertEquals(1, AdaptiveLayout.columnsFor(WideLayoutMode.ONE, 1280))
+        assertEquals(2, AdaptiveLayout.columnsFor(WideLayoutMode.TWO, 600))
+        assertEquals(2, AdaptiveLayout.columnsFor(WideLayoutMode.TWO, 1280))
+    }
+
+    @Test
+    fun storageRoundTripsAndDefaultsToAutomatic() {
+        for (mode in WideLayoutMode.entries) assertEquals(mode, WideLayoutMode.fromStorage(mode.storageValue))
+        assertEquals(auto, WideLayoutMode.fromStorage(null))
+        assertEquals(auto, WideLayoutMode.fromStorage("bogus"))
     }
 
     @Test
     fun phonesKeepThePlainGutter() {
-        // Every window up to cap + 2 × 28dp keeps the original 28dp gutters, so no phone layout shifts.
         val cap = AdaptiveLayout.READABLE_MAX_WIDTH_DP
-        for (w in listOf(320f, 360f, 411f, 480f, 599f, cap, cap + 56f)) {
+        for (w in listOf(320f, 360f, 411f, 599f, cap + 56f)) {
             assertEquals("window $w", 28f, AdaptiveLayout.sideInsetDp(w, cap), 0.001f)
         }
     }
@@ -47,49 +66,73 @@ class AdaptiveLayoutTest {
     @Test
     fun wideWindowsCentreTheCappedContent() {
         val cap = AdaptiveLayout.READABLE_MAX_WIDTH_DP
-        // 1280dp tablet: (1280 − 720) / 2 = 280dp each side → exactly 720dp of content, centred.
-        val inset = AdaptiveLayout.sideInsetDp(1280f, cap)
-        assertEquals(280f, inset, 0.001f)
-        assertEquals(cap, 1280f - 2 * inset, 0.001f)
-        // Just past the threshold the margins grow smoothly from the gutter, no jump.
-        assertEquals(30f, AdaptiveLayout.sideInsetDp(cap + 60f, cap), 0.001f)
-    }
-
-    @Test
-    fun customGutterAndCapForOnboarding() {
-        // Onboarding uses a 24dp gutter and a 560dp column: phone unchanged, unfolded foldable centred.
+        assertEquals(280f, AdaptiveLayout.sideInsetDp(1280f, cap), 0.001f)
+        // An unfolded Magic V5 in two columns uses the full width (the grid cap is far wider).
+        assertEquals(28f, AdaptiveLayout.sideInsetDp(852f, AdaptiveLayout.gridMaxWidthDp(2)), 0.001f)
+        // Onboarding: a 24dp gutter and a 560dp column.
         assertEquals(24f, AdaptiveLayout.sideInsetDp(411f, 560f, minGutterDp = 24f), 0.001f)
-        assertEquals(110f, AdaptiveLayout.sideInsetDp(780f, 560f, minGutterDp = 24f), 0.001f)
+        assertEquals(146f, AdaptiveLayout.sideInsetDp(852f, 560f, minGutterDp = 24f), 0.001f)
+    }
+
+    // --- Masonry placement ---
+
+    private fun flow(heights: List<Int>, columns: Int, spanAll: Set<Int> = emptySet(), spacing: Int = 10) =
+        AdaptiveLayout.flowSlots(
+            heights.toIntArray(),
+            BooleanArray(heights.size) { it in spanAll },
+            columns,
+            spacing,
+        )
+
+    @Test
+    fun oneColumnStacksLikeAColumn() {
+        val (slots, total) = flow(listOf(100, 50, 30), columns = 1)
+        assertEquals(listOf(0, 110, 170), slots.map { it.y })
+        assertEquals(200, total)
     }
 
     @Test
-    fun dashboardCapLeavesAnUnfoldedFoldableFullWidth() {
-        // A ~780–900dp inner screen is under the dashboard cap, so both Today lanes use the whole width.
-        for (w in listOf(700f, 780f, 841f, 900f)) {
-            assertEquals("window $w", 28f, AdaptiveLayout.sideInsetDp(w, AdaptiveLayout.DASHBOARD_MAX_WIDTH_DP), 0.001f)
-        }
+    fun eachCardGoesIntoTheShortestColumn() {
+        // The screenshot case: a tall "Your cards" beside short sections — the short ones all stack on the
+        // right instead of alternating and leaving the right column empty.
+        val (slots, total) = flow(listOf(300, 1200, 250, 200, 400, 150), columns = 2)
+        assertEquals(listOf(0, 1, 0, 0, 0, 0), slots.map { it.column })
+        assertEquals(listOf(0, 0, 310, 570, 780, 1190), slots.map { it.y })
+        assertEquals(1340, total)
     }
 
     @Test
-    fun dealIntoLanesAlternatesInReadingOrder() {
-        val (left, right) = AdaptiveLayout.dealIntoLanes(listOf("hero", "hr", "cards", "synthesis", "vitals", "metrics", "workouts"))
-        assertEquals(listOf("hero", "cards", "vitals", "workouts"), left)
-        assertEquals(listOf("hr", "synthesis", "metrics"), right)
+    fun tiesGoLeftAndOrderIsKept() {
+        val (slots, _) = flow(listOf(100, 100, 100, 100), columns = 2)
+        assertEquals(listOf(0, 1, 0, 1), slots.map { it.column })
+        assertEquals(listOf(0, 0, 110, 110), slots.map { it.y })
     }
 
     @Test
-    fun dealIntoLanesHandlesSmallLists() {
-        assertEquals(emptyList<String>() to emptyList<String>(), AdaptiveLayout.dealIntoLanes(emptyList<String>()))
-        assertEquals(listOf("only") to emptyList<String>(), AdaptiveLayout.dealIntoLanes(listOf("only")))
-        assertEquals(listOf("a") to listOf("b"), AdaptiveLayout.dealIntoLanes(listOf("a", "b")))
+    fun spanAllStartsBelowEveryColumn() {
+        // header (span) · two cards · a span banner · one more card.
+        val (slots, total) = flow(listOf(80, 300, 100, 60, 50), columns = 2, spanAll = setOf(0, 3))
+        assertEquals(AdaptiveLayout.SPAN_ALL, slots[0].column)
+        assertEquals(0, slots[0].y)
+        assertEquals(listOf(0, 1), listOf(slots[1].column, slots[2].column))
+        assertEquals(90, slots[1].y)
+        assertEquals(AdaptiveLayout.SPAN_ALL, slots[3].column)
+        assertEquals(400, slots[3].y) // below the taller column (90 + 300) + spacing
+        assertEquals(0, slots[4].column)
+        assertEquals(470, slots[4].y)
+        assertEquals(520, total)
     }
 
     @Test
-    fun dealIntoLanesKeepsEveryItemExactlyOnce() {
-        val items = (1..11).toList()
-        val (left, right) = AdaptiveLayout.dealIntoLanes(items)
-        assertEquals(items, (left + right).sorted())
-        assertEquals(6, left.size)
-        assertEquals(5, right.size)
+    fun emptyCardsTakeNoSpace() {
+        val (slots, total) = flow(listOf(100, 0, 100), columns = 1)
+        assertEquals(listOf(0, 0, 110), slots.map { it.y })
+        assertEquals(210, total)
+    }
+
+    @Test
+    fun threeColumnsFillEvenly() {
+        val (slots, _) = flow(listOf(100, 100, 100, 50, 50, 50), columns = 3)
+        assertEquals(listOf(0, 1, 2, 0, 1, 2), slots.map { it.column })
     }
 }

@@ -184,8 +184,8 @@ fun TrendsScreen(vm: AppViewModel) {
             )
         }
 
-        // --- Range control ---
-        item {
+        // --- Range control --- (spans every column on a wide window: it drives all the charts below)
+        fullWidthItem {
             Column(
                 modifier = Modifier.staggeredAppear(index = 2),
                 verticalArrangement = Arrangement.spacedBy(Metrics.space8),

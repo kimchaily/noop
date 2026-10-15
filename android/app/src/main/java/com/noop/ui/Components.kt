@@ -19,8 +19,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
+import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
+import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -45,6 +49,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,6 +79,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.flow.first
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
@@ -254,7 +262,9 @@ fun SectionHeader(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier.fillMaxWidth(),
+        // On a multi-column screen a header always lands in the same column as the card it introduces
+        // (AdaptiveLayout.kt). A no-op everywhere else.
+        modifier = modifier.fillMaxWidth().keepWithNextInFlow(),
         verticalAlignment = Alignment.Top,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -1136,7 +1146,17 @@ fun ScreenScaffold(
     maxContentWidth: Dp = ReadableMaxContentWidth,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val sideInset = adaptiveSideInset(maxContentWidth)
+    // Foldables / tablets (AdaptiveLayout.kt): how many card columns this window gets under the user's
+    // "Wide screens" setting. 1 on every phone and on a folded cover screen, which take the original Column
+    // path below unchanged; 2+ flows the same children into masonry columns via FlowColumns.
+    val columns = screenColumns()
+    val sideInset = if (columns > 1) {
+        adaptiveSideInset(AdaptiveLayout.gridMaxWidthDp(columns).dp)
+    } else {
+        adaptiveSideInset(maxContentWidth)
+    }
+    // Hoisted so the scroll position survives a fold/unfold that swaps the Column for FlowColumns.
+    val scrollState = rememberScrollState()
     // The scrolling content column. Its OUTER modifier differs by path: with no topBackground it is the
     // original root Column (the caller's `modifier` + an opaque-canvas background — byte-for-byte the old
     // layout); with a topBackground the canvas + scene paint in the wrapping Box's background (below) and
@@ -1148,22 +1168,15 @@ fun ScreenScaffold(
         } else {
             Modifier.fillMaxWidth()
         }
-    val column: @Composable () -> Unit = {
-        Column(
-            modifier = columnModifier
-                .verticalScroll(rememberScrollState())
-                .padding(start = sideInset, end = sideInset, top = topPadding, bottom = 28.dp),
-            // #765: one shared inter-card spacing token (was a bare `20.dp`), so the eager + lazy scaffolds
-            // and every screen through them keep the SAME uniform gap between top-level cards.
-            verticalArrangement = Arrangement.spacedBy(Metrics.screenRowSpacing),
-        ) {
-            // Compact top bar: an optional LEADING action (e.g. the Today profile avatar, mirroring iOS's
-            // avatar-leading header), the screen title/subtitle, then an optional trailing action (e.g. the
-            // Support heart on Today). Mirrors the iOS ScreenScaffold slots from the WHOOP redesign (#23).
-            // When BOTH title and subtitle are null the large-title header block is omitted entirely, so a
-            // screen can supply its own custom header in `content` (iOS Today's compact top bar) — mirroring
-            // the iOS ScreenScaffold which only renders the header `if title != nil || subtitle != nil`.
-            if (title != null || subtitle != null) {
+    // Compact top bar: an optional LEADING action (e.g. the Today profile avatar, mirroring iOS's
+    // avatar-leading header), the screen title/subtitle, then an optional trailing action (e.g. the
+    // Support heart on Today). Mirrors the iOS ScreenScaffold slots from the WHOOP redesign (#23).
+    // When BOTH title and subtitle are null the large-title header block is omitted entirely, so a
+    // screen can supply its own custom header in `content` (iOS Today's compact top bar) — mirroring
+    // the iOS ScreenScaffold which only renders the header `if title != nil || subtitle != nil`.
+    val header: (@Composable () -> Unit)? =
+        if (title != null || subtitle != null) {
+            {
                 Row(verticalAlignment = Alignment.Top) {
                     if (leading != null) {
                         leading()
@@ -1183,7 +1196,32 @@ fun ScreenScaffold(
                     if (trailing != null) trailing()
                 }
             }
-            content()
+        } else {
+            null
+        }
+    val scrollModifier = columnModifier
+        .verticalScroll(scrollState)
+        .padding(start = sideInset, end = sideInset, top = topPadding, bottom = 28.dp)
+    val column: @Composable () -> Unit = {
+        if (columns > 1) {
+            // Wide window: the title spans the top; the screen's cards flow into the shortest column.
+            FlowColumns(
+                columns = columns,
+                spacing = Metrics.screenRowSpacing,
+                modifier = scrollModifier,
+                header = header,
+                content = content,
+            )
+        } else {
+            Column(
+                modifier = scrollModifier,
+                // #765: one shared inter-card spacing token (was a bare `20.dp`), so the eager + lazy scaffolds
+                // and every screen through them keep the SAME uniform gap between top-level cards.
+                verticalArrangement = Arrangement.spacedBy(Metrics.screenRowSpacing),
+            ) {
+                header?.invoke()
+                content()
+            }
         }
     }
 
@@ -1227,11 +1265,12 @@ fun ScreenScaffold(
 // history that froze the app (and tripped Android's "close unresponsive app?" prompt)
 // when Intelligence "ALL" was tapped (#345). LazyColumn builds only the rows on screen.
 //
-// The content slot is a [LazyListScope] (item { } / items(...)) rather than a ColumnScope,
+// The content slot is an [AdaptiveListScope] (item { } / items(...)) rather than a ColumnScope,
 // so callers stay explicit about what is a one-off header vs the lazily-built list — and
 // every existing ScreenScaffold caller is untouched. The header, 28dp screen padding and
 // the shared Metrics.screenRowSpacing inter-item gap match ScreenScaffold so the two read identically.
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LazyScreenScaffold(
     title: String?,
@@ -1253,12 +1292,48 @@ fun LazyScreenScaffold(
     // the scene paints in the wrapping Box (promoted to its own compositing layer) and the LazyColumn is
     // transparent so the scene shows through behind the rows. Mirrors the iOS scaffold's topBackground.
     topBackground: (@Composable () -> Unit)? = null,
-    // Same contract as ScreenScaffold.maxContentWidth: the content is centred and capped on a wide window,
-    // untouched on a phone. The two-lane Today passes the wider dashboard cap.
+    // Same contract as ScreenScaffold.maxContentWidth: a single-column screen is centred and capped on a wide
+    // window, untouched on a phone.
     maxContentWidth: Dp = ReadableMaxContentWidth,
-    content: LazyListScope.() -> Unit,
+    // Built with [AdaptiveListScope] — the usual item { } / items(...) — so the same rows can back a LazyColumn
+    // on a phone or a masonry LazyVerticalStaggeredGrid on a wide window (AdaptiveLayout.kt).
+    content: AdaptiveListScope.() -> Unit,
 ) {
-    val sideInset = adaptiveSideInset(maxContentWidth)
+    // Foldables / tablets: how many card columns this window gets under the "Wide screens" setting. A screen
+    // that currently emits a single card (an empty state, a loading note) stays one column, so it spans the
+    // width instead of sitting in one column beside a blank one. Counted in a derivedStateOf so the count only
+    // re-runs when the rows the DSL reads change, and only invalidates this scaffold when the COUNT changes.
+    val windowColumns = screenColumns()
+    val cardCount by remember(content) {
+        derivedStateOf { CountingAdaptiveScope().apply(content).count }
+    }
+    val columns = if (windowColumns > 1 && cardCount > 1) windowColumns else 1
+    val sideInset = if (columns > 1) {
+        adaptiveSideInset(AdaptiveLayout.gridMaxWidthDp(columns).dp)
+    } else {
+        adaptiveSideInset(maxContentWidth)
+    }
+    // Both scroll states are hoisted (and saveable), so returning to a screen restores its position. When a
+    // fold/unfold swaps list <-> grid, the new one picks up at the item the old one was showing.
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyStaggeredGridState()
+    val isGrid = columns > 1
+    var lastWasGrid by rememberSaveable { mutableStateOf(isGrid) }
+    LaunchedEffect(isGrid) {
+        if (isGrid == lastWasGrid) return@LaunchedEffect
+        lastWasGrid = isGrid
+        // Wait for the new layout's first pass (its item count differs: phone-only spacers, per-section rows),
+        // then land on the same item, clamped into range.
+        if (isGrid) {
+            val target = listState.firstVisibleItemIndex
+            val total = snapshotFlow { gridState.layoutInfo.totalItemsCount }.first { it > 0 }
+            gridState.scrollToItem(target.coerceAtMost(total - 1))
+        } else {
+            val target = gridState.firstVisibleItemIndex
+            val total = snapshotFlow { listState.layoutInfo.totalItemsCount }.first { it > 0 }
+            listState.scrollToItem(target.coerceAtMost(total - 1))
+        }
+    }
     // The header row: optional leading action, the title/subtitle, optional trailing action. Omitted
     // entirely when both title and subtitle are null (a screen supplying its own custom header). Matches
     // ScreenScaffold's header block so the eager + lazy scaffolds read identically.
@@ -1298,19 +1373,38 @@ fun LazyScreenScaffold(
         } else {
             Modifier.fillMaxWidth()
         }
+    val padding = PaddingValues(start = sideInset, top = topPadding, end = sideInset, bottom = 28.dp)
     val list: @Composable () -> Unit = {
-        LazyColumn(
-            modifier = listModifier,
-            contentPadding = PaddingValues(start = sideInset, top = topPadding, end = sideInset, bottom = 28.dp),
-            // #765: the shared inter-card spacing token by default (Today/Explore + the eager screens share
-            // one uniform card rhythm); a caller may pass a tighter [rowSpacing] (the liquid Today does, for
-            // the iOS-compact section rhythm).
-            verticalArrangement = Arrangement.spacedBy(rowSpacing),
-        ) {
-            if (header != null) {
-                item { header() }
+        if (isGrid) {
+            // Wide window: Material's "feed" layout — the header spans the top and every card drops into the
+            // currently shortest column, so a long section beside short ones leaves no empty column behind.
+            LazyVerticalStaggeredGrid(
+                columns = StaggeredGridCells.Fixed(columns),
+                modifier = listModifier,
+                state = gridState,
+                contentPadding = padding,
+                verticalItemSpacing = rowSpacing,
+                horizontalArrangement = Arrangement.spacedBy(ColumnGap),
+            ) {
+                val scope = GridAdaptiveScope(this)
+                if (header != null) scope.fullWidthItem { header() }
+                scope.content()
             }
-            content()
+        } else {
+            LazyColumn(
+                modifier = listModifier,
+                state = listState,
+                contentPadding = padding,
+                // #765: the shared inter-card spacing token by default (Today/Explore + the eager screens share
+                // one uniform card rhythm); a caller may pass a tighter [rowSpacing] (the liquid Today does, for
+                // the iOS-compact section rhythm).
+                verticalArrangement = Arrangement.spacedBy(rowSpacing),
+            ) {
+                if (header != null) {
+                    item { header() }
+                }
+                ListAdaptiveScope(this).content()
+            }
         }
     }
 
