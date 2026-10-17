@@ -217,6 +217,9 @@ private data class TodayLiveSnapshot(
     val charging: Boolean?,
 )
 
+/** The key Today's own wide-screen column choice is remembered under (WideLayoutPrefs). */
+private const val TODAY_LAYOUT_KEY = "today"
+
 @Composable
 fun TodayScreen(
     viewModel: AppViewModel,
@@ -1041,6 +1044,9 @@ fun TodayScreen(
 
     LazyScreenScaffold(
         modifier = daySwipeModifier,
+        // Today has no scaffold title, so its per-screen column choice needs its own key (the layout button
+        // sits in the liquid header below).
+        layoutKey = TODAY_LAYOUT_KEY,
         // title = null suppresses the big scaffold header (the nullable-title path); the compact
         // WHOOP-style top bar below replaces it, mirroring the iOS Today screen (todayTopBar).
         title = null,
@@ -2123,6 +2129,9 @@ private fun LiquidTodayHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // (0) Wide screens only (an unfolded foldable, a tablet): Today's own column choice, as a liquid disc
+            // so it sits in this cluster. Renders nothing on a phone (AdaptiveLayout.kt).
+            ScreenLayoutButton(screenKey = TODAY_LAYOUT_KEY, liquid = true)
             // (a) Support / donate heart — a filled heart in the charge-green tint (iOS chargeColor). Choop is
             // free forever; donations are optional. Hidden when the support/donation surfaces are turned
             // off (Settings → Appearance → "Show support & donation").

@@ -59,6 +59,13 @@ class AdaptiveLayoutTest {
     }
 
     @Test
+    fun layoutButtonOnlyWhereTwoColumnsFit() {
+        assertFalse(AdaptiveLayout.canSplit(411))                                        // phone
+        assertFalse(AdaptiveLayout.canSplit(852 - AdaptiveLayout.LIST_PANE_WIDTH_DP - 1)) // beside the More list
+        assertTrue(AdaptiveLayout.canSplit(852))                                         // unfolded V5, full width
+    }
+
+    @Test
     fun listDetailFromUnfoldedFoldablesUp() {
         assertFalse(AdaptiveLayout.usesListDetail(411))  // phone / cover screen
         assertFalse(AdaptiveLayout.usesListDetail(700))  // Pixel Fold held upright

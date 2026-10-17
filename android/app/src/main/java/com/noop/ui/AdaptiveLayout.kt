@@ -3,19 +3,40 @@ package com.noop.ui
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.ViewAgenda
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.Measured
@@ -67,10 +88,14 @@ enum class WideLayoutMode(val storageValue: String, val label: String, val short
 
 /** The wide-screen layout preference, persisted in `noop_prefs` and mirrored in snapshot state so a change
  *  in Settings re-lays out every screen live. Lives under `theme.` so a .noopbak carries it with the other
- *  appearance choices. [load] runs once from MainActivity before first composition. */
+ *  appearance choices. [load] runs once from MainActivity before first composition.
+ *
+ *  [mode] is the app-wide choice (Settings → Appearance → Wide screens). A screen can override it from the
+ *  layout button in its own header ([ScreenLayoutButton]); [modeFor] resolves the two. */
 object WideLayoutPrefs {
     private const val FILE = "noop_prefs"
     private const val KEY = "theme.wideColumns"
+    private const val SCREEN_PREFIX = "theme.wideColumns.screen."
 
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -78,13 +103,53 @@ object WideLayoutPrefs {
     var mode by mutableStateOf(WideLayoutMode.AUTO)
         private set
 
+    /** Per-screen overrides, keyed by the screen's layout key (its title, or "today"). Absent = app setting. */
+    private val screenModes = mutableStateMapOf<String, WideLayoutMode>()
+
+    /** How many screens currently carry their own layout (shown beside "Reset" in Settings). */
+    val overrideCount: Int get() = screenModes.size
+
     fun load(ctx: Context) {
-        mode = WideLayoutMode.fromStorage(prefs(ctx).getString(KEY, WideLayoutMode.AUTO.storageValue))
+        val p = prefs(ctx)
+        mode = WideLayoutMode.fromStorage(p.getString(KEY, WideLayoutMode.AUTO.storageValue))
+        screenModes.clear()
+        p.all.forEach { (k, v) ->
+            if (k.startsWith(SCREEN_PREFIX) && v is String) {
+                screenModes[k.removePrefix(SCREEN_PREFIX)] = WideLayoutMode.fromStorage(v)
+            }
+        }
     }
 
     fun set(ctx: Context, value: WideLayoutMode) {
         mode = value
         prefs(ctx).edit().putString(KEY, value.storageValue).apply()
+    }
+
+    /** The screen's own choice, or null when it follows the app setting. */
+    fun screenOverride(screenKey: String?): WideLayoutMode? = screenKey?.let { screenModes[it] }
+
+    /** The layout a screen uses: its own choice when it has one, else the app setting. */
+    fun modeFor(screenKey: String?): WideLayoutMode = screenOverride(screenKey) ?: mode
+
+    /** Give one screen its own layout, or [value] = null to have it follow the app setting again. */
+    fun setScreen(ctx: Context, screenKey: String, value: WideLayoutMode?) {
+        val edit = prefs(ctx).edit()
+        if (value == null) {
+            screenModes.remove(screenKey)
+            edit.remove(SCREEN_PREFIX + screenKey)
+        } else {
+            screenModes[screenKey] = value
+            edit.putString(SCREEN_PREFIX + screenKey, value.storageValue)
+        }
+        edit.apply()
+    }
+
+    /** Every screen back to following the app setting. */
+    fun resetScreens(ctx: Context) {
+        val edit = prefs(ctx).edit()
+        screenModes.keys.forEach { edit.remove(SCREEN_PREFIX + it) }
+        screenModes.clear()
+        edit.apply()
     }
 }
 
@@ -157,6 +222,9 @@ internal object AdaptiveLayout {
     /** True when a window (or the space left beside a rail) is wide enough to keep a list pane on screen. */
     fun usesListDetail(widthDp: Int): Boolean = widthDp >= LIST_DETAIL_MIN_WIDTH_DP
 
+    /** True when a screen this wide could show two columns at all — where a per-screen layout choice matters. */
+    fun canSplit(widthDp: Int): Boolean = columnsFor(WideLayoutMode.TWO, widthDp) >= 2
+
     /**
      * The left/right inset that centres content of at most [maxContentWidthDp] in a window [windowWidthDp]
      * wide, never tighter than the phone gutter [minGutterDp]. Any window up to `max + 2 × gutter` wide gets
@@ -226,11 +294,77 @@ val LocalAvailableWidthDp = compositionLocalOf<Int?> { null }
 @Composable
 fun availableWidthDp(): Int = LocalAvailableWidthDp.current ?: LocalConfiguration.current.screenWidthDp
 
-/** How many card columns the current screen gets under the user's wide-screen setting. Recomposes when the
- *  window is resized, folded or unfolded, a side pane opens, or the setting changes. */
+/** How many card columns the current screen gets: its own layout choice ([layoutKey]) or the app's wide-screen
+ *  setting. Recomposes when the window is resized, folded or unfolded, a side pane opens, or a setting changes. */
 @Composable
-fun screenColumns(): Int =
-    AdaptiveLayout.columnsFor(WideLayoutPrefs.mode, availableWidthDp())
+fun screenColumns(layoutKey: String? = null): Int =
+    AdaptiveLayout.columnsFor(WideLayoutPrefs.modeFor(layoutKey), availableWidthDp())
+
+/**
+ * The per-screen layout button: a small columns icon in a screen's header that opens a menu — follow the app
+ * setting, Automatic, One column or Two columns — remembered for this screen only. It only appears where two
+ * columns can actually fit (an unfolded foldable, a tablet), so a phone never sees it. [liquid] draws it as the
+ * translucent disc of the Today header so it matches the cluster it sits in.
+ */
+@Composable
+fun ScreenLayoutButton(screenKey: String, liquid: Boolean = false) {
+    if (!AdaptiveLayout.canSplit(availableWidthDp())) return
+    val context = LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    val override = WideLayoutPrefs.screenOverride(screenKey)
+    val columns = screenColumns(screenKey)
+    Box {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(if (liquid) Color.White.copy(alpha = 0.16f) else Palette.surfaceInset)
+                .clickable { open = true }
+                .semantics { contentDescription = "Columns on this screen" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (columns > 1) Icons.Outlined.GridView else Icons.Outlined.ViewAgenda,
+                contentDescription = null,
+                tint = if (liquid) Color.White else Palette.textSecondary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            Text(
+                "Columns on this screen",
+                style = NoopType.footnote,
+                color = Palette.textTertiary,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+            LayoutMenuItem("App setting (${WideLayoutPrefs.mode.label})", selected = override == null) {
+                WideLayoutPrefs.setScreen(context, screenKey, null)
+                open = false
+            }
+            WideLayoutMode.entries.forEach { m ->
+                LayoutMenuItem(m.label, selected = override == m) {
+                    WideLayoutPrefs.setScreen(context, screenKey, m)
+                    open = false
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LayoutMenuItem(label: String, selected: Boolean, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(label, style = NoopType.body, color = Palette.textPrimary) },
+        onClick = onClick,
+        leadingIcon = {
+            if (selected) {
+                Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Palette.accent)
+            } else {
+                Spacer(Modifier.size(24.dp))
+            }
+        },
+    )
+}
 
 /** The left/right inset for a screen whose content should not grow wider than [maxContentWidth]: the plain
  *  [minGutter] on a phone, centred margins on a wide window. */

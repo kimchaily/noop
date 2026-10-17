@@ -58,6 +58,7 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -651,6 +652,22 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     label = { it.shortLabel },
                     onSelect = { WideLayoutPrefs.set(context, it) },
                 )
+                // Screens given their own layout from the columns button in their header keep it over this
+                // setting; one tap hands them all back to it.
+                val ownLayouts = WideLayoutPrefs.overrideCount
+                if (ownLayouts > 0) {
+                    TextButton(
+                        onClick = { WideLayoutPrefs.resetScreens(context) },
+                        colors = ButtonDefaults.textButtonColors(contentColor = Palette.accent),
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Text(
+                            if (ownLayouts == 1) "1 screen has its own layout · Reset"
+                            else "$ownLayouts screens have their own layout · Reset",
+                            style = NoopType.footnote,
+                        )
+                    }
+                }
             }
 
             // Day-cycle background (#698): the time-of-day scene behind Today. On by default. Off swaps it
