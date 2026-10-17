@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "8.3.0"
+    const val CURRENT_VERSION = "8.3.1"
 
     data class Release(
         val version: String,
@@ -36,6 +36,17 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "8.3.1",
+            title = "Choop fills an unfolded foldable's screen",
+            date = "October 2026",
+            items = listOf(
+                "**Columns on wide screens.** Unfold a foldable (Honor Magic V5, Pixel Fold, Galaxy Z Fold), use a tablet or turn to landscape, and every screen lays its cards out in columns instead of one stretched strip. Today, More, Settings, Sleep, Trends, Health and the rest all adapt the same way.",
+                "**No empty columns.** Each card drops into whichever column is shortest, so a long section beside short ones no longer leaves half the screen blank. Section headings stay with their card, and day, range and filter bars span the full width.",
+                "**Choose your layout.** Settings → Appearance → Wide screens: Automatic (as many columns as fit, two on an unfolded Magic V5), One column (the phone layout, centred) or Two columns. A folded phone always uses one column.",
+                "**Fold without losing your place.** Folding, unfolding, rotating or resizing a split-screen window no longer restarts the app, so open sheets, half-typed text and your scroll position carry straight across.",
+            ),
+        ),
         Release(
             version = "8.3.0",
             title = "Move to a new phone with your whole setup, not just your data",
