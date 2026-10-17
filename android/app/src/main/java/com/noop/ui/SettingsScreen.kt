@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.Brightness6
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Cancel
@@ -53,6 +54,7 @@ import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material3.AlertDialog
@@ -85,6 +87,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -582,6 +586,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         topBackground = if (showDayCycleBackground) { { LiquidScreenSky() } } else null,
     ) {
         // --- Appearance (Theme) ---
+        SettingsGroup("appearance") {
         NoopSettingsSection(
             icon = Icons.Filled.Brightness6,
             title = "Appearance",
@@ -813,8 +818,10 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 )
             }
         }
+        }
 
         // --- Strap ---
+        SettingsGroup("strap") {
         NoopSettingsSection(
             icon = Icons.Filled.Sensors,
             title = "Strap",
@@ -1109,8 +1116,10 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 }
             }
         }
+        }
 
         // --- Health & wellness (v5 opt-in toggles) ---
+        SettingsGroup("health") {
         NoopSettingsSection(
             icon = Icons.Filled.Science,
             title = "Health & wellness",
@@ -1239,16 +1248,20 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 )
             }
         }
+        }
 
         // --- Wim Hof breathwork ---
         // The guided session itself lives on its own screen; what belongs HERE is the wiring the screen
         // can't sensibly ask for mid-session: which of the user's own journal items a finished session
         // writes into, and where "morning" stops being morning.
+        SettingsGroup("wimhof") {
         WimHofSettingsSection(
             expanded = sectionExpanded("Wim Hof breathwork"),
             onToggle = { toggleSection("Wim Hof breathwork") },
         )
+        }
 
+        SettingsGroup("backup") {
         NoopSettingsSection(
             icon = Icons.Filled.Storage,
             title = "Backup & restore",
@@ -1339,11 +1352,13 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 )
             }
         }
+        }
 
         // Lower-frequency sections collapse behind a single default-closed disclosure (S3) so the
         // screen opens at the everyday handful instead of the full wall of cards. Nothing is removed;
         // the experimental probes, diagnostics, raw-capture export and Trends report all stay one tap
         // away. Mirrors the iOS SettingsView "Advanced" disclosure and the Test Centre Advanced group.
+        SettingsGroup("advanced") {
         SettingsDisclosure(
             title = "Advanced",
             subtitle = "Experimental probes, diagnostics, raw-sensor export, and the Trends report. Tucked away to keep the everyday screen tidy.",
@@ -1972,8 +1987,10 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
         TrendsReportExportSection(vm)
         } // end Advanced disclosure content Column
         } // end SettingsDisclosure("Advanced")
+        }
 
         // --- About ---
+        SettingsGroup("about") {
         NoopSettingsSection(
             icon = Icons.Filled.Info,
             title = "About",
@@ -2426,6 +2443,7 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 }
             }
         }
+        }
 
         // What's new sheet, opened from the About row above. Full-screen Dialog so it
         // covers the whole screen like the macOS .sheet; closing just hides it.
@@ -2608,6 +2626,9 @@ private fun SettingsDisclosure(
     onToggle: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    val forcedOpen = LocalSettingsSectionsForcedOpen.current
+    val expanded = expanded || forcedOpen
+    val onToggle: () -> Unit = if (forcedOpen) ({}) else onToggle
     val chevronRotation by animateFloatAsState(
         targetValue = if (expanded) 0f else -90f,
         label = "advancedChevron",
@@ -2648,6 +2669,43 @@ private fun SettingsDisclosure(
     }
 }
 
+// MARK: - Settings groups (list-detail on wide screens)
+//
+// The top-level groups of the Settings screen, in screen order. On a phone (and anywhere the More list isn't
+// beside the screen) Settings renders every group as before. On a wide screen the More list pane (AppRoot)
+// lists these under "Settings"; picking one sets [LocalSettingsFocus] and Settings then shows just that group,
+// fully open — Material's list-detail layout, one level down.
+
+/** One top-level Settings group: a stable [key], the title and icon the list pane shows. */
+internal data class SettingsGroupInfo(val key: String, val title: String, val icon: ImageVector)
+
+internal val settingsGroups: List<SettingsGroupInfo> = listOf(
+    SettingsGroupInfo("appearance", "Appearance", Icons.Filled.Brightness6),
+    SettingsGroupInfo("strap", "Strap", Icons.Filled.Sensors),
+    SettingsGroupInfo("health", "Health & wellness", Icons.Filled.Science),
+    SettingsGroupInfo("wimhof", "Wim Hof breathwork", Icons.Filled.AcUnit),
+    SettingsGroupInfo("backup", "Backup & restore", Icons.Filled.Storage),
+    SettingsGroupInfo("advanced", "Advanced", Icons.Filled.Tune),
+    SettingsGroupInfo("about", "About", Icons.Filled.Info),
+)
+
+/** The Settings group the list pane picked, or null to show every group (the normal single-pane screen). */
+internal val LocalSettingsFocus = compositionLocalOf<String?> { null }
+
+/** True inside the picked group: its section cards and the Advanced disclosure show open, without a toggle. */
+internal val LocalSettingsSectionsForcedOpen = compositionLocalOf { false }
+
+/** Renders one top-level group — always on a phone; only when it is the picked group beside the list pane. */
+@Composable
+private fun SettingsGroup(key: String, content: @Composable () -> Unit) {
+    val focus = LocalSettingsFocus.current
+    if (focus == null) {
+        content()
+    } else if (focus == key) {
+        CompositionLocalProvider(LocalSettingsSectionsForcedOpen provides true) { content() }
+    }
+}
+
 // MARK: - Section card (ports SettingsView's private SettingsSection)
 
 /**
@@ -2667,6 +2725,11 @@ internal fun NoopSettingsSection(
     onToggle: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
+    // Beside the More list on a wide screen the left pane already picked this group, so its cards show open
+    // and don't collapse (see SettingsGroup).
+    val forcedOpen = LocalSettingsSectionsForcedOpen.current
+    val expanded = expanded || forcedOpen
+    val onToggle = if (forcedOpen) null else onToggle
     val collapsible = onToggle != null
     val chevronRotation by animateFloatAsState(
         targetValue = if (expanded) 0f else -90f,

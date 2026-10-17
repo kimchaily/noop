@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -114,6 +115,17 @@ internal object AdaptiveLayout {
     /** Automatic mode never goes past this many columns. */
     const val MAX_AUTO_COLUMNS = 3
 
+    /** "Two columns" still needs each column at least this wide; a narrower space (a screen beside the More
+     *  list, a small split-screen window) falls back to one column rather than two unreadable strips. */
+    const val MIN_FORCED_COLUMN_WIDTH_DP = 280f
+
+    /** From this width (dp) the More list stays on screen beside the screen it opened (Material's
+     *  list-detail layout): an unfolded Magic V5, a tablet. A Pixel Fold held upright (~700dp) stays one pane. */
+    const val LIST_DETAIL_MIN_WIDTH_DP = 720
+
+    /** Width of the list pane in list-detail mode. */
+    const val LIST_PANE_WIDTH_DP = 320
+
     fun widthClass(widthDp: Int): WindowWidthClass = when {
         widthDp < MEDIUM_MIN_WIDTH_DP -> WindowWidthClass.COMPACT
         widthDp < EXPANDED_MIN_WIDTH_DP -> WindowWidthClass.MEDIUM
@@ -130,7 +142,10 @@ internal object AdaptiveLayout {
         if (widthClass(windowWidthDp) == WindowWidthClass.COMPACT) return 1
         return when (mode) {
             WideLayoutMode.ONE -> 1
-            WideLayoutMode.TWO -> 2
+            WideLayoutMode.TWO -> {
+                val content = windowWidthDp - 2 * SCREEN_GUTTER_DP
+                if (content >= 2 * MIN_FORCED_COLUMN_WIDTH_DP + COLUMN_GAP_DP) 2 else 1
+            }
             WideLayoutMode.AUTO -> {
                 val content = windowWidthDp - 2 * SCREEN_GUTTER_DP
                 val fit = ((content + COLUMN_GAP_DP) / (MIN_COLUMN_WIDTH_DP + COLUMN_GAP_DP)).toInt()
@@ -138,6 +153,9 @@ internal object AdaptiveLayout {
             }
         }
     }
+
+    /** True when a window (or the space left beside a rail) is wide enough to keep a list pane on screen. */
+    fun usesListDetail(widthDp: Int): Boolean = widthDp >= LIST_DETAIL_MIN_WIDTH_DP
 
     /**
      * The left/right inset that centres content of at most [maxContentWidthDp] in a window [windowWidthDp]
@@ -197,11 +215,22 @@ internal object AdaptiveLayout {
     }
 }
 
-/** How many card columns the current window gets under the user's wide-screen setting. Recomposes when the
- *  window is resized, folded or unfolded, or the setting changes. */
+/**
+ * The width (dp) the current screen actually gets, when the app shell puts something beside it (the More list
+ * pane, the side navigation rail). Null means "the whole window". Screens never set it; AppRoot provides it
+ * around the NavHost so a screen beside a pane counts its columns from the space it really has.
+ */
+val LocalAvailableWidthDp = compositionLocalOf<Int?> { null }
+
+/** The width (dp) available to the current screen: the window, minus any pane or rail beside it. */
+@Composable
+fun availableWidthDp(): Int = LocalAvailableWidthDp.current ?: LocalConfiguration.current.screenWidthDp
+
+/** How many card columns the current screen gets under the user's wide-screen setting. Recomposes when the
+ *  window is resized, folded or unfolded, a side pane opens, or the setting changes. */
 @Composable
 fun screenColumns(): Int =
-    AdaptiveLayout.columnsFor(WideLayoutPrefs.mode, LocalConfiguration.current.screenWidthDp)
+    AdaptiveLayout.columnsFor(WideLayoutPrefs.mode, availableWidthDp())
 
 /** The left/right inset for a screen whose content should not grow wider than [maxContentWidth]: the plain
  *  [minGutter] on a phone, centred margins on a wide window. */
@@ -211,7 +240,7 @@ fun adaptiveSideInset(
     minGutter: Dp = AdaptiveLayout.SCREEN_GUTTER_DP.dp,
 ): Dp =
     AdaptiveLayout.sideInsetDp(
-        windowWidthDp = LocalConfiguration.current.screenWidthDp.toFloat(),
+        windowWidthDp = availableWidthDp().toFloat(),
         maxContentWidthDp = maxContentWidth.value,
         minGutterDp = minGutter.value,
     ).dp

@@ -1,6 +1,8 @@
 package com.noop.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -44,8 +46,25 @@ class AdaptiveLayoutTest {
     fun explicitChoicesWinOnWideWindows() {
         assertEquals(1, AdaptiveLayout.columnsFor(WideLayoutMode.ONE, 852))
         assertEquals(1, AdaptiveLayout.columnsFor(WideLayoutMode.ONE, 1280))
-        assertEquals(2, AdaptiveLayout.columnsFor(WideLayoutMode.TWO, 600))
+        assertEquals(2, AdaptiveLayout.columnsFor(WideLayoutMode.TWO, 640))
         assertEquals(2, AdaptiveLayout.columnsFor(WideLayoutMode.TWO, 1280))
+    }
+
+    @Test
+    fun twoColumnsNeverSqueezesBelowReadableColumns() {
+        // A screen beside the More list on an unfolded V5 gets ~531dp: two 230dp strips would be unreadable,
+        // so even "Two columns" stays one there.
+        assertEquals(1, AdaptiveLayout.columnsFor(WideLayoutMode.TWO, 852 - AdaptiveLayout.LIST_PANE_WIDTH_DP - 1))
+        assertEquals(1, AdaptiveLayout.columnsFor(WideLayoutMode.TWO, 600))
+    }
+
+    @Test
+    fun listDetailFromUnfoldedFoldablesUp() {
+        assertFalse(AdaptiveLayout.usesListDetail(411))  // phone / cover screen
+        assertFalse(AdaptiveLayout.usesListDetail(700))  // Pixel Fold held upright
+        assertTrue(AdaptiveLayout.usesListDetail(720))
+        assertTrue(AdaptiveLayout.usesListDetail(852))   // unfolded Magic V5
+        assertTrue(AdaptiveLayout.usesListDetail(1280))
     }
 
     @Test

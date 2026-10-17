@@ -7,6 +7,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -74,6 +78,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -85,6 +91,7 @@ import com.noop.R
 import com.noop.analytics.FusionSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.draw.clip
@@ -311,6 +318,24 @@ fun AppRoot(
     // from Settings → About → What's new — both render the same [WhatsNewSheet]).
     var showWhatsNew by remember { mutableStateOf(false) }
 
+    // LIST-DETAIL (foldables / tablets, AdaptiveLayout.kt): on a wide window the More list stays on the left
+    // while the screen it opened fills the right, the way Material's list-detail layout works. Shown for More
+    // and every screen reached through it; Today / Trends / Sleep keep the whole width. When Settings is open
+    // beside it, the list also shows Settings' groups and the screen shows just the picked one.
+    val windowWidthDp = LocalConfiguration.current.screenWidthDp
+    val listDetail = AdaptiveLayout.usesListDetail(windowWidthDp)
+    val inMoreGroup = drawerGroups.any { current in it.items }
+    val showMorePane = listDetail && (current == Destination.More || inMoreGroup)
+    var settingsFocus by rememberSaveable { mutableStateOf(settingsGroups.first().key) }
+    // Remember the last screen opened through More, so tapping More on a wide screen reopens it beside the
+    // list instead of showing the list twice (once in the pane, once as the page).
+    LaunchedEffect(current) {
+        if (inMoreGroup) MoreLastRoute.write(context, current.route)
+    }
+    LaunchedEffect(current, listDetail) {
+        if (listDetail && current == Destination.More) nav.navigateTopLevel(MoreLastRoute.read(context))
+    }
+
     run {
         Scaffold(
             containerColor = Palette.surfaceBase,
@@ -335,12 +360,46 @@ fun AppRoot(
             // so stable's layout is byte-for-byte unchanged.
             val isPreviewChannel = BuildConfig.CHANNEL == "preview"
             Box(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(inner)
+                    .then(if (isPreviewChannel) Modifier.padding(top = PreviewBandContentHeight) else Modifier),
+            ) {
+            if (showMorePane) {
+                MorePane(
+                    current = current,
+                    settingsFocus = settingsFocus,
+                    onNavigate = { route -> if (route != currentRoute) nav.navigateTopLevel(route) },
+                    onSettingsGroup = { key ->
+                        settingsFocus = key
+                        if (current != Destination.Settings) nav.navigateTopLevel(Destination.Settings.route)
+                    },
+                    modifier = Modifier
+                        .width(AdaptiveLayout.LIST_PANE_WIDTH_DP.dp)
+                        .fillMaxHeight(),
+                )
+                Box(
+                    Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(Palette.hairline),
+                )
+            }
+            // The screen beside the pane counts its columns from the width it really gets (AdaptiveLayout.kt),
+            // and Settings shows just the group picked in the pane. Always provided (null = whole window) so
+            // the NavHost keeps its place in the composition when the pane comes and goes.
+            CompositionLocalProvider(
+                LocalAvailableWidthDp provides
+                    if (showMorePane) windowWidthDp - AdaptiveLayout.LIST_PANE_WIDTH_DP - 1 else null,
+                LocalSettingsFocus provides if (showMorePane) settingsFocus else null,
+            ) {
             NavHost(
                 navController = nav,
                 startDestination = Destination.Today.route,
                 modifier = Modifier
-                    .padding(inner)
-                    .then(if (isPreviewChannel) Modifier.padding(top = PreviewBandContentHeight) else Modifier),
+                    .weight(1f)
+                    .fillMaxHeight(),
                 // README motion: top-level destinations crossfade (~240ms) on the calm,
                 // decelerating global easing — nothing slides or bounces between tabs. The
                 // same fade is used for back (pop) so the bar never feels jerky. Drill-ins
@@ -423,7 +482,11 @@ fun AppRoot(
                         viewModel,
                         // The journal-item pickers live in Settings, so both the pre-session status card
                         // and the post-session summary can hop straight there.
-                        onOpenSettings = { nav.navigateTopLevel(Destination.Settings.route) },
+                        onOpenSettings = {
+                            // On a wide screen, land on the Wim Hof group beside the list.
+                            settingsFocus = "wimhof"
+                            nav.navigateTopLevel(Destination.Settings.route)
+                        },
                     )
                 }
                 composable(Destination.Coach.route) { CoachScreen() }
@@ -498,6 +561,8 @@ fun AppRoot(
                     MoreScreen(onNavigate = { nav.navigateTopLevel(it) })
                 }
             }
+            } // CompositionLocalProvider
+            } // Row (list pane + NavHost)
             if (isPreviewChannel) {
                 PreviewChannelBand(modifier = Modifier.align(Alignment.TopCenter))
             }
@@ -800,9 +865,58 @@ private fun PreviewChannelBand(modifier: Modifier = Modifier) {
 // this is just another NavHost destination under the same Scaffold.
 
 /** The full grouped destination list as a navigated page (the iOS More tab's twin). */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MoreScreen(onNavigate: (String) -> Unit) {
+    ScreenScaffold(
+        title = "More",
+        subtitle = "Everything else, one tap away",
+    ) {
+        MoreGroups(selected = null, settingsFocus = null, onNavigate = onNavigate, onSettingsGroup = null)
+    }
+}
+
+/**
+ * The More list as a pane beside the screen it opened (list-detail on a wide window, see AppRoot). Same
+ * groups and rows as the More page, with the open screen highlighted; when that screen is Settings, its
+ * groups appear under it so the pane drives Settings one level down too. Scrolls on its own, so the list
+ * stays put while the screen beside it scrolls.
+ */
+@Composable
+private fun MorePane(
+    current: Destination,
+    settingsFocus: String,
+    onNavigate: (String) -> Unit,
+    onSettingsGroup: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .background(Palette.surfaceBase)
+            .verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, end = 12.dp, top = 20.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(Metrics.screenRowSpacing),
+    ) {
+        Text("More", style = NoopType.title1, color = Palette.textPrimary)
+        MoreGroups(
+            selected = current,
+            settingsFocus = if (current == Destination.Settings) settingsFocus else null,
+            onNavigate = onNavigate,
+            onSettingsGroup = onSettingsGroup,
+        )
+    }
+}
+
+/** The grouped destination list shared by the More page and the More pane. [selected] highlights the open
+ *  screen (pane only) and keeps its group open; [settingsFocus] non-null lists Settings' groups under the
+ *  Settings row with that one highlighted. Each group is its own child, so the More page's groups flow into
+ *  columns on a wide window. */
+@Composable
+private fun MoreGroups(
+    selected: Destination?,
+    settingsFocus: String?,
+    onNavigate: (String) -> Unit,
+    onSettingsGroup: ((String) -> Unit)?,
+) {
     // S2 parity: each group's open/closed state, seeded from `defaultExpanded` (Insights + Body open,
     // Data + App collapsed). PERSISTED (#860 item 2): the user's open/closed choice must survive leaving
     // and re-entering the More page (and relaunch), not reset to the seed every visit. Backed by
@@ -819,45 +933,67 @@ private fun MoreScreen(onNavigate: (String) -> Unit) {
             drawerGroups.forEach { put(it.header, stored.contains(it.header)) }
         }
     }
-    ScreenScaffold(
-        title = "More",
-        subtitle = "Everything else, one tap away",
-    ) {
-        // Mirror the iOS More page: each group is a tappable UPPERCASE overline header (with a disclosure
-        // chevron) over a single grouped white NoopCard whose rows are tight (accent icon + title +
-        // chevron) and separated by inset hairlines (NOT loose NavigationDrawerItems on the bare surface).
-        drawerGroups.forEach { group ->
-            val isOpen = expanded[group.header] ?: group.defaultExpanded
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MoreGroupHeader(
-                    title = stringResource(group.headerRes),
-                    expanded = isOpen,
-                    onToggle = {
-                        expanded[group.header] = !isOpen
-                        // Persist the new open set so the choice survives leaving + re-entering the page
-                        // and relaunch (#860 item 2), mirroring the iOS @AppStorage write.
-                        val open = drawerGroups.map { it.header }.filter { expanded[it] == true }.toSet()
-                        MoreSectionPrefs.write(NoopPrefs.of(context), open)
-                    },
-                )
-                if (isOpen) {
-                    val items = group.items.filter { showSupport || it != Destination.Support }
-                    NoopCard(padding = 0.dp) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            items.forEachIndexed { i, dest ->
-                                MoreRow(dest = dest, onClick = { onNavigate(dest.route) })
-                                if (i < items.lastIndex) {
-                                    HorizontalDivider(
-                                        color = Palette.hairline,
-                                        modifier = Modifier.padding(start = 50.dp),
+    // Mirror the iOS More page: each group is a tappable UPPERCASE overline header (with a disclosure
+    // chevron) over a single grouped white NoopCard whose rows are tight (accent icon + title +
+    // chevron) and separated by inset hairlines (NOT loose NavigationDrawerItems on the bare surface).
+    drawerGroups.forEach { group ->
+        // The group holding the open screen always shows, so its highlighted row is never hidden.
+        val isOpen = (expanded[group.header] ?: group.defaultExpanded) || (selected != null && selected in group.items)
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            MoreGroupHeader(
+                title = stringResource(group.headerRes),
+                expanded = isOpen,
+                onToggle = {
+                    expanded[group.header] = !isOpen
+                    // Persist the new open set so the choice survives leaving + re-entering the page
+                    // and relaunch (#860 item 2), mirroring the iOS @AppStorage write.
+                    val open = drawerGroups.map { it.header }.filter { expanded[it] == true }.toSet()
+                    MoreSectionPrefs.write(NoopPrefs.of(context), open)
+                },
+            )
+            if (isOpen) {
+                val items = group.items.filter { showSupport || it != Destination.Support }
+                NoopCard(padding = 0.dp) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        items.forEachIndexed { i, dest ->
+                            MoreRow(dest = dest, selected = dest == selected, onClick = { onNavigate(dest.route) })
+                            if (dest == Destination.Settings && settingsFocus != null && onSettingsGroup != null) {
+                                settingsGroups.forEach { info ->
+                                    MoreSubRow(
+                                        title = info.title,
+                                        icon = info.icon,
+                                        selected = info.key == settingsFocus,
+                                        onClick = { onSettingsGroup(info.key) },
                                     )
                                 }
+                            }
+                            if (i < items.lastIndex) {
+                                HorizontalDivider(
+                                    color = Palette.hairline,
+                                    modifier = Modifier.padding(start = 50.dp),
+                                )
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** The last screen opened through More, so More on a wide screen reopens it beside the list. */
+internal object MoreLastRoute {
+    private const val KEY = "noop.more.lastRoute"
+
+    fun read(context: android.content.Context): String {
+        val stored = NoopPrefs.of(context).getString(KEY, null)
+        // Only a route that is still in the More groups (Support can be switched off); else the first entry.
+        val valid = drawerGroups.flatMap { it.items }.map { it.route }
+        return stored?.takeIf { it in valid } ?: Destination.InsightsHub.route
+    }
+
+    fun write(context: android.content.Context, route: String) {
+        NoopPrefs.of(context).edit().putString(KEY, route).apply()
     }
 }
 
@@ -897,22 +1033,53 @@ private fun MoreGroupHeader(title: String, expanded: Boolean, onToggle: () -> Un
 /** One tappable destination row in the More page — accent icon + title + trailing chevron in a
  *  comfortable tap target, mirroring the iOS MoreRow. */
 @Composable
-private fun MoreRow(dest: Destination, onClick: () -> Unit) {
+private fun MoreRow(dest: Destination, selected: Boolean = false, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // The open screen beside the More pane reads as selected: a soft accent wash, accent title.
+            .then(if (selected) Modifier.background(Palette.accent.copy(alpha = 0.12f)) else Modifier)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .semantics { if (selected) stateDescription = "Selected" },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(dest.icon, contentDescription = null, tint = Palette.accent, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(14.dp))
-        Text(stringResource(dest.titleRes), style = NoopType.body, color = Palette.textPrimary, modifier = Modifier.weight(1f))
+        Text(
+            stringResource(dest.titleRes),
+            style = if (selected) NoopType.body.copy(fontWeight = FontWeight.SemiBold) else NoopType.body,
+            color = if (selected) Palette.accent else Palette.textPrimary,
+            modifier = Modifier.weight(1f),
+        )
         Icon(
             Icons.Filled.ChevronRight,
             contentDescription = null,
             tint = Palette.textTertiary,
             modifier = Modifier.size(Metrics.iconSmall),
+        )
+    }
+}
+
+/** One Settings group listed under the Settings row in the More pane (list-detail one level down). */
+@Composable
+private fun MoreSubRow(title: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (selected) Modifier.background(Palette.accent.copy(alpha = 0.12f)) else Modifier)
+            .clickable(onClick = onClick)
+            .padding(start = 50.dp, end = 16.dp, top = 10.dp, bottom = 10.dp)
+            .semantics { if (selected) stateDescription = "Selected" },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = Palette.textSecondary, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(
+            title,
+            style = if (selected) NoopType.subhead.copy(fontWeight = FontWeight.SemiBold) else NoopType.subhead,
+            color = if (selected) Palette.accent else Palette.textSecondary,
+            modifier = Modifier.weight(1f),
         )
     }
 }
