@@ -199,6 +199,14 @@ fun LiveScreen(viewModel: AppViewModel, onManageDevices: () -> Unit = {}) {
         }
     }
 
+    // Half-open on a table (tabletop posture, FoldPosture.kt): the live heart-rate vessel stands on the upper
+    // half above the fold, the console scrolls on the lower half. Flat or folded, nothing changes.
+    val heroOnTop = isTabletop()
+    TabletopAware(
+        hero = {
+            BodyConsole(live = live, bpm = bpm, activeConnection = activeConnection, zone = liveZone, hrMax = profile.hrMax)
+        },
+    ) {
     LazyScreenScaffold(
         title = "Live Body Console",
         subtitle = "Current physiology, strap trust, and session controls",
@@ -323,8 +331,11 @@ fun LiveScreen(viewModel: AppViewModel, onManageDevices: () -> Unit = {}) {
         }
 
         // Body console — focal live HR VESSEL + live physiology (R-R thread, rolling RMSSD, frame/event).
-        item {
-        BodyConsole(live = live, bpm = bpm, activeConnection = activeConnection, zone = liveZone, hrMax = profile.hrMax)
+        // In tabletop posture it is already on the upper half (TabletopAware above), so not repeated here.
+        if (!heroOnTop) {
+            item {
+            BodyConsole(live = live, bpm = bpm, activeConnection = activeConnection, zone = liveZone, hrMax = profile.hrMax)
+            }
         }
 
         // Signal Trust rail — one tile per signal that has to be current for the console to be trusted.
@@ -645,6 +656,7 @@ fun LiveScreen(viewModel: AppViewModel, onManageDevices: () -> Unit = {}) {
             ConnectionHelp(viewModel, modifier = Modifier.fillMaxWidth())
             }
         }
+    }
     }
 }
 

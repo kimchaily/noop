@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -24,7 +25,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.window.layout.WindowInfoTracker
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.noop.BuildConfig
 import com.noop.NoopApplication
@@ -54,6 +58,9 @@ class MainActivity : ComponentActivity() {
      * it back to null so a config change can't re-fire the same jump.
      */
     private val pendingDeepLink: MutableState<String?> = mutableStateOf(null)
+
+    /** The latest fold posture, from WindowManager (FLAT until the first report and on non-foldables). */
+    private val foldState: MutableState<FoldState> = mutableStateOf(FoldState.Flat)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -108,9 +115,21 @@ class MainActivity : ComponentActivity() {
         // header + Settings avatars show it from the first frame. No-op when no photo is set.
         ProfileAvatarStore.load(this)
 
+        // Fold posture (book / tabletop) from Jetpack WindowManager, collected while visible and handed to the
+        // UI as LocalFoldState (see FoldPosture.kt). A non-foldable just stays FLAT.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                WindowInfoTracker.getOrCreate(this@MainActivity)
+                    .windowLayoutInfo(this@MainActivity)
+                    .collect { foldState.value = FoldPostures.from(it) }
+            }
+        }
+
         setContent {
-            NoopTheme {
-                NoopRoot(deepLink = pendingDeepLink)
+            CompositionLocalProvider(LocalFoldState provides foldState.value) {
+                NoopTheme {
+                    NoopRoot(deepLink = pendingDeepLink)
+                }
             }
         }
     }

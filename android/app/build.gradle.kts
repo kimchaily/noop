@@ -193,6 +193,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.2") // collectAsStateWithLifecycle
     implementation("androidx.navigation:navigation-compose:2.7.7")
 
+    // --- Fold posture (book / tabletop) on foldables: Jetpack WindowManager's FoldingFeature. 1.2.x is the
+    // line that builds against compileSdk 34. ---
+    implementation("androidx.window:window:1.2.0")
+
     // --- Coroutines ---
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")

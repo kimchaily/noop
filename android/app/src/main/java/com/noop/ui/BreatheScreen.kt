@@ -292,78 +292,10 @@ fun BreatheScreen(viewModel: AppViewModel, onOpenWimHof: () -> Unit = {}) {
         }
     }
 
-    ScreenScaffold(
-        title = "Breathe",
-        subtitle = "Haptic-paced breathing · find your pace · calm down",
-        // LIQUID SKY BACKDROP (the pilot pattern — LiquidScreenSky.kt): the time-of-day liquid sky settles
-        // into the theme canvas behind the header + top card and bleeds full-width up behind the status bar
-        // via the scaffold's topBackground plumbing. The Android equivalent of the iOS
-        // `ScreenScaffold(topBackground: liquidScaffoldSky())`; the cards float OVER it on the flat canvas.
-        topBackground = { LiquidScreenSky() },
-    ) {
-        // Mode switch — Breathe / Resonance / Calm me. Spans every column on a wide window (it switches
-        // the whole screen).
-        SegmentedPillControl(
-            items = BreatheMode.entries.toList(),
-            selection = mode,
-            label = { it.label },
-            onSelect = {
-                if (running) { running = false; endSession() }
-                mode = it
-                lockedBpm = BiofeedbackPrefs.lockedPace(context)
-            },
-            modifier = Modifier.spanAllColumns(),
-        )
-
-        // L3 passive stress check-in card (surfaces when StressOnsetDetector fires).
-        StressCheckInCard(
-            onBreatheNow = {
-                // Switch to Breathe and start a one-minute session. Coherence (5.5 br/min) is the
-                // resonance fallback pace; the felt cue is identical (one buzz in, two out).
-                mode = BreatheMode.Breathe
-                pace = Pace.Coherence
-                sessionSeconds = 0; breathCount = 0; endedOutcome = null
-                baselineRmssd = rmssd
-                sessionRmssdSum = 0.0; sessionRmssdCount = 0; sessionRmssdPeak = 0.0
-                running = true
-            },
-        )
-
-        when (mode) {
-            BreatheMode.Resonance -> {
-                ResonanceMode(viewModel = viewModel, live = live, lockedBpm = lockedBpm,
-                    onLocked = { lockedBpm = BiofeedbackPrefs.lockedPace(context) })
-                return@ScreenScaffold
-            }
-            BreatheMode.Calm -> {
-                CalmMode(viewModel = viewModel, live = live, bpm = bpm)
-                return@ScreenScaffold
-            }
-            BreatheMode.Breathe -> Unit // fall through to the shipped trainer below
-        }
-
-        // Status row.
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            StatePill(
-                if (running) "Session live" else "Ready",
-                tone = if (running) StrandTone.Accent else StrandTone.Neutral,
-                pulsing = running,
-            )
-            Spacer(Modifier.width(8.dp))
-            if (live.bonded) {
-                StatePill("Haptics on", tone = StrandTone.Positive)
-            } else {
-                StatePill("Visual only", tone = StrandTone.Warning)
-            }
-            Spacer(Modifier.weight(1f))
-            Text(timeString(sessionSeconds), style = NoopType.number(15f), color = Palette.textPrimary)
-            Spacer(Modifier.width(6.dp))
-            Text("$breathCount breaths", style = NoopType.captionNumber, color = Palette.textSecondary)
-        }
-
-        // The liquid hero CARD: a translucent near-black frosted panel (mock rgba(13,14,20,.80), radius 26,
-        // white@0.11 hairline) that floats over the day-of-sky so the breathe vessel + white count-up stay
-        // crisp — the card does the contrast work, not a muted sky. Mirrors the iOS liquid heroCard.
+    // The Breathe-mode pacer: the liquid vessel with the live BPM, the phase word, pace picker and audio-cue
+    // toggle. A lambda so the same hero renders inline in the screen, or on the upper half when the phone
+    // stands half-open on a table (tabletop posture, FoldPosture.kt).
+    val breathePacer: @Composable () -> Unit = {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -447,6 +379,85 @@ fun BreatheScreen(viewModel: AppViewModel, onOpenWimHof: () -> Unit = {}) {
                 )
             }
         }
+    }
+    // Only the Breathe trainer has a pacer; Resonance and Calm keep their own layouts in every posture.
+    val pacerOnTop = isTabletop() && mode == BreatheMode.Breathe
+    TabletopAware(hero = if (mode == BreatheMode.Breathe) breathePacer else null) {
+    ScreenScaffold(
+        title = "Breathe",
+        subtitle = "Haptic-paced breathing · find your pace · calm down",
+        // LIQUID SKY BACKDROP (the pilot pattern — LiquidScreenSky.kt): the time-of-day liquid sky settles
+        // into the theme canvas behind the header + top card and bleeds full-width up behind the status bar
+        // via the scaffold's topBackground plumbing. The Android equivalent of the iOS
+        // `ScreenScaffold(topBackground: liquidScaffoldSky())`; the cards float OVER it on the flat canvas.
+        topBackground = { LiquidScreenSky() },
+    ) {
+        // Mode switch — Breathe / Resonance / Calm me. Spans every column on a wide window (it switches
+        // the whole screen).
+        SegmentedPillControl(
+            items = BreatheMode.entries.toList(),
+            selection = mode,
+            label = { it.label },
+            onSelect = {
+                if (running) { running = false; endSession() }
+                mode = it
+                lockedBpm = BiofeedbackPrefs.lockedPace(context)
+            },
+            modifier = Modifier.spanAllColumns(),
+        )
+
+        // L3 passive stress check-in card (surfaces when StressOnsetDetector fires).
+        StressCheckInCard(
+            onBreatheNow = {
+                // Switch to Breathe and start a one-minute session. Coherence (5.5 br/min) is the
+                // resonance fallback pace; the felt cue is identical (one buzz in, two out).
+                mode = BreatheMode.Breathe
+                pace = Pace.Coherence
+                sessionSeconds = 0; breathCount = 0; endedOutcome = null
+                baselineRmssd = rmssd
+                sessionRmssdSum = 0.0; sessionRmssdCount = 0; sessionRmssdPeak = 0.0
+                running = true
+            },
+        )
+
+        when (mode) {
+            BreatheMode.Resonance -> {
+                ResonanceMode(viewModel = viewModel, live = live, lockedBpm = lockedBpm,
+                    onLocked = { lockedBpm = BiofeedbackPrefs.lockedPace(context) })
+                return@ScreenScaffold
+            }
+            BreatheMode.Calm -> {
+                CalmMode(viewModel = viewModel, live = live, bpm = bpm)
+                return@ScreenScaffold
+            }
+            BreatheMode.Breathe -> Unit // fall through to the shipped trainer below
+        }
+
+        // Status row.
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            StatePill(
+                if (running) "Session live" else "Ready",
+                tone = if (running) StrandTone.Accent else StrandTone.Neutral,
+                pulsing = running,
+            )
+            Spacer(Modifier.width(8.dp))
+            if (live.bonded) {
+                StatePill("Haptics on", tone = StrandTone.Positive)
+            } else {
+                StatePill("Visual only", tone = StrandTone.Warning)
+            }
+            Spacer(Modifier.weight(1f))
+            Text(timeString(sessionSeconds), style = NoopType.number(15f), color = Palette.textPrimary)
+            Spacer(Modifier.width(6.dp))
+            Text("$breathCount breaths", style = NoopType.captionNumber, color = Palette.textSecondary)
+        }
+
+        // The liquid hero CARD: a translucent near-black frosted panel (mock rgba(13,14,20,.80), radius 26,
+        // white@0.11 hairline) that floats over the day-of-sky so the breathe vessel + white count-up stay
+        // crisp — the card does the contrast work, not a muted sky. Mirrors the iOS liquid heroCard.
+        // The pacer hero (vessel + pace + audio cue). In tabletop posture it stands on the upper half above the
+        // fold instead (TabletopAware around this scaffold), so it is not repeated here.
+        if (!pacerOnTop) breathePacer()
 
         // Controls.
         Row(horizontalArrangement = Arrangement.spacedBy(Metrics.gap), modifier = Modifier.fillMaxWidth()) {
@@ -571,6 +582,7 @@ fun BreatheScreen(viewModel: AppViewModel, onOpenWimHof: () -> Unit = {}) {
         WimHofLink(onOpen = onOpenWimHof)
 
         if (!live.bonded) HapticHint()
+    }
     }
 }
 

@@ -222,6 +222,12 @@ internal object AdaptiveLayout {
     /** True when a window (or the space left beside a rail) is wide enough to keep a list pane on screen. */
     fun usesListDetail(widthDp: Int): Boolean = widthDp >= LIST_DETAIL_MIN_WIDTH_DP
 
+    /** The list pane's width: [LIST_PANE_WIDTH_DP], or — standing half-open like a book — up to the fold
+     *  ([foldOffsetDp], measured from the pane's left edge) so the list sits on one half and the screen on the
+     *  other. Clamped so neither side gets unusably narrow. */
+    fun listPaneWidthDp(foldOffsetDp: Int?): Int =
+        foldOffsetDp?.coerceIn(280, 480) ?: LIST_PANE_WIDTH_DP
+
     /** True when a screen this wide could show two columns at all — where a per-screen layout choice matters. */
     fun canSplit(widthDp: Int): Boolean = columnsFor(WideLayoutMode.TWO, widthDp) >= 2
 

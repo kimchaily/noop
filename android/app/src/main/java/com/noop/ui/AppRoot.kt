@@ -326,6 +326,12 @@ fun AppRoot(
     val listDetail = AdaptiveLayout.usesListDetail(windowWidthDp)
     val inMoreGroup = drawerGroups.any { current in it.items }
     val showMorePane = listDetail && (current == Destination.More || inMoreGroup)
+    // Standing half-open like a book (FoldPosture.kt), the list fills the left half up to the fold.
+    val fold = LocalFoldState.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val paneWidthDp = AdaptiveLayout.listPaneWidthDp(
+        if (fold.posture == FoldPosture.BOOK) with(density) { fold.hingeLeftPx.toDp().value.toInt() } else null,
+    )
     var settingsFocus by rememberSaveable { mutableStateOf(settingsGroups.first().key) }
     // Remember the last screen opened through More, so tapping More on a wide screen reopens it beside the
     // list instead of showing the list twice (once in the pane, once as the page).
@@ -376,7 +382,7 @@ fun AppRoot(
                         if (current != Destination.Settings) nav.navigateTopLevel(Destination.Settings.route)
                     },
                     modifier = Modifier
-                        .width(AdaptiveLayout.LIST_PANE_WIDTH_DP.dp)
+                        .width(paneWidthDp.dp)
                         .fillMaxHeight(),
                 )
                 Box(
@@ -391,7 +397,7 @@ fun AppRoot(
             // the NavHost keeps its place in the composition when the pane comes and goes.
             CompositionLocalProvider(
                 LocalAvailableWidthDp provides
-                    if (showMorePane) windowWidthDp - AdaptiveLayout.LIST_PANE_WIDTH_DP - 1 else null,
+                    if (showMorePane) windowWidthDp - paneWidthDp - 1 else null,
                 LocalSettingsFocus provides if (showMorePane) settingsFocus else null,
             ) {
             NavHost(
