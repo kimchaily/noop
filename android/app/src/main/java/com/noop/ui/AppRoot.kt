@@ -323,14 +323,23 @@ fun AppRoot(
     // and every screen reached through it; Today / Trends / Sleep keep the whole width. When Settings is open
     // beside it, the list also shows Settings' groups and the screen shows just the picked one.
     val windowWidthDp = LocalConfiguration.current.screenWidthDp
-    val listDetail = AdaptiveLayout.usesListDetail(windowWidthDp)
+    // SIDE RAIL (Material's navigation rail): on a wide window the four tabs move from the floating bottom bar
+    // to a glass rail on the leading edge, unless Settings → Appearance asks to keep the bar. Its width comes
+    // off everything beside it, so the list pane and the screens count their space from what is left.
+    val useRail = AdaptiveLayout.usesNavRail(windowWidthDp, WideLayoutPrefs.navRail)
+    val railWidthDp = if (useRail) AdaptiveLayout.RAIL_WIDTH_DP else 0
+    val listDetail = AdaptiveLayout.usesListDetail(windowWidthDp - railWidthDp)
     val inMoreGroup = drawerGroups.any { current in it.items }
     val showMorePane = listDetail && (current == Destination.More || inMoreGroup)
     // Standing half-open like a book (FoldPosture.kt), the list fills the left half up to the fold.
     val fold = LocalFoldState.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     val paneWidthDp = AdaptiveLayout.listPaneWidthDp(
-        if (fold.posture == FoldPosture.BOOK) with(density) { fold.hingeLeftPx.toDp().value.toInt() } else null,
+        if (fold.posture == FoldPosture.BOOK) {
+            with(density) { fold.hingeLeftPx.toDp().value.toInt() } - railWidthDp
+        } else {
+            null
+        },
     )
     var settingsFocus by rememberSaveable { mutableStateOf(settingsGroups.first().key) }
     // Remember the last screen opened through More, so tapping More on a wide screen reopens it beside the
@@ -350,13 +359,16 @@ fun AppRoot(
                 // (matches the iOS FloatingTabBar). The quick-action "+" lives in the Today header's
                 // top-right (balancing the avatar), so the bar is clean tabs only. "More" navigates to
                 // its own page (mirroring the iOS More tab) that reaches every grouped destination, so no
-                // destination is lost without the drawer.
-                GlassBottomBar(
-                    current = current,
-                    onTabSelected = { dest ->
-                        if (dest.route != currentRoute) nav.navigateTopLevel(dest.route)
-                    },
-                )
+                // destination is lost without the drawer. On a wide window the same tabs live in the side
+                // rail instead (below), so the bar steps aside.
+                if (!useRail) {
+                    GlassBottomBar(
+                        current = current,
+                        onTabSelected = { dest ->
+                            if (dest.route != currentRoute) nav.navigateTopLevel(dest.route)
+                        },
+                    )
+                }
             },
         ) { inner ->
             // Shell body. On the PREVIEW channel a fixed build band ([PreviewChannelBand]) is pinned to
@@ -372,6 +384,17 @@ fun AppRoot(
                     .padding(inner)
                     .then(if (isPreviewChannel) Modifier.padding(top = PreviewBandContentHeight) else Modifier),
             ) {
+            if (useRail) {
+                GlassSideRail(
+                    current = current,
+                    onTabSelected = { dest ->
+                        if (dest.route != currentRoute) nav.navigateTopLevel(dest.route)
+                    },
+                    modifier = Modifier
+                        .width(AdaptiveLayout.RAIL_WIDTH_DP.dp)
+                        .fillMaxHeight(),
+                )
+            }
             if (showMorePane) {
                 MorePane(
                     current = current,
@@ -397,7 +420,11 @@ fun AppRoot(
             // the NavHost keeps its place in the composition when the pane comes and goes.
             CompositionLocalProvider(
                 LocalAvailableWidthDp provides
-                    if (showMorePane) windowWidthDp - paneWidthDp - 1 else null,
+                    if (useRail || showMorePane) {
+                        windowWidthDp - railWidthDp - (if (showMorePane) paneWidthDp + 1 else 0)
+                    } else {
+                        null
+                    },
                 LocalSettingsFocus provides if (showMorePane) settingsFocus else null,
             ) {
             NavHost(
@@ -1179,6 +1206,59 @@ private fun GlassBottomBar(
                     active = current != Destination.Today && current != Destination.Trends &&
                         current != Destination.Sleep,
                     modifier = Modifier.weight(1f),
+                    onClick = { onTabSelected(Destination.More) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The side navigation rail for wide windows: the same four tabs as [GlassBottomBar] — Today · Trends · Sleep ·
+ * More — stacked in one vertical glass island on the leading edge, vertically centred. Same translucent raised
+ * surface, hairline rim and soft shadow as the bar, the same [BarSlot]s and the same "More stays lit for
+ * anything reached through More" rule, so switching between the two reads as the bar turning on its side.
+ */
+@Composable
+private fun GlassSideRail(
+    current: Destination,
+    onTabSelected: (Destination) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val railShape = RoundedCornerShape(32.dp)
+    Box(
+        modifier = modifier.padding(start = 12.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            shape = railShape,
+            color = Palette.surfaceRaised.copy(alpha = 0.80f),
+            tonalElevation = 2.dp,
+            shadowElevation = 4.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(0.5.dp, Palette.hairline.copy(alpha = 0.6f), railShape),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                (barLeadingTabs + barTrailingTabs).forEach { tab ->
+                    BarSlot(
+                        icon = tab.icon,
+                        label = stringResource(tab.labelRes),
+                        active = current == tab.dest,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        onClick = { onTabSelected(tab.dest) },
+                    )
+                }
+                BarSlot(
+                    icon = Icons.Filled.MoreHoriz,
+                    label = stringResource(R.string.nav_more),
+                    active = current != Destination.Today && current != Destination.Trends &&
+                        current != Destination.Sleep,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                     onClick = { onTabSelected(Destination.More) },
                 )
             }

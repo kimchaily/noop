@@ -109,9 +109,21 @@ object WideLayoutPrefs {
     /** How many screens currently carry their own layout (shown beside "Reset" in Settings). */
     val overrideCount: Int get() = screenModes.size
 
+    private const val NAV_RAIL_KEY = "theme.wideNavRail"
+
+    /** Wide screens: navigate with the side rail (true, the default) or keep the floating bottom bar. */
+    var navRail by mutableStateOf(true)
+        private set
+
+    fun setNavRail(ctx: Context, value: Boolean) {
+        navRail = value
+        prefs(ctx).edit().putBoolean(NAV_RAIL_KEY, value).apply()
+    }
+
     fun load(ctx: Context) {
         val p = prefs(ctx)
         mode = WideLayoutMode.fromStorage(p.getString(KEY, WideLayoutMode.AUTO.storageValue))
+        navRail = p.getBoolean(NAV_RAIL_KEY, true)
         screenModes.clear()
         p.all.forEach { (k, v) ->
             if (k.startsWith(SCREEN_PREFIX) && v is String) {
@@ -190,6 +202,14 @@ internal object AdaptiveLayout {
 
     /** Width of the list pane in list-detail mode. */
     const val LIST_PANE_WIDTH_DP = 320
+
+    /** Width the side navigation rail takes on a wide window (the glass island plus its margins). */
+    const val RAIL_WIDTH_DP = 84
+
+    /** True when a window this wide navigates with the side rail (when the user hasn't chosen the bottom bar):
+     *  every non-compact window, as Material recommends — a phone and a folded cover screen keep the bar. */
+    fun usesNavRail(windowWidthDp: Int, railPreferred: Boolean): Boolean =
+        railPreferred && widthClass(windowWidthDp) != WindowWidthClass.COMPACT
 
     fun widthClass(widthDp: Int): WindowWidthClass = when {
         widthDp < MEDIUM_MIN_WIDTH_DP -> WindowWidthClass.COMPACT

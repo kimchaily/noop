@@ -670,6 +670,27 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 }
             }
 
+            // Wide-screen navigation: Material's side rail (default) or the floating bottom bar everywhere.
+            // A phone and a folded cover screen always keep the bar. Live, like the column choice above.
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Wide-screen navigation", style = NoopType.body, color = Palette.textPrimary)
+                    Text(
+                        "Where Today, Trends, Sleep and More sit when a foldable is open or on a tablet. The side " +
+                            "rail frees the bottom of the screen; the bottom bar matches the phone. A folded phone " +
+                            "always uses the bottom bar.",
+                        style = NoopType.footnote,
+                        color = Palette.textTertiary,
+                    )
+                }
+                SegmentedPillControl(
+                    items = listOf(true, false),
+                    selection = WideLayoutPrefs.navRail,
+                    label = { if (it) "Side rail" else "Bottom bar" },
+                    onSelect = { WideLayoutPrefs.setNavRail(context, it) },
+                )
+            }
+
             // Day-cycle background (#698): the time-of-day scene behind Today. On by default. Off swaps it
             // for a plain dark canvas for people who find the moving scene distracting. Takes effect next
             // time Today is opened (the pref is read once on entry, like the other Today-screen toggles).

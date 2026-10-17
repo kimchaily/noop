@@ -66,6 +66,18 @@ class AdaptiveLayoutTest {
     }
 
     @Test
+    fun sideRailOnWideWindowsUnlessTheBarIsChosen() {
+        assertFalse(AdaptiveLayout.usesNavRail(411, railPreferred = true))  // phone / cover screen
+        assertTrue(AdaptiveLayout.usesNavRail(600, railPreferred = true))
+        assertTrue(AdaptiveLayout.usesNavRail(852, railPreferred = true))   // unfolded V5
+        assertFalse(AdaptiveLayout.usesNavRail(852, railPreferred = false)) // "Bottom bar" in Settings
+        // With the rail the More list still fits beside a screen on an unfolded V5.
+        assertTrue(AdaptiveLayout.usesListDetail(852 - AdaptiveLayout.RAIL_WIDTH_DP))
+        // And Today still gets two columns beside the rail.
+        assertEquals(2, AdaptiveLayout.columnsFor(WideLayoutMode.AUTO, 852 - AdaptiveLayout.RAIL_WIDTH_DP))
+    }
+
+    @Test
     fun listDetailFromUnfoldedFoldablesUp() {
         assertFalse(AdaptiveLayout.usesListDetail(411))  // phone / cover screen
         assertFalse(AdaptiveLayout.usesListDetail(700))  // Pixel Fold held upright
