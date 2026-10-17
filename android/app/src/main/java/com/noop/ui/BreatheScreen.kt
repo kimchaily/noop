@@ -301,7 +301,8 @@ fun BreatheScreen(viewModel: AppViewModel, onOpenWimHof: () -> Unit = {}) {
         // `ScreenScaffold(topBackground: liquidScaffoldSky())`; the cards float OVER it on the flat canvas.
         topBackground = { LiquidScreenSky() },
     ) {
-        // Mode switch — Breathe / Resonance / Calm me.
+        // Mode switch — Breathe / Resonance / Calm me. Spans every column on a wide window (it switches
+        // the whole screen).
         SegmentedPillControl(
             items = BreatheMode.entries.toList(),
             selection = mode,
@@ -311,6 +312,7 @@ fun BreatheScreen(viewModel: AppViewModel, onOpenWimHof: () -> Unit = {}) {
                 mode = it
                 lockedBpm = BiofeedbackPrefs.lockedPace(context)
             },
+            modifier = Modifier.spanAllColumns(),
         )
 
         // L3 passive stress check-in card (surfaces when StressOnsetDetector fires).

@@ -177,7 +177,7 @@ fun DevicesScreen(
         item { AddDeviceButton(onClick = { showAddWizard = true }) }
 
         if (removedDevices.isNotEmpty()) {
-            item { Overline("Removed", modifier = Modifier.padding(top = 4.dp)) }
+            fullWidthItem { Overline("Removed", modifier = Modifier.padding(top = 4.dp)) }
             items(removedDevices) { device ->
                 DeviceCard(
                     device = device,

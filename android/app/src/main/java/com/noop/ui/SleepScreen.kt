@@ -379,7 +379,7 @@ fun SleepScreen(
         // #65: the transient UNDO banner after a suppressing delete. Restores the deleted row into its
         // ORIGINAL namespace + lifts the tombstone. Mirrors the macOS SleepView sleepUndoBanner.
         sleepUndo?.let { deleted ->
-            item {
+            fullWidthItem {
                 SleepUndoBanner(
                     session = deleted,
                     onUndo = {
@@ -421,7 +421,7 @@ fun SleepScreen(
                     source = restHeroSource(imported, days),
                 )
             }
-            item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+            spacer(Metrics.selectorTopUp)
             // SLEEP MARKS — tap to log "going to sleep" / "I'm awake" (#461, Phase 1). LOGGING ONLY:
             // a mark is persisted to the `sleep_mark` series + the shareable strap log; it never
             // changes the detected sleep. Mirrors macOS SleepView.sleepMarkCard.
@@ -440,7 +440,7 @@ fun SleepScreen(
                 },
             )
             }
-            item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+            spacer(Metrics.selectorTopUp)
             item {
             Hero(
                 display = display,
@@ -530,9 +530,9 @@ fun SleepScreen(
                 // Bind a non-null local so the smart-cast carries cleanly into each item {} lambda
                 // (a nullable val doesn't smart-cast across a lambda boundary). Same model, same order.
                 val m = tilesModel
-                item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+                spacer(Metrics.selectorTopUp)
                 item { MetricGrid(m, onMetricClick = { detailMetricKey = it }) }
-                item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+                spacer(Metrics.selectorTopUp)
                 item { SleepDebtLedgerCard(m.sleepDebtLedger) }
                 // StagesVsTypical describes ONE specific night's deep/REM/light minutes under the
                 // "Selected night" header, so it must read the SELECTED day's model, never the
@@ -543,14 +543,14 @@ fun SleepScreen(
                 if (model != null) {
                     // Bind a non-null local so the smart-cast carries into the item {} lambda.
                     val selectedModel = model
-                    item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+                    spacer(Metrics.selectorTopUp)
                     item { StagesVsTypical(selectedModel) }
                 }
-                item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+                spacer(Metrics.selectorTopUp)
                 item { DurationTrend(m) }
-                item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+                spacer(Metrics.selectorTopUp)
                 item { HoursVsNeededCard(m) }
-                item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+                spacer(Metrics.selectorTopUp)
                 item { SleepConsistencyCard(sleeps) }
             }
         }

@@ -341,8 +341,9 @@ fun LiveScreen(viewModel: AppViewModel, onManageDevices: () -> Unit = {}) {
         // that float regardless of list position, so this is appearance/behaviour-identical and keeps the
         // composable-only `remember`/Dialog out of the LazyListScope lambda.)
 
-        // Session console — record or inspect the current stream.
-        item {
+        // Session console — record or inspect the current stream. A full-width heading on a wide window, so the
+        // session controls below it read as its group whichever column they flow into.
+        fullWidthItem {
         SectionHeader(title = "Session", overline = "Record or inspect the current stream")
         }
 

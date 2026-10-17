@@ -193,7 +193,7 @@ private suspend fun loadDaytimeStress(vm: AppViewModel): DaytimeReadout {
 // [LazyScreenScaffold] (only the rows on screen are composed). Same order, the SAME
 // `staggeredAppear(0..4)` indices, and the inter-section spacing is the scaffold's 20dp
 // `Arrangement.spacedBy` — identical to the eager ColumnScope it replaced.
-private fun androidx.compose.foundation.lazy.LazyListScope.StressContent(
+private fun AdaptiveListScope.StressContent(
     model: StressModel,
     daytime: DaytimeStress.Result?,
     stressIndex: StressIndex.Components?,

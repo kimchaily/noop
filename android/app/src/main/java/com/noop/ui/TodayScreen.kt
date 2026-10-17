@@ -1063,7 +1063,9 @@ fun TodayScreen(
         // paints the plain dark surface canvas instead, mirroring iOS's `showDayCycleBackground ? ... : nil`.
         topBackground = if (showDayCycleBackground) { { LiquidScreenSky() } } else null,
     ) {
-        item {
+        // On a wide window (AdaptiveLayout.kt) the header, the in-progress workout, the score-state notes and
+        // the illness banner span every column; the Today sections and the footer cards flow into columns.
+        fullWidthItem {
         // LIQUID Today header (iOS LiquidTodayView.scene parity), a full structural rebuild to mirror the
         // iOS liquid Today element-for-element (NOT the old numeric-date + recording-light + bell header):
         //   LEFT  — a tappable title block: the big rounded-bold day title ("Today" / "Yesterday" / the
@@ -1145,7 +1147,7 @@ fun TodayScreen(
         // `activeWorkout`, so it auto-appears/clears with no extra lifecycle wiring. Its per-second clock
         // ticks inside the card's own LaunchedEffect, never recomposing the Today body.
         activeWorkout?.let { w ->
-            item {
+            fullWidthItem {
                 WorkoutInProgressCard(workout = w, onReturn = onOpenActiveWorkout)
             }
         }
@@ -1158,7 +1160,7 @@ fun TodayScreen(
         // below are explained rather than just dashed out. A small × dismisses it INTO
         // the Updates inbox (restorable from there). Only anchored to today (offset 0).
         if (displayMetric?.recovery == null) {
-            item {
+            fullWidthItem {
             // While the strap is mid-offload, say so, empty tiles read as final otherwise (#77).
             if (liveSnap.backfilling) SyncingHistoryNote(chunks = liveSnap.syncChunksThisSession)
             // Explained score state (COMPONENT 2): when there's no own number to show, say WHY and WHAT to
@@ -1246,20 +1248,28 @@ fun TodayScreen(
             }
         }
 
-        if (alert != null) item { IllnessBanner(alert!!) }
+        if (alert != null) fullWidthItem { IllnessBanner(alert!!) }
 
         // TODAY SECTIONS — customisable order + visibility (see TodaySections.kt / TodaySectionPrefs).
         // The seven top-level sections render in the user's saved order; a hidden section is simply not
         // emitted. The Hero carries its adjacent context cards (Live-session entry + effort-zero note),
         // so they travel and hide with it. Each section keeps its OWN gates (day 0, data presence) ANDed
         // with the enabled flag. Edited from Settings → Appearance → Today layout.
+        //
+        // Each section emits its rows through `block { }`. On a phone a block is its own lazy row, exactly as
+        // before; on a multi-column window the section's blocks are gathered into ONE card that flows into the
+        // shortest column, so a section's header never lands in a different column from its card.
         enabledTodaySections.forEachIndexed { sectionPos, todaySection ->
             // Stagger the entrance by RENDER position (the header is index 0), so a reordered or
             // hidden section animates in at its NEW place instead of its old fixed index.
             val stagger = sectionPos + 1
+            val sectionBlocks = mutableListOf<@Composable () -> Unit>()
+            fun block(content: @Composable () -> Unit) {
+                if (isMultiColumn) sectionBlocks += content else item { content() }
+            }
             when (todaySection) {
                 TodaySection.HERO -> {
-                    item {
+                    block {
                     // The liquid hero CARD: a translucent near-black that floats over the day-of-sky so the vessels +
                     // white count-up numbers stay crisp — the card does the contrast work, not a muted sky. A rounded
                     // 26 corner + a faint white hairline give it the frosted-glass edge of the iOS liquid heroCard
@@ -1292,7 +1302,7 @@ fun TodayScreen(
                     // Effort accrues over a day and must never visibly drop: floor the in-progress value at the day's
                     // already-earned strain (#489/#506). displayMetric for today is today's row or null, never a prior
                     // day, so this can't resurrect a stale day, it only stops the gauge dropping below what's earned.
-                    item {
+                    block {
                     val todayEffort = if (selectedDayOffset == 0) {
                         val live = liveTodayStrain; val stored = displayMetric?.strain
                         if (live != null && stored != null) maxOf(live, stored) else (live ?: stored)
@@ -1320,7 +1330,7 @@ fun TodayScreen(
                     }
                 }
                 TodaySection.HEART_RATE -> {
-                    item {
+                    block {
                     // #991: HeartRateTrendCard emits its SectionHeader + card as two siblings; a Box overlaid them
                     // (the header showed THROUGH the card in the v8 layout). A spaced Column stacks them instead.
                     Column(
@@ -1332,7 +1342,7 @@ fun TodayScreen(
                     }
                 }
                 TodaySection.YOUR_CARDS -> {
-                    item {
+                    block {
                     val visibleDashboardCards = enabledDashboardCards.filter {
                         // Hydration is opt-in; the Coupled row is a navigation row into a TODAY-only screen
                         // (CoupledScreen reads the live day), so it drops off a scrolled-back day rather than
@@ -1382,7 +1392,7 @@ fun TodayScreen(
                     }
                 }
                 TodaySection.SYNTHESIS -> {
-                    item {
+                    block {
                     Box(modifier = Modifier.fillMaxWidth().staggeredAppear(stagger)) {
                         SynthesisHeroCard(
                             day = displayMetric,
@@ -1397,7 +1407,7 @@ fun TodayScreen(
                     }
                 }
                 TodaySection.RECOVERY_VITALS -> {
-                    item {
+                    block {
                     Box(modifier = Modifier.fillMaxWidth().staggeredAppear(stagger)) {
                         HeroMetricRows(
                             day = displayMetric,
@@ -1411,7 +1421,7 @@ fun TodayScreen(
                     }
                 }
                 TodaySection.KEY_METRICS -> {
-                    item {
+                    block {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.weight(1f)) {
                             SectionHeader("Key Metrics", overline = dayLabel, trailing = "14-day trend")
@@ -1430,7 +1440,7 @@ fun TodayScreen(
                         }
                     }
                     }
-                    item {
+                    block {
                     Box(modifier = Modifier.fillMaxWidth().staggeredAppear(stagger)) {
                         MetricGrid(
                             d = displayMetric,
@@ -1479,7 +1489,7 @@ fun TodayScreen(
                     // see LiveSessionRunner's lifetime note). The card swaps itself to "Session running" / "Session
                     // ended" (it scopes the runner's per-second snapshot internally, like WorkoutInProgressCard's clock).
                     if (selectedDayOffset == 0 && (liveSessionsEnabled || activeLiveSession != null)) {
-                        item {
+                        block {
                             LiveSessionEntryCard(
                                 onOpen = {
                                     // Only BEGIN when nothing is in flight: an active runner (running, or ended and
@@ -1493,7 +1503,7 @@ fun TodayScreen(
                             )
                         }
                     }
-                    item {
+                    block {
                     // #991: same fix as the HR card — TodayWorkoutsSection emits header + card as two siblings, so a
                     // Box overlaid them. Stack them in a spaced Column.
                     Column(
@@ -1502,6 +1512,14 @@ fun TodayScreen(
                     ) {
                         TodayWorkoutsSection(footer.recentWorkouts)
                     }
+                    }
+                }
+            }
+            if (sectionBlocks.isNotEmpty()) {
+                item(key = "today-section-" + todaySection.raw) {
+                    // Same 12dp rhythm the blocks had as separate rows (Today's rowSpacing).
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        sectionBlocks.forEach { it() }
                     }
                 }
             }

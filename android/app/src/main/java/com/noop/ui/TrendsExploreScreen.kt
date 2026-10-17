@@ -380,16 +380,18 @@ fun TrendsExploreScreen(vm: AppViewModel) {
     // conditional empty-state note uses `if (cond) { item {} }` so it adds no row when hidden. No standalone
     // Spacers here , the LazyColumn's `spacedBy(20.dp)` reproduces the eager column's row spacing exactly.
     LazyScreenScaffold(title = "Explore", subtitle = "Every signal, one tap deep.") {
+        // A sequential explorer (pick a metric → a window → read the chart), so on a wide window every row spans
+        // the full width instead of flowing into columns: the hero chart gets the whole screen to draw on.
 
         // The headline tap-through (#575): a full-day, full-resolution, zoomable timeline. Sits above the
         // per-metric catalog because it's a different kind of view , every second of one day, not one
         // number per day. Mirrors the macOS MetricExplorerView "Deep Timeline" hero row.
-        item { DeepTimelineEntry(onClick = { showDeepTimeline = true }) }
+        fullWidthItem { DeepTimelineEntry(onClick = { showDeepTimeline = true }) }
 
         // Nothing to explore until history is imported , lead with the verbatim note so
         // the empty picker/chart below is explained.
         if (series.isEmpty()) {
-            item {
+            fullWidthItem {
             DataPendingNote(
                 title = "Import your history first",
                 body = "Import your history first. A WHOOP export in Data Sources fills " +
@@ -399,7 +401,7 @@ fun TrendsExploreScreen(vm: AppViewModel) {
         }
 
         // METRIC PICKER , a dropdown replacing the old horizontal chip row.
-        item {
+        fullWidthItem {
         MetricDropdown(
             metrics = metrics,
             selected = selected,
@@ -409,7 +411,7 @@ fun TrendsExploreScreen(vm: AppViewModel) {
 
         // RANGE BAR , overline + title + the one segmented window control, with a caption
         // that flags a sparse auto-widen.
-        item {
+        fullWidthItem {
         Row(verticalAlignment = Alignment.Top) {
             Column(modifier = Modifier.weight(1f)) {
                 Overline(selected.category)
@@ -433,7 +435,7 @@ fun TrendsExploreScreen(vm: AppViewModel) {
             )
         }
         }
-        item {
+        fullWidthItem {
         Text(
             text = rangeCaption(series, windowed, range, effectiveRange, fellBack),
             style = NoopType.footnote,
@@ -442,7 +444,7 @@ fun TrendsExploreScreen(vm: AppViewModel) {
         }
 
         // HERO CHART , line over the window + latest "as of" read-out in the card.
-        item {
+        fullWidthItem {
         HeroChartCard(
             metric = selected,
             windowed = windowed,
@@ -454,7 +456,7 @@ fun TrendsExploreScreen(vm: AppViewModel) {
         }
 
         // STAT ROW , Average / Min / Max / Latest / Δ vs previous window.
-        item {
+        fullWidthItem {
         StatRow(
             metric = selected,
             series = series,

@@ -149,17 +149,17 @@ fun HealthScreen(
             // Even with no history yet, a freshly-connected strap can be told to sync now (#364) — the
             // manual "Sync now" + honest status sits above the empty state so it's always reachable.
             item { SyncStatusSection(vm = vm, onSyncNow = { vm.syncNow() }) }
-            item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+            spacer(Metrics.selectorTopUp)
             item { HealthEmptyState() }
         } else {
             // Manual "Sync now" + honest sync status (#364) — the first section so the strap-history
             // control is reachable above the live hero. Mirrors HealthView.swift's top Sync section.
             item { SyncStatusSection(vm = vm, onSyncNow = { vm.syncNow() }) }
-            item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+            spacer(Metrics.selectorTopUp)
             // ScreenScaffold applies a 20dp arrangement gap between its direct children;
             // a small top-up reaches the section gap (28dp) used between macOS sections.
             item { HeartRateSection(vm = vm, hrMax = hrMax) }
-            item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+            spacer(Metrics.selectorTopUp)
             item {
                 VitalsSection(
                     title = "Vital Signs",
@@ -173,13 +173,13 @@ fun HealthScreen(
             // FITNESS AGE — the weekly Saturday number from the engine (resting HR + activity vs your
             // age), with an honest readiness checklist behind a tap. Authoritative value comes from the
             // metricSeries the IntelligenceEngine writes; readiness is derived from what this screen sees.
-            item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+            spacer(Metrics.selectorTopUp)
             item { FitnessAgeSection(vm = vm, days = days, profile = profile) }
             item { VitalitySection(vm = vm, days = days, profile = profile) }
             // SKIN TEMPERATURE (v5 pillar) — Cycle awareness (opt-in), Body clock + an illness heads-up,
             // each from a pure engine RESULT the ViewModel publishes. A section of Health, never its own
             // destination (umbrella §2.4). Non-clinical observations about your own numbers.
-            item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+            spacer(Metrics.selectorTopUp)
             item {
                 SkinTempSuiteSection(
                     signals = v5Signals,
@@ -196,11 +196,11 @@ fun HealthScreen(
             }
             // CONTRIBUTORS (README screen #5, recovery detail) — the signals behind recovery as
             // labelled progress bars in the shared stage/zone bar style, mirroring Today's section.
-            item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+            spacer(Metrics.selectorTopUp)
             item { HealthContributorsSection(today) }
             // RECORDS & SOURCES (Swift parity) — deep-link rows into the local Lab Book and the
             // "Your Data, Fused" record, so both are discoverable from Health, not just the drawer.
-            item { Spacer(Modifier.height(Metrics.selectorTopUp)) }
+            spacer(Metrics.selectorTopUp)
             item {
                 RecordsAndSourcesSection(
                     onOpenLabBook = onOpenLabBook,
@@ -1014,7 +1014,10 @@ fun VitalSignsScreen(vm: AppViewModel, onVitalClick: (String) -> Unit = {}) {
         title = "Vital Signs",
         subtitle = "Historical vitals from your cached daily metrics.",
     ) {
-        RecentDaySelectorBar(selectedOffset = selectedDayOffset, onSelect = { selectedDayOffset = it })
+        // The day bar picks the day for everything below, so it spans every column on a wide window.
+        Box(Modifier.spanAllColumns()) {
+            RecentDaySelectorBar(selectedOffset = selectedDayOffset, onSelect = { selectedDayOffset = it })
+        }
         if (selectedMetric == null || vitals.all { it.value == null }) {
             DataPendingNote(
                 title = missingVitalsTitle(selectedDayOffset),

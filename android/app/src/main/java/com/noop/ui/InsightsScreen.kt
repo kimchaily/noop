@@ -335,7 +335,7 @@ fun InsightsScreen(vm: AppViewModel, onOpenInsightsHub: () -> Unit = {}) {
         //     own destination too. Mirrors the Swift InsightsView.whatMovesYouLink. ---
         item { WhatMovesYouLink(onOpen = onOpenInsightsHub) }
 
-        item { Spacer(Modifier.height(Metrics.sectionGap - 20.dp)) }
+        spacer(Metrics.sectionGap - 20.dp)
 
         // --- Native journal logging (always reachable, the account-free way in) ---
         if (preFilledFromYesterday) {
@@ -399,20 +399,20 @@ fun InsightsScreen(vm: AppViewModel, onOpenInsightsHub: () -> Unit = {}) {
         )
         }
 
-        item { Spacer(Modifier.height(Metrics.sectionGap - 20.dp)) }
+        spacer(Metrics.sectionGap - 20.dp)
 
         // --- Mind: daily mood check-in + mood ↔ body correlations (Swift Mind-lane
         //     mirror; storage contract + footnote shared verbatim across platforms) ---
         item { MindSection(vm) }
 
-        item { Spacer(Modifier.height(Metrics.sectionGap - 20.dp)) }
+        spacer(Metrics.sectionGap - 20.dp)
 
         // --- Caffeine window (#526), log an intake + a rough on-device "still active"
         //     hint. Self-contained (owns its own SharedPreferences state). Opt-in: shows
         //     nothing until the user logs one. Twin of macOS CaffeineLogCard. ---
         item { CaffeineLogCard() }
 
-        item { Spacer(Modifier.height(Metrics.sectionGap - 20.dp)) }
+        spacer(Metrics.sectionGap - 20.dp)
 
         // --- Personal experiment (LOCAL ONLY n-of-1 protocol) ------------------
         item {
@@ -487,7 +487,7 @@ fun InsightsScreen(vm: AppViewModel, onOpenInsightsHub: () -> Unit = {}) {
         }
         }
 
-        item { Spacer(Modifier.height(Metrics.sectionGap - 20.dp)) }
+        spacer(Metrics.sectionGap - 20.dp)
 
         // --- Behaviour effects -------------------------------------------------
         // (Always emits one of three branches → one unconditional item, never empty.)
@@ -517,12 +517,12 @@ fun InsightsScreen(vm: AppViewModel, onOpenInsightsHub: () -> Unit = {}) {
         }
         }
 
-        item { Spacer(Modifier.height(Metrics.sectionGap - 20.dp)) }
+        spacer(Metrics.sectionGap - 20.dp)
 
         // --- Activity Cost (what each activity costs your recovery) ------------
         item { ActivityCostSection(activityCosts) }
 
-        item { Spacer(Modifier.height(Metrics.sectionGap - 20.dp)) }
+        spacer(Metrics.sectionGap - 20.dp)
 
         // --- Metric relationships ---------------------------------------------
         item { RelationshipsSection(relationships) }

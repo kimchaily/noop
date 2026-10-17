@@ -211,7 +211,9 @@ fun OnboardingScreen(viewModel: AppViewModel, onFinished: () -> Unit) {
                 // so inset for them here — the onboarding has no Scaffold to do it for us.
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = Metrics.screenPadding)
+                // The usual screen gutter on a phone; on an unfolded foldable or tablet the steps stay a
+                // centred phone-width column instead of stretching their copy across the screen.
+                .padding(horizontal = adaptiveSideInset(maxContentWidth = 560.dp, minGutter = Metrics.screenPadding))
                 .padding(top = 16.dp, bottom = 16.dp),
         ) {
             OnboardingTopBar(
