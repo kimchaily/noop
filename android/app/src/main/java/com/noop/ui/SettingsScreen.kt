@@ -506,6 +506,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
     var themeFamily by remember { mutableStateOf(ThemePrefs.family) }
     // Theme (System / Light / Dark) — drives NoopTheme; AppearancePrefs mirrors it in snapshot state.
     var themeMode by remember { mutableStateOf(AppearancePrefs.mode) }
+    // The wide-screen navigation shortcut editor (Appearance → Wide-screen navigation).
+    var showNavShortcutsEditor by remember { mutableStateOf(false) }
     // Chart colours (Titanium / Classic) — re-colours gauges + charts; ChartStylePrefs mirrors it live.
     var chartStyle by remember { mutableStateOf(ChartStylePrefs.style) }
     // Day-cycle background (#698) — the time-of-day scene behind Today. Default ON. SharedPreferences
@@ -676,9 +678,10 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Wide-screen navigation", style = NoopType.body, color = Palette.textPrimary)
                     Text(
-                        "Where Today, Trends, Sleep and More sit when a foldable is open or on a tablet. The side " +
-                            "rail frees the bottom of the screen; the bottom bar matches the phone. A folded phone " +
-                            "always uses the bottom bar.",
+                        "Where the navigation sits when a foldable is open or on a tablet: a rail down the left " +
+                            "(it moves to the lower half when the phone stands half-open) or a bar along the bottom. " +
+                            "The options button on the navigation itself switches it too. A folded phone always " +
+                            "uses the bottom bar.",
                         style = NoopType.footnote,
                         color = Palette.textTertiary,
                     )
@@ -689,6 +692,16 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     label = { if (it) "Side rail" else "Bottom bar" },
                     onSelect = { WideLayoutPrefs.setNavRail(context, it) },
                 )
+                // More room means more than four tabs: pick the screens pinned between Today and More.
+                NoopButton(
+                    text = "Choose navigation shortcuts",
+                    kind = NoopButtonKind.Secondary,
+                    fullWidth = true,
+                    onClick = { showNavShortcutsEditor = true },
+                )
+                if (showNavShortcutsEditor) {
+                    NavShortcutsEditorDialog(onDismiss = { showNavShortcutsEditor = false })
+                }
             }
 
             // Day-cycle background (#698): the time-of-day scene behind Today. On by default. Off swaps it

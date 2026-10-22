@@ -120,10 +120,26 @@ object WideLayoutPrefs {
         prefs(ctx).edit().putBoolean(NAV_RAIL_KEY, value).apply()
     }
 
+    private const val NAV_SHORTCUTS_KEY = "theme.navShortcuts"
+
+    /** Wide screens: the screens pinned in the navigation between Today and More, in order (route ids). The
+     *  phone bar keeps its four tabs; a wide window has room for more ([AdaptiveLayout.DEFAULT_NAV_SHORTCUTS]
+     *  until the user picks their own in the shortcut editor). */
+    var navShortcuts by mutableStateOf(AdaptiveLayout.DEFAULT_NAV_SHORTCUTS)
+        private set
+
+    fun setNavShortcuts(ctx: Context, routes: List<String>) {
+        val clean = AdaptiveLayout.decodeNavShortcuts(AdaptiveLayout.encodeNavShortcuts(routes))
+        navShortcuts = clean
+        prefs(ctx).edit().putString(NAV_SHORTCUTS_KEY, AdaptiveLayout.encodeNavShortcuts(clean)).apply()
+    }
+
     fun load(ctx: Context) {
         val p = prefs(ctx)
         mode = WideLayoutMode.fromStorage(p.getString(KEY, WideLayoutMode.AUTO.storageValue))
         navRail = p.getBoolean(NAV_RAIL_KEY, true)
+        navShortcuts = p.getString(NAV_SHORTCUTS_KEY, null)?.let { AdaptiveLayout.decodeNavShortcuts(it) }
+            ?: AdaptiveLayout.DEFAULT_NAV_SHORTCUTS
         screenModes.clear()
         p.all.forEach { (k, v) ->
             if (k.startsWith(SCREEN_PREFIX) && v is String) {
@@ -210,6 +226,51 @@ internal object AdaptiveLayout {
      *  every non-compact window, as Material recommends — a phone and a folded cover screen keep the bar. */
     fun usesNavRail(windowWidthDp: Int, railPreferred: Boolean): Boolean =
         railPreferred && widthClass(windowWidthDp) != WindowWidthClass.COMPACT
+
+    /** True when the navigation has room for the user's shortcuts (rail or bar): every non-compact window. */
+    fun usesWideNav(windowWidthDp: Int): Boolean = widthClass(windowWidthDp) != WindowWidthClass.COMPACT
+
+    // --- Wide-screen navigation shortcuts ---
+
+    /** The screens pinned between Today and More on a wide window until the user chooses their own. */
+    val DEFAULT_NAV_SHORTCUTS: List<String> = listOf("trends", "sleep", "live", "workouts", "health")
+
+    /** At most this many shortcuts (Material's rail tops out around 7 destinations; 8 + Today + More fits a
+     *  tall unfolded screen and the bar of a landscape tablet). */
+    const val MAX_NAV_SHORTCUTS = 8
+
+    /** Stored as one comma-joined string of route ids (none contains a comma). */
+    fun encodeNavShortcuts(routes: List<String>): String = routes.joinToString(",")
+
+    /** Blank and repeated entries dropped, capped at [MAX_NAV_SHORTCUTS]; "" is a valid empty choice. */
+    fun decodeNavShortcuts(raw: String): List<String> =
+        raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(MAX_NAV_SHORTCUTS)
+
+    /** Height of one rail slot (icon over label) and the gap between slots. */
+    const val RAIL_SLOT_HEIGHT_DP = 52f
+    const val RAIL_SLOT_GAP_DP = 4f
+
+    /** The rail's fixed chrome: outer margins (24), the island's padding (20), the divider (9) and options button
+     *  (36) under the tabs, and the two gaps around them (8). With [RAIL_SLOT_GAP_DP] between slots, N slots need
+     *  56·N + 93dp. */
+    const val RAIL_CHROME_DP = 97f
+
+    /** How many slots (Today, shortcuts and More together) fit in a rail [heightDp] tall. */
+    fun railSlotCapacity(heightDp: Float): Int =
+        ((heightDp - RAIL_CHROME_DP + RAIL_SLOT_GAP_DP) / (RAIL_SLOT_HEIGHT_DP + RAIL_SLOT_GAP_DP)).toInt()
+            .coerceAtLeast(2)
+
+    /** Narrowest a bottom-bar slot gets on a wide window, and the room its margins + options button take. */
+    const val BAR_SLOT_MIN_WIDTH_DP = 64f
+    const val BAR_CHROME_DP = 112f
+
+    /** How many slots (Today, shortcuts and More together) fit in a bottom bar on a window [widthDp] wide. */
+    fun barSlotCapacity(widthDp: Float): Int =
+        ((widthDp - BAR_CHROME_DP) / BAR_SLOT_MIN_WIDTH_DP).toInt().coerceAtLeast(2)
+
+    /** The tabs that fit [capacity] slots: Today and the first shortcuts in the user's order, always leaving
+     *  the last slot for More (which reaches everything that didn't fit). [tabs] starts with Today. */
+    fun <T> fitNavTabs(tabs: List<T>, capacity: Int): List<T> = tabs.take((capacity - 1).coerceAtLeast(1))
 
     fun widthClass(widthDp: Int): WindowWidthClass = when {
         widthDp < MEDIUM_MIN_WIDTH_DP -> WindowWidthClass.COMPACT

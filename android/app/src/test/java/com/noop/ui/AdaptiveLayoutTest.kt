@@ -78,6 +78,40 @@ class AdaptiveLayoutTest {
     }
 
     @Test
+    fun navShortcutsStoreCleanly() {
+        assertEquals("trends,sleep,live", AdaptiveLayout.encodeNavShortcuts(listOf("trends", "sleep", "live")))
+        assertEquals(listOf("trends", "sleep", "live"), AdaptiveLayout.decodeNavShortcuts("trends, sleep,,trends,live"))
+        assertEquals(emptyList<String>(), AdaptiveLayout.decodeNavShortcuts("")) // "no shortcuts" is a valid choice
+        val many = (1..12).joinToString(",") { "r$it" }
+        assertEquals(AdaptiveLayout.MAX_NAV_SHORTCUTS, AdaptiveLayout.decodeNavShortcuts(many).size)
+        assertEquals(listOf("trends", "sleep", "live", "workouts", "health"), AdaptiveLayout.DEFAULT_NAV_SHORTCUTS)
+    }
+
+    @Test
+    fun railFitsWhatTheHeightAllows() {
+        // N slots need 56·N + 93dp.
+        assertEquals(13, AdaptiveLayout.railSlotCapacity(836f)) // unfolded V5 held upright
+        assertEquals(5, AdaptiveLayout.railSlotCapacity(410f))  // half-open on a table: the lower half only
+        assertEquals(2, AdaptiveLayout.railSlotCapacity(50f))   // never fewer than Today + More
+    }
+
+    @Test
+    fun barFitsWhatTheWidthAllows() {
+        assertEquals(11, AdaptiveLayout.barSlotCapacity(852f))
+        assertEquals(7, AdaptiveLayout.barSlotCapacity(600f))
+        assertEquals(2, AdaptiveLayout.barSlotCapacity(100f))
+    }
+
+    @Test
+    fun fitKeepsTodayAndTheFirstShortcutsLeavingRoomForMore() {
+        val tabs = listOf("today", "trends", "sleep", "live", "workouts", "health")
+        assertEquals(listOf("today", "trends", "sleep", "live"), AdaptiveLayout.fitNavTabs(tabs, 5))
+        assertEquals(tabs, AdaptiveLayout.fitNavTabs(tabs, 13))
+        assertEquals(listOf("today"), AdaptiveLayout.fitNavTabs(tabs, 2))
+        assertEquals(listOf("today"), AdaptiveLayout.fitNavTabs(tabs, 1))
+    }
+
+    @Test
     fun listDetailFromUnfoldedFoldablesUp() {
         assertFalse(AdaptiveLayout.usesListDetail(411))  // phone / cover screen
         assertFalse(AdaptiveLayout.usesListDetail(700))  // Pixel Fold held upright
