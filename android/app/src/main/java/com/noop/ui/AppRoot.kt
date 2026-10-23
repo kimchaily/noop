@@ -309,9 +309,14 @@ fun AppRoot(
     // Home-screen launcher shortcut: MainActivity stages the requested route here (see ShortcutRoutes);
     // jump to it once, then clear the flag so a recomposition / config change can't re-fire the jump.
     // Uses the same top-level nav as the bottom bar, so the target reads as a normal tab switch.
+    // Whether the current screen was reached THROUGH More (see AdaptiveLayout.showsMoreList): set by the More tab
+    // and the More list's rows, cleared by every other tab, by Today and by a launcher shortcut; navigating onward
+    // inside a screen keeps it. Saveable, so a fold/unfold or rotation keeps the list where it was.
+    var openedFromMore by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(deepLink?.value) {
         val dl = deepLink ?: return@LaunchedEffect
         val route = dl.value ?: return@LaunchedEffect
+        openedFromMore = false
         if (route != currentRoute) nav.navigateTopLevel(route)
         dl.value = null
     }
@@ -326,9 +331,10 @@ fun AppRoot(
     var showWhatsNew by remember { mutableStateOf(false) }
 
     // LIST-DETAIL (foldables / tablets, AdaptiveLayout.kt): on a wide window the More list stays on the left
-    // while the screen it opened fills the right, the way Material's list-detail layout works. Shown for More
-    // and every screen reached through it; Today / Trends / Sleep keep the whole width. When Settings is open
-    // beside it, the list also shows Settings' groups and the screen shows just the picked one.
+    // while the screen it opened fills the right, the way Material's list-detail layout works. Shown whenever the
+    // screen was reached through More — the same for every screen, pinned or not — and never for a screen opened
+    // from the navigation's own tabs or from Today. When Settings is open beside it, the list also shows
+    // Settings' groups and the screen shows just the picked one.
     val windowWidthDp = LocalConfiguration.current.screenWidthDp
     // SIDE RAIL (Material's navigation rail): on a wide window the four tabs move from the floating bottom bar
     // to a glass rail on the leading edge, unless Settings → Appearance asks to keep the bar. Its width comes
@@ -340,7 +346,6 @@ fun AppRoot(
     // a phone keeps Today · Trends · Sleep · More.
     val wideNav = AdaptiveLayout.usesWideNav(windowWidthDp)
     val wideTabs = wideNavTabs(WideLayoutPrefs.navShortcuts, NoopPrefs.showSupport(context))
-    val pinnedRoutes = if (wideNav) wideTabs.map { it.dest.route }.toSet() else emptySet()
     var showNavShortcuts by remember { mutableStateOf(false) }
     val navOptions: @Composable () -> Unit = {
         NavOptionsButton(
@@ -350,10 +355,22 @@ fun AppRoot(
         )
     }
     val inMoreGroup = drawerGroups.any { current in it.items }
-    // A screen pinned in the navigation is a top-level destination of its own there, so it fills the width
-    // rather than opening beside the More list.
-    val showMorePane = listDetail &&
-        (current == Destination.More || (inMoreGroup && current.route !in pinnedRoutes))
+    val showMorePane = AdaptiveLayout.showsMoreList(
+        listDetail = listDetail,
+        openedFromMore = openedFromMore,
+        onToday = current == Destination.Today,
+    )
+    // A tab in the navigation: More enters the More context, every other tab leaves it (so a pinned shortcut
+    // opens its screen full width, even one that is also in the More list).
+    val onNavTab: (Destination) -> Unit = { dest ->
+        openedFromMore = dest == Destination.More
+        if (dest.route != currentRoute) nav.navigateTopLevel(dest.route)
+    }
+    // A row in the More list (the pane or the More page): always opens beside the list on a wide window.
+    val onMoreRow: (String) -> Unit = { route ->
+        openedFromMore = true
+        if (route != currentRoute) nav.navigateTopLevel(route)
+    }
     // Standing half-open like a book (FoldPosture.kt), the list fills the left half up to the fold.
     val fold = LocalFoldState.current
     val density = androidx.compose.ui.platform.LocalDensity.current
@@ -368,10 +385,12 @@ fun AppRoot(
     // Remember the last screen opened through More, so tapping More on a wide screen reopens it beside the
     // list instead of showing the list twice (once in the pane, once as the page).
     LaunchedEffect(current) {
-        if (inMoreGroup && current.route !in pinnedRoutes) MoreLastRoute.write(context, current.route)
+        // Back on Today (a tab, the back button, a card) the More context is over.
+        if (current == Destination.Today) openedFromMore = false
+        if (inMoreGroup && openedFromMore) MoreLastRoute.write(context, current.route)
     }
     LaunchedEffect(current, listDetail) {
-        if (listDetail && current == Destination.More) nav.navigateTopLevel(MoreLastRoute.read(context, pinnedRoutes))
+        if (listDetail && current == Destination.More) nav.navigateTopLevel(MoreLastRoute.read(context))
     }
 
     run {
@@ -393,9 +412,8 @@ fun AppRoot(
                         } else {
                             phoneNavTabs
                         },
-                        onTabSelected = { dest ->
-                            if (dest.route != currentRoute) nav.navigateTopLevel(dest.route)
-                        },
+                        inMore = showMorePane,
+                        onTabSelected = onNavTab,
                         options = if (wideNav) navOptions else null,
                     )
                 }
@@ -418,9 +436,8 @@ fun AppRoot(
                 GlassSideRail(
                     current = current,
                     tabs = wideTabs,
-                    onTabSelected = { dest ->
-                        if (dest.route != currentRoute) nav.navigateTopLevel(dest.route)
-                    },
+                    inMore = showMorePane,
+                    onTabSelected = onNavTab,
                     options = navOptions,
                     modifier = Modifier
                         .width(AdaptiveLayout.RAIL_WIDTH_DP.dp)
@@ -431,9 +448,10 @@ fun AppRoot(
                 MorePane(
                     current = current,
                     settingsFocus = settingsFocus,
-                    onNavigate = { route -> if (route != currentRoute) nav.navigateTopLevel(route) },
+                    onNavigate = onMoreRow,
                     onSettingsGroup = { key ->
                         settingsFocus = key
+                        openedFromMore = true
                         if (current != Destination.Settings) nav.navigateTopLevel(Destination.Settings.route)
                     },
                     modifier = Modifier
@@ -623,7 +641,7 @@ fun AppRoot(
                 // The "More" page — the iOS More tab's twin: a navigated ScreenScaffold page hosting the
                 // full grouped destination list (was a pull-up sheet). A row navigates top-level.
                 composable(Destination.More.route) {
-                    MoreScreen(onNavigate = { nav.navigateTopLevel(it) })
+                    MoreScreen(onNavigate = onMoreRow)
                 }
             }
             } // CompositionLocalProvider
@@ -1055,11 +1073,10 @@ private fun MoreGroups(
 internal object MoreLastRoute {
     private const val KEY = "noop.more.lastRoute"
 
-    fun read(context: android.content.Context, pinned: Set<String> = emptySet()): String {
+    fun read(context: android.content.Context): String {
         val stored = NoopPrefs.of(context).getString(KEY, null)
-        // Only a route that is still in the More groups (Support can be switched off) and not pinned in the
-        // navigation (that one opens full width, without the list); else the first such entry.
-        val valid = drawerGroups.flatMap { it.items }.map { it.route }.filter { it !in pinned }
+        // Only a route that is still in the More groups (Support can be switched off); else the first entry.
+        val valid = drawerGroups.flatMap { it.items }.map { it.route }
         return stored?.takeIf { it in valid } ?: valid.firstOrNull() ?: Destination.InsightsHub.route
     }
 
@@ -1211,6 +1228,8 @@ private fun wideNavTabs(routes: List<String>, showSupport: Boolean): List<BarTab
 private fun GlassBottomBar(
     current: Destination,
     tabs: List<BarTab>,
+    // True while the More list is open beside the screen: More lights up, not the screen's own shortcut.
+    inMore: Boolean = false,
     onTabSelected: (Destination) -> Unit,
     // Wide windows only: the navigation options button beside the pill (move to the side, pick shortcuts).
     options: (@Composable () -> Unit)? = null,
@@ -1259,7 +1278,7 @@ private fun GlassBottomBar(
                     BarSlot(
                         icon = tab.icon,
                         label = stringResource(tab.labelRes),
-                        active = current == tab.dest,
+                        active = !inMore && current == tab.dest,
                         modifier = Modifier.weight(1f),
                         onClick = { onTabSelected(tab.dest) },
                     )
@@ -1270,7 +1289,7 @@ private fun GlassBottomBar(
                     // Selected on the More page itself, and also kept lit whenever the current screen is
                     // one reached THROUGH More (i.e. not one of the bar's own tabs) — so drilling
                     // into any grouped destination still reads as "you're in More", never "nowhere".
-                    active = tabs.none { it.dest == current },
+                    active = inMore || tabs.none { it.dest == current },
                     modifier = Modifier.weight(1f),
                     onClick = { onTabSelected(Destination.More) },
                 )
@@ -1298,6 +1317,8 @@ private fun GlassBottomBar(
 private fun GlassSideRail(
     current: Destination,
     tabs: List<BarTab>,
+    // True while the More list is open beside the screen: More lights up, not the screen's own shortcut.
+    inMore: Boolean = false,
     onTabSelected: (Destination) -> Unit,
     options: @Composable () -> Unit,
     modifier: Modifier = Modifier,
@@ -1355,7 +1376,7 @@ private fun GlassSideRail(
                         BarSlot(
                             icon = tab.icon,
                             label = stringResource(tab.labelRes),
-                            active = current == tab.dest,
+                            active = !inMore && current == tab.dest,
                             modifier = Modifier.fillMaxWidth().height(AdaptiveLayout.RAIL_SLOT_HEIGHT_DP.dp),
                             onClick = { onTabSelected(tab.dest) },
                         )
@@ -1363,7 +1384,7 @@ private fun GlassSideRail(
                     BarSlot(
                         icon = Icons.Filled.MoreHoriz,
                         label = stringResource(R.string.nav_more),
-                        active = shown.none { it.dest == current },
+                        active = inMore || shown.none { it.dest == current },
                         modifier = Modifier.fillMaxWidth().height(AdaptiveLayout.RAIL_SLOT_HEIGHT_DP.dp),
                         onClick = { onTabSelected(Destination.More) },
                     )

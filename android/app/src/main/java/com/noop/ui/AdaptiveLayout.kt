@@ -303,6 +303,15 @@ internal object AdaptiveLayout {
     /** True when a window (or the space left beside a rail) is wide enough to keep a list pane on screen. */
     fun usesListDetail(widthDp: Int): Boolean = widthDp >= LIST_DETAIL_MIN_WIDTH_DP
 
+    /**
+     * Whether the More list stays beside the current screen. It depends on HOW the screen was reached, not on
+     * which screen it is: opened through More (the More tab or a row in the list, and anything clicked onward
+     * from there) the list stays open beside it, whatever was tapped; opened from the navigation's own tabs or
+     * from Today, never. Only on a window wide enough for two panes ([listDetail]), and never beside Today.
+     */
+    fun showsMoreList(listDetail: Boolean, openedFromMore: Boolean, onToday: Boolean): Boolean =
+        listDetail && openedFromMore && !onToday
+
     /** The list pane's width: [LIST_PANE_WIDTH_DP], or — standing half-open like a book — up to the fold
      *  ([foldOffsetDp], measured from the pane's left edge) so the list sits on one half and the screen on the
      *  other. Clamped so neither side gets unusably narrow. */

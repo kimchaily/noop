@@ -112,6 +112,17 @@ class AdaptiveLayoutTest {
     }
 
     @Test
+    fun moreListFollowsHowAScreenWasOpenedNotWhichScreenItIs() {
+        // Through More (tab or a row in the list): the list stays beside it, whatever was tapped.
+        assertTrue(AdaptiveLayout.showsMoreList(listDetail = true, openedFromMore = true, onToday = false))
+        // From the navigation's own tabs (a pinned shortcut) or from Today: never.
+        assertFalse(AdaptiveLayout.showsMoreList(listDetail = true, openedFromMore = false, onToday = false))
+        // Never beside Today, and never where two panes don't fit (a folded phone).
+        assertFalse(AdaptiveLayout.showsMoreList(listDetail = true, openedFromMore = true, onToday = true))
+        assertFalse(AdaptiveLayout.showsMoreList(listDetail = false, openedFromMore = true, onToday = false))
+    }
+
+    @Test
     fun listDetailFromUnfoldedFoldablesUp() {
         assertFalse(AdaptiveLayout.usesListDetail(411))  // phone / cover screen
         assertFalse(AdaptiveLayout.usesListDetail(700))  // Pixel Fold held upright
