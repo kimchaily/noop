@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "8.3.2"
+    const val CURRENT_VERSION = "8.4.0"
 
     data class Release(
         val version: String,
@@ -36,6 +36,17 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "8.4.0",
+            title = "Navigation your way on a foldable: left, right or bottom, edge to edge",
+            date = "October 2026",
+            items = listOf(
+                "**Left, right or bottom.** On an open phone or a tablet the navigation sits on the left edge, the right edge or along the bottom. Move it from the navigation's own options menu or in Settings → Appearance → Wide-screen navigation, and it slides smoothly to its new place.",
+                "**Background to the edge.** The side rail now floats over the screen, so Today's sky gradient and every screen's background run all the way to the edge behind it. Cards and text keep clear of the rail.",
+                "**Shortcuts on the folded phone too.** The phone's bottom bar has its own shortcut list: up to three screens between Today and More, Trends and Sleep until you change them. The shortcut editor switches between Folded and Open.",
+                "**Back works inside More.** Screens opened from the More list, and links on them (Breathe to Wim Hof, Devices to Data Sources and so on), now return to the screen you came from when you press Back. On a phone, Back from a More entry goes to the More page.",
+            ),
+        ),
         Release(
             version = "8.3.2",
             title = "More of the open foldable: side rail, shortcuts, list beside screens, half-open postures",
