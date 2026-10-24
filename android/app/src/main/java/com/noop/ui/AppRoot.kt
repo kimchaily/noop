@@ -3,7 +3,15 @@ package com.noop.ui
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -343,6 +351,9 @@ fun AppRoot(
     val railWidthDp = if (useRail) AdaptiveLayout.RAIL_WIDTH_DP else 0
     // The rail sits on the left edge, or the right one if the user moved it there (left-handed / one-handed).
     val railRight = WideLayoutPrefs.railRight
+    // Switching between rail and bar (or the rail's edge) slides the navigation in and out on the calm nav
+    // easing; with Reduce Motion it simply swaps.
+    val reduceMotion = rememberReduceMotion()
     val listDetail = AdaptiveLayout.usesListDetail(windowWidthDp - railWidthDp)
     // SHORTCUTS: a wide window's navigation (rail or bar) carries Today, the user's pinned screens, then More;
     // a phone keeps Today · Trends · Sleep · More.
@@ -422,7 +433,14 @@ fun AppRoot(
                 // its own page (mirroring the iOS More tab) that reaches every grouped destination, so no
                 // destination is lost without the drawer. On a wide window the same tabs live in the side
                 // rail instead (below), so the bar steps aside.
-                if (!useRail) {
+                AnimatedVisibility(
+                    visible = !useRail,
+                    enter = if (reduceMotion) EnterTransition.None
+                    else expandVertically(navSizeSpec, expandFrom = Alignment.Top) + fadeIn(navFadeSpec),
+                    exit = if (reduceMotion) ExitTransition.None
+                    else shrinkVertically(navSizeSpec, shrinkTowards = Alignment.Top) + fadeOut(navFadeSpec),
+                    label = "bottomBar",
+                ) {
                     GlassBottomBar(
                         current = current,
                         // A wide bar carries the shortcuts that fit its width; a phone keeps its four tabs.
@@ -451,7 +469,14 @@ fun AppRoot(
                     .padding(inner)
                     .then(if (isPreviewChannel) Modifier.padding(top = PreviewBandContentHeight) else Modifier),
             ) {
-            if (useRail && !railRight) {
+            AnimatedVisibility(
+                visible = useRail && !railRight,
+                enter = if (reduceMotion) EnterTransition.None
+                else expandHorizontally(navSizeSpec, expandFrom = Alignment.Start) + fadeIn(navFadeSpec),
+                exit = if (reduceMotion) ExitTransition.None
+                else shrinkHorizontally(navSizeSpec, shrinkTowards = Alignment.Start) + fadeOut(navFadeSpec),
+                label = "railLeft",
+            ) {
                 GlassSideRail(
                     current = current,
                     tabs = wideTabs,
@@ -665,7 +690,14 @@ fun AppRoot(
             }
             } // CompositionLocalProvider
             // A rail moved to the right edge comes after the screen (the More list stays on the left).
-            if (useRail && railRight) {
+            AnimatedVisibility(
+                visible = useRail && railRight,
+                enter = if (reduceMotion) EnterTransition.None
+                else expandHorizontally(navSizeSpec, expandFrom = Alignment.End) + fadeIn(navFadeSpec),
+                exit = if (reduceMotion) ExitTransition.None
+                else shrinkHorizontally(navSizeSpec, shrinkTowards = Alignment.End) + fadeOut(navFadeSpec),
+                label = "railRight",
+            ) {
                 GlassSideRail(
                     current = current,
                     tabs = wideTabs,
@@ -1720,6 +1752,9 @@ private val NavEasing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 
 /** ~240ms crossfade on the calm easing — the README "Tab crossfade" between roots. */
 private val navFadeSpec = tween<Float>(durationMillis = 240, easing = NavEasing)
+
+/** The same 240ms calm easing for the navigation sliding in/out when it moves between rail and bar. */
+private val navSizeSpec = tween<IntSize>(durationMillis = 240, easing = NavEasing)
 
 /**
  * BrandMark — the Choop logo glyph at a small in-app size: an OPEN recovery ring (≈80%
