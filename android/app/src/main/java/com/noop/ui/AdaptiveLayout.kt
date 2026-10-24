@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -447,6 +448,14 @@ internal object AdaptiveLayout {
  * around the NavHost so a screen beside a pane counts its columns from the space it really has.
  */
 val LocalAvailableWidthDp = compositionLocalOf<Int?> { null }
+
+/** Room a screen keeps clear for a navigation rail floating over its [start] or [end] edge. The screen's own
+ *  background still runs underneath, edge to edge; only its content (cards, text) stays out from under the rail. */
+@Immutable
+data class NavRailInsets(val start: Dp = 0.dp, val end: Dp = 0.dp)
+
+/** Provided by AppRoot around the NavHost; zero without a rail (phones, the bottom bar, beside the More list). */
+val LocalNavRailInsets = compositionLocalOf { NavRailInsets() }
 
 /** The width (dp) available to the current screen: the window, minus any pane or rail beside it. */
 @Composable

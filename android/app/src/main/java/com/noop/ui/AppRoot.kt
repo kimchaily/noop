@@ -6,11 +6,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
@@ -351,6 +352,8 @@ fun AppRoot(
     val railWidthDp = if (useRail) AdaptiveLayout.RAIL_WIDTH_DP else 0
     // The rail sits on the left edge, or the right one if the user moved it there (left-handed / one-handed).
     val railRight = WideLayoutPrefs.railRight
+    val leftRailDp = if (useRail && !railRight) railWidthDp else 0
+    val rightRailDp = if (useRail && railRight) railWidthDp else 0
     // Switching between rail and bar (or the rail's edge) slides the navigation in and out on the calm nav
     // easing; with Reduce Motion it simply swaps.
     val reduceMotion = rememberReduceMotion()
@@ -469,25 +472,6 @@ fun AppRoot(
                     .padding(inner)
                     .then(if (isPreviewChannel) Modifier.padding(top = PreviewBandContentHeight) else Modifier),
             ) {
-            AnimatedVisibility(
-                visible = useRail && !railRight,
-                enter = if (reduceMotion) EnterTransition.None
-                else expandHorizontally(navSizeSpec, expandFrom = Alignment.Start) + fadeIn(navFadeSpec),
-                exit = if (reduceMotion) ExitTransition.None
-                else shrinkHorizontally(navSizeSpec, shrinkTowards = Alignment.Start) + fadeOut(navFadeSpec),
-                label = "railLeft",
-            ) {
-                GlassSideRail(
-                    current = current,
-                    tabs = wideTabs,
-                    inMore = showMorePane,
-                    onTabSelected = onNavTab,
-                    options = navOptions,
-                    modifier = Modifier
-                        .width(AdaptiveLayout.RAIL_WIDTH_DP.dp)
-                        .fillMaxHeight(),
-                )
-            }
             if (showMorePane) {
                 MorePane(
                     current = current,
@@ -498,8 +482,11 @@ fun AppRoot(
                         openedFromMore = true
                         if (current != Destination.Settings) openLinked(Destination.Settings.route)
                     },
+                    // Under a left rail the pane's own background runs to the window edge (the rail floats over
+                    // it); its list starts clear of the rail.
+                    startInset = leftRailDp.dp,
                     modifier = Modifier
-                        .width(paneWidthDp.dp)
+                        .width((paneWidthDp + leftRailDp).dp)
                         .fillMaxHeight(),
                 )
                 Box(
@@ -520,6 +507,13 @@ fun AppRoot(
                         null
                     },
                 LocalSettingsFocus provides if (showMorePane) settingsFocus else null,
+                // The rail floats over the screen's edge, so the screen's background reaches the window edge
+                // behind it; the screen keeps its content clear by this much (the More pane already does on
+                // the left when it is open).
+                LocalNavRailInsets provides NavRailInsets(
+                    start = (if (showMorePane) 0 else leftRailDp).dp,
+                    end = rightRailDp.dp,
+                ),
             ) {
             NavHost(
                 navController = nav,
@@ -689,28 +683,38 @@ fun AppRoot(
                 }
             }
             } // CompositionLocalProvider
-            // A rail moved to the right edge comes after the screen (the More list stays on the left).
-            AnimatedVisibility(
-                visible = useRail && railRight,
-                enter = if (reduceMotion) EnterTransition.None
-                else expandHorizontally(navSizeSpec, expandFrom = Alignment.End) + fadeIn(navFadeSpec),
-                exit = if (reduceMotion) ExitTransition.None
-                else shrinkHorizontally(navSizeSpec, shrinkTowards = Alignment.End) + fadeOut(navFadeSpec),
-                label = "railRight",
-            ) {
-                GlassSideRail(
-                    current = current,
-                    tabs = wideTabs,
-                    inMore = showMorePane,
-                    onTabSelected = onNavTab,
-                    options = navOptions,
-                    onRight = true,
-                    modifier = Modifier
-                        .width(AdaptiveLayout.RAIL_WIDTH_DP.dp)
-                        .fillMaxHeight(),
-                )
-            }
             } // Row (list pane + NavHost)
+            // The side rail FLOATS over the screen's edge (left, or right if moved there) rather than taking a column
+            // of its own, so the screen's background — Today's sky gradient, the canvas — runs all the way to the
+            // window edge behind the translucent glass island. Screens keep their content clear of it through
+            // LocalNavRailInsets (above). It slides in from / out to its edge when the navigation moves.
+            for (onRight in listOf(false, true)) {
+                AnimatedVisibility(
+                    visible = useRail && railRight == onRight,
+                    modifier = Modifier
+                        .align(if (onRight) Alignment.CenterEnd else Alignment.CenterStart)
+                        .fillMaxHeight()
+                        .padding(inner)
+                        .then(if (isPreviewChannel) Modifier.padding(top = PreviewBandContentHeight) else Modifier),
+                    enter = if (reduceMotion) EnterTransition.None
+                    else slideInHorizontally(navOffsetSpec) { w -> if (onRight) w else -w } + fadeIn(navFadeSpec),
+                    exit = if (reduceMotion) ExitTransition.None
+                    else slideOutHorizontally(navOffsetSpec) { w -> if (onRight) w else -w } + fadeOut(navFadeSpec),
+                    label = if (onRight) "railRight" else "railLeft",
+                ) {
+                    GlassSideRail(
+                        current = current,
+                        tabs = wideTabs,
+                        inMore = showMorePane,
+                        onTabSelected = onNavTab,
+                        options = navOptions,
+                        onRight = onRight,
+                        modifier = Modifier
+                            .width(AdaptiveLayout.RAIL_WIDTH_DP.dp)
+                            .fillMaxHeight(),
+                    )
+                }
+            }
             if (isPreviewChannel) {
                 PreviewChannelBand(modifier = Modifier.align(Alignment.TopCenter))
             }
@@ -1040,13 +1044,15 @@ private fun MorePane(
     settingsFocus: String,
     onNavigate: (String) -> Unit,
     onSettingsGroup: (String) -> Unit,
+    // Room kept clear for a rail floating over the pane's left edge (its background still runs under it).
+    startInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .background(Palette.surfaceBase)
             .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, end = 12.dp, top = 20.dp, bottom = 20.dp),
+            .padding(start = 16.dp + startInset, end = 12.dp, top = 20.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(Metrics.screenRowSpacing),
     ) {
         Text("More", style = NoopType.title1, color = Palette.textPrimary)
@@ -1755,6 +1761,9 @@ private val navFadeSpec = tween<Float>(durationMillis = 240, easing = NavEasing)
 
 /** The same 240ms calm easing for the navigation sliding in/out when it moves between rail and bar. */
 private val navSizeSpec = tween<IntSize>(durationMillis = 240, easing = NavEasing)
+
+/** …and for the floating rail sliding in from / out to its edge. */
+private val navOffsetSpec = tween<IntOffset>(durationMillis = 240, easing = NavEasing)
 
 /**
  * BrandMark — the Choop logo glyph at a small in-app size: an OPEN recovery ring (≈80%

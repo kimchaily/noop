@@ -129,7 +129,13 @@ fun TabletopAware(
                     .fillMaxWidth()
                     .height(with(density) { topPanePx.toDp() })
                     .background(Palette.surfaceBase)
-                    .padding(horizontal = 28.dp, vertical = 12.dp),
+                    // Clear of a navigation rail floating over the edge (the background still runs under it).
+                    .padding(
+                        start = 28.dp + LocalNavRailInsets.current.start,
+                        end = 28.dp + LocalNavRailInsets.current.end,
+                        top = 12.dp,
+                        bottom = 12.dp,
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(Modifier.verticalScroll(rememberScrollState())) { hero() }
