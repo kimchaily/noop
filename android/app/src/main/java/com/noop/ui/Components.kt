@@ -1144,12 +1144,15 @@ fun ScreenScaffold(
     // Widest the content column grows on a wide window (unfolded foldable, tablet) before it is centred
     // with equal margins. Phones never reach it, so their 28dp gutters are unchanged (AdaptiveLayout.kt).
     maxContentWidth: Dp = ReadableMaxContentWidth,
+    // The key this screen's own column choice is remembered under (the header layout button). Defaults to the
+    // title; null opts the screen out of a per-screen choice.
+    layoutKey: String? = title,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    // Foldables / tablets (AdaptiveLayout.kt): how many card columns this window gets under the user's
-    // "Wide screens" setting. 1 on every phone and on a folded cover screen, which take the original Column
-    // path below unchanged; 2+ flows the same children into masonry columns via FlowColumns.
-    val columns = screenColumns()
+    // Foldables / tablets (AdaptiveLayout.kt): how many card columns this window gets under the screen's own
+    // choice or the "Wide screens" setting. 1 on every phone and on a folded cover screen, which take the
+    // original Column path below unchanged; 2+ flows the same children into masonry columns via FlowColumns.
+    val columns = screenColumns(layoutKey)
     val sideInset = if (columns > 1) {
         adaptiveSideInset(AdaptiveLayout.gridMaxWidthDp(columns).dp)
     } else {
@@ -1194,6 +1197,11 @@ fun ScreenScaffold(
                         }
                     }
                     if (trailing != null) trailing()
+                    // Wide screens only: this screen's own column choice (AdaptiveLayout.kt).
+                    if (layoutKey != null) {
+                        Spacer(Modifier.width(8.dp))
+                        ScreenLayoutButton(layoutKey)
+                    }
                 }
             }
         } else {
@@ -1295,6 +1303,8 @@ fun LazyScreenScaffold(
     // Same contract as ScreenScaffold.maxContentWidth: a single-column screen is centred and capped on a wide
     // window, untouched on a phone.
     maxContentWidth: Dp = ReadableMaxContentWidth,
+    // Same contract as ScreenScaffold.layoutKey. Today, which has no title, passes its own.
+    layoutKey: String? = title,
     // Built with [AdaptiveListScope] — the usual item { } / items(...) — so the same rows can back a LazyColumn
     // on a phone or a masonry LazyVerticalStaggeredGrid on a wide window (AdaptiveLayout.kt).
     content: AdaptiveListScope.() -> Unit,
@@ -1303,7 +1313,7 @@ fun LazyScreenScaffold(
     // that currently emits a single card (an empty state, a loading note) stays one column, so it spans the
     // width instead of sitting in one column beside a blank one. Counted in a derivedStateOf so the count only
     // re-runs when the rows the DSL reads change, and only invalidates this scaffold when the COUNT changes.
-    val windowColumns = screenColumns()
+    val windowColumns = screenColumns(layoutKey)
     val cardCount by remember(content) {
         derivedStateOf { CountingAdaptiveScope().apply(content).count }
     }
@@ -1357,6 +1367,11 @@ fun LazyScreenScaffold(
                         }
                     }
                     if (trailing != null) trailing()
+                    // Wide screens only: this screen's own column choice (AdaptiveLayout.kt).
+                    if (layoutKey != null) {
+                        Spacer(Modifier.width(8.dp))
+                        ScreenLayoutButton(layoutKey)
+                    }
                 }
             }
         } else {

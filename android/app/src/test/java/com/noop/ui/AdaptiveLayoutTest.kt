@@ -1,6 +1,8 @@
 package com.noop.ui
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -44,8 +46,89 @@ class AdaptiveLayoutTest {
     fun explicitChoicesWinOnWideWindows() {
         assertEquals(1, AdaptiveLayout.columnsFor(WideLayoutMode.ONE, 852))
         assertEquals(1, AdaptiveLayout.columnsFor(WideLayoutMode.ONE, 1280))
-        assertEquals(2, AdaptiveLayout.columnsFor(WideLayoutMode.TWO, 600))
+        assertEquals(2, AdaptiveLayout.columnsFor(WideLayoutMode.TWO, 640))
         assertEquals(2, AdaptiveLayout.columnsFor(WideLayoutMode.TWO, 1280))
+    }
+
+    @Test
+    fun twoColumnsNeverSqueezesBelowReadableColumns() {
+        // A screen beside the More list on an unfolded V5 gets ~531dp: two 230dp strips would be unreadable,
+        // so even "Two columns" stays one there.
+        assertEquals(1, AdaptiveLayout.columnsFor(WideLayoutMode.TWO, 852 - AdaptiveLayout.LIST_PANE_WIDTH_DP - 1))
+        assertEquals(1, AdaptiveLayout.columnsFor(WideLayoutMode.TWO, 600))
+    }
+
+    @Test
+    fun layoutButtonOnlyWhereTwoColumnsFit() {
+        assertFalse(AdaptiveLayout.canSplit(411))                                        // phone
+        assertFalse(AdaptiveLayout.canSplit(852 - AdaptiveLayout.LIST_PANE_WIDTH_DP - 1)) // beside the More list
+        assertTrue(AdaptiveLayout.canSplit(852))                                         // unfolded V5, full width
+    }
+
+    @Test
+    fun sideRailOnWideWindowsUnlessTheBarIsChosen() {
+        assertFalse(AdaptiveLayout.usesNavRail(411, railPreferred = true))  // phone / cover screen
+        assertTrue(AdaptiveLayout.usesNavRail(600, railPreferred = true))
+        assertTrue(AdaptiveLayout.usesNavRail(852, railPreferred = true))   // unfolded V5
+        assertFalse(AdaptiveLayout.usesNavRail(852, railPreferred = false)) // "Bottom bar" in Settings
+        // With the rail the More list still fits beside a screen on an unfolded V5.
+        assertTrue(AdaptiveLayout.usesListDetail(852 - AdaptiveLayout.RAIL_WIDTH_DP))
+        // And Today still gets two columns beside the rail.
+        assertEquals(2, AdaptiveLayout.columnsFor(WideLayoutMode.AUTO, 852 - AdaptiveLayout.RAIL_WIDTH_DP))
+    }
+
+    @Test
+    fun navShortcutsStoreCleanly() {
+        assertEquals("trends,sleep,live", AdaptiveLayout.encodeNavShortcuts(listOf("trends", "sleep", "live")))
+        assertEquals(listOf("trends", "sleep", "live"), AdaptiveLayout.decodeNavShortcuts("trends, sleep,,trends,live"))
+        assertEquals(emptyList<String>(), AdaptiveLayout.decodeNavShortcuts("")) // "no shortcuts" is a valid choice
+        val many = (1..12).joinToString(",") { "r$it" }
+        assertEquals(AdaptiveLayout.MAX_NAV_SHORTCUTS, AdaptiveLayout.decodeNavShortcuts(many).size)
+        assertEquals(listOf("trends", "sleep", "live", "workouts", "health"), AdaptiveLayout.DEFAULT_NAV_SHORTCUTS)
+    }
+
+    @Test
+    fun railFitsWhatTheHeightAllows() {
+        // N slots need 56·N + 93dp.
+        assertEquals(13, AdaptiveLayout.railSlotCapacity(836f)) // unfolded V5 held upright
+        assertEquals(5, AdaptiveLayout.railSlotCapacity(410f))  // half-open on a table: the lower half only
+        assertEquals(2, AdaptiveLayout.railSlotCapacity(50f))   // never fewer than Today + More
+    }
+
+    @Test
+    fun barFitsWhatTheWidthAllows() {
+        assertEquals(11, AdaptiveLayout.barSlotCapacity(852f))
+        assertEquals(7, AdaptiveLayout.barSlotCapacity(600f))
+        assertEquals(2, AdaptiveLayout.barSlotCapacity(100f))
+    }
+
+    @Test
+    fun fitKeepsTodayAndTheFirstShortcutsLeavingRoomForMore() {
+        val tabs = listOf("today", "trends", "sleep", "live", "workouts", "health")
+        assertEquals(listOf("today", "trends", "sleep", "live"), AdaptiveLayout.fitNavTabs(tabs, 5))
+        assertEquals(tabs, AdaptiveLayout.fitNavTabs(tabs, 13))
+        assertEquals(listOf("today"), AdaptiveLayout.fitNavTabs(tabs, 2))
+        assertEquals(listOf("today"), AdaptiveLayout.fitNavTabs(tabs, 1))
+    }
+
+    @Test
+    fun moreListFollowsHowAScreenWasOpenedNotWhichScreenItIs() {
+        // Through More (tab or a row in the list): the list stays beside it, whatever was tapped.
+        assertTrue(AdaptiveLayout.showsMoreList(listDetail = true, openedFromMore = true, onToday = false))
+        // From the navigation's own tabs (a pinned shortcut) or from Today: never.
+        assertFalse(AdaptiveLayout.showsMoreList(listDetail = true, openedFromMore = false, onToday = false))
+        // Never beside Today, and never where two panes don't fit (a folded phone).
+        assertFalse(AdaptiveLayout.showsMoreList(listDetail = true, openedFromMore = true, onToday = true))
+        assertFalse(AdaptiveLayout.showsMoreList(listDetail = false, openedFromMore = true, onToday = false))
+    }
+
+    @Test
+    fun listDetailFromUnfoldedFoldablesUp() {
+        assertFalse(AdaptiveLayout.usesListDetail(411))  // phone / cover screen
+        assertFalse(AdaptiveLayout.usesListDetail(700))  // Pixel Fold held upright
+        assertTrue(AdaptiveLayout.usesListDetail(720))
+        assertTrue(AdaptiveLayout.usesListDetail(852))   // unfolded Magic V5
+        assertTrue(AdaptiveLayout.usesListDetail(1280))
     }
 
     @Test

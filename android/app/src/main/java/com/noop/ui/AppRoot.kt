@@ -7,6 +7,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -74,6 +78,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -85,6 +91,14 @@ import com.noop.R
 import com.noop.analytics.FusionSource
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlin.math.roundToInt
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.draw.clip
@@ -295,9 +309,14 @@ fun AppRoot(
     // Home-screen launcher shortcut: MainActivity stages the requested route here (see ShortcutRoutes);
     // jump to it once, then clear the flag so a recomposition / config change can't re-fire the jump.
     // Uses the same top-level nav as the bottom bar, so the target reads as a normal tab switch.
+    // Whether the current screen was reached THROUGH More (see AdaptiveLayout.showsMoreList): set by the More tab
+    // and the More list's rows, cleared by every other tab, by Today and by a launcher shortcut; navigating onward
+    // inside a screen keeps it. Saveable, so a fold/unfold or rotation keeps the list where it was.
+    var openedFromMore by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(deepLink?.value) {
         val dl = deepLink ?: return@LaunchedEffect
         val route = dl.value ?: return@LaunchedEffect
+        openedFromMore = false
         if (route != currentRoute) nav.navigateTopLevel(route)
         dl.value = null
     }
@@ -311,6 +330,69 @@ fun AppRoot(
     // from Settings → About → What's new — both render the same [WhatsNewSheet]).
     var showWhatsNew by remember { mutableStateOf(false) }
 
+    // LIST-DETAIL (foldables / tablets, AdaptiveLayout.kt): on a wide window the More list stays on the left
+    // while the screen it opened fills the right, the way Material's list-detail layout works. Shown whenever the
+    // screen was reached through More — the same for every screen, pinned or not — and never for a screen opened
+    // from the navigation's own tabs or from Today. When Settings is open beside it, the list also shows
+    // Settings' groups and the screen shows just the picked one.
+    val windowWidthDp = LocalConfiguration.current.screenWidthDp
+    // SIDE RAIL (Material's navigation rail): on a wide window the four tabs move from the floating bottom bar
+    // to a glass rail on the leading edge, unless Settings → Appearance asks to keep the bar. Its width comes
+    // off everything beside it, so the list pane and the screens count their space from what is left.
+    val useRail = AdaptiveLayout.usesNavRail(windowWidthDp, WideLayoutPrefs.navRail)
+    val railWidthDp = if (useRail) AdaptiveLayout.RAIL_WIDTH_DP else 0
+    val listDetail = AdaptiveLayout.usesListDetail(windowWidthDp - railWidthDp)
+    // SHORTCUTS: a wide window's navigation (rail or bar) carries Today, the user's pinned screens, then More;
+    // a phone keeps Today · Trends · Sleep · More.
+    val wideNav = AdaptiveLayout.usesWideNav(windowWidthDp)
+    val wideTabs = wideNavTabs(WideLayoutPrefs.navShortcuts, NoopPrefs.showSupport(context))
+    var showNavShortcuts by remember { mutableStateOf(false) }
+    val navOptions: @Composable () -> Unit = {
+        NavOptionsButton(
+            railMode = useRail,
+            onToggleMode = { WideLayoutPrefs.setNavRail(context, !WideLayoutPrefs.navRail) },
+            onChooseShortcuts = { showNavShortcuts = true },
+        )
+    }
+    val inMoreGroup = drawerGroups.any { current in it.items }
+    val showMorePane = AdaptiveLayout.showsMoreList(
+        listDetail = listDetail,
+        openedFromMore = openedFromMore,
+        onToday = current == Destination.Today,
+    )
+    // A tab in the navigation: More enters the More context, every other tab leaves it (so a pinned shortcut
+    // opens its screen full width, even one that is also in the More list).
+    val onNavTab: (Destination) -> Unit = { dest ->
+        openedFromMore = dest == Destination.More
+        if (dest.route != currentRoute) nav.navigateTopLevel(dest.route)
+    }
+    // A row in the More list (the pane or the More page): always opens beside the list on a wide window.
+    val onMoreRow: (String) -> Unit = { route ->
+        openedFromMore = true
+        if (route != currentRoute) nav.navigateTopLevel(route)
+    }
+    // Standing half-open like a book (FoldPosture.kt), the list fills the left half up to the fold.
+    val fold = LocalFoldState.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val paneWidthDp = AdaptiveLayout.listPaneWidthDp(
+        if (fold.posture == FoldPosture.BOOK) {
+            with(density) { fold.hingeLeftPx.toDp().value.toInt() } - railWidthDp
+        } else {
+            null
+        },
+    )
+    var settingsFocus by rememberSaveable { mutableStateOf(settingsGroups.first().key) }
+    // Remember the last screen opened through More, so tapping More on a wide screen reopens it beside the
+    // list instead of showing the list twice (once in the pane, once as the page).
+    LaunchedEffect(current) {
+        // Back on Today (a tab, the back button, a card) the More context is over.
+        if (current == Destination.Today) openedFromMore = false
+        if (inMoreGroup && openedFromMore) MoreLastRoute.write(context, current.route)
+    }
+    LaunchedEffect(current, listDetail) {
+        if (listDetail && current == Destination.More) nav.navigateTopLevel(MoreLastRoute.read(context))
+    }
+
     run {
         Scaffold(
             containerColor = Palette.surfaceBase,
@@ -319,13 +401,22 @@ fun AppRoot(
                 // (matches the iOS FloatingTabBar). The quick-action "+" lives in the Today header's
                 // top-right (balancing the avatar), so the bar is clean tabs only. "More" navigates to
                 // its own page (mirroring the iOS More tab) that reaches every grouped destination, so no
-                // destination is lost without the drawer.
-                GlassBottomBar(
-                    current = current,
-                    onTabSelected = { dest ->
-                        if (dest.route != currentRoute) nav.navigateTopLevel(dest.route)
-                    },
-                )
+                // destination is lost without the drawer. On a wide window the same tabs live in the side
+                // rail instead (below), so the bar steps aside.
+                if (!useRail) {
+                    GlassBottomBar(
+                        current = current,
+                        // A wide bar carries the shortcuts that fit its width; a phone keeps its four tabs.
+                        tabs = if (wideNav) {
+                            AdaptiveLayout.fitNavTabs(wideTabs, AdaptiveLayout.barSlotCapacity(windowWidthDp.toFloat()))
+                        } else {
+                            phoneNavTabs
+                        },
+                        inMore = showMorePane,
+                        onTabSelected = onNavTab,
+                        options = if (wideNav) navOptions else null,
+                    )
+                }
             },
         ) { inner ->
             // Shell body. On the PREVIEW channel a fixed build band ([PreviewChannelBand]) is pinned to
@@ -335,12 +426,63 @@ fun AppRoot(
             // so stable's layout is byte-for-byte unchanged.
             val isPreviewChannel = BuildConfig.CHANNEL == "preview"
             Box(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(inner)
+                    .then(if (isPreviewChannel) Modifier.padding(top = PreviewBandContentHeight) else Modifier),
+            ) {
+            if (useRail) {
+                GlassSideRail(
+                    current = current,
+                    tabs = wideTabs,
+                    inMore = showMorePane,
+                    onTabSelected = onNavTab,
+                    options = navOptions,
+                    modifier = Modifier
+                        .width(AdaptiveLayout.RAIL_WIDTH_DP.dp)
+                        .fillMaxHeight(),
+                )
+            }
+            if (showMorePane) {
+                MorePane(
+                    current = current,
+                    settingsFocus = settingsFocus,
+                    onNavigate = onMoreRow,
+                    onSettingsGroup = { key ->
+                        settingsFocus = key
+                        openedFromMore = true
+                        if (current != Destination.Settings) nav.navigateTopLevel(Destination.Settings.route)
+                    },
+                    modifier = Modifier
+                        .width(paneWidthDp.dp)
+                        .fillMaxHeight(),
+                )
+                Box(
+                    Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(Palette.hairline),
+                )
+            }
+            // The screen beside the pane counts its columns from the width it really gets (AdaptiveLayout.kt),
+            // and Settings shows just the group picked in the pane. Always provided (null = whole window) so
+            // the NavHost keeps its place in the composition when the pane comes and goes.
+            CompositionLocalProvider(
+                LocalAvailableWidthDp provides
+                    if (useRail || showMorePane) {
+                        windowWidthDp - railWidthDp - (if (showMorePane) paneWidthDp + 1 else 0)
+                    } else {
+                        null
+                    },
+                LocalSettingsFocus provides if (showMorePane) settingsFocus else null,
+            ) {
             NavHost(
                 navController = nav,
                 startDestination = Destination.Today.route,
                 modifier = Modifier
-                    .padding(inner)
-                    .then(if (isPreviewChannel) Modifier.padding(top = PreviewBandContentHeight) else Modifier),
+                    .weight(1f)
+                    .fillMaxHeight(),
                 // README motion: top-level destinations crossfade (~240ms) on the calm,
                 // decelerating global easing — nothing slides or bounces between tabs. The
                 // same fade is used for back (pop) so the bar never feels jerky. Drill-ins
@@ -423,7 +565,11 @@ fun AppRoot(
                         viewModel,
                         // The journal-item pickers live in Settings, so both the pre-session status card
                         // and the post-session summary can hop straight there.
-                        onOpenSettings = { nav.navigateTopLevel(Destination.Settings.route) },
+                        onOpenSettings = {
+                            // On a wide screen, land on the Wim Hof group beside the list.
+                            settingsFocus = "wimhof"
+                            nav.navigateTopLevel(Destination.Settings.route)
+                        },
                     )
                 }
                 composable(Destination.Coach.route) { CoachScreen() }
@@ -495,9 +641,11 @@ fun AppRoot(
                 // The "More" page — the iOS More tab's twin: a navigated ScreenScaffold page hosting the
                 // full grouped destination list (was a pull-up sheet). A row navigates top-level.
                 composable(Destination.More.route) {
-                    MoreScreen(onNavigate = { nav.navigateTopLevel(it) })
+                    MoreScreen(onNavigate = onMoreRow)
                 }
             }
+            } // CompositionLocalProvider
+            } // Row (list pane + NavHost)
             if (isPreviewChannel) {
                 PreviewChannelBand(modifier = Modifier.align(Alignment.TopCenter))
             }
@@ -621,6 +769,11 @@ fun AppRoot(
                     },
                 )
             }
+        }
+
+        // The navigation shortcut editor, opened from the rail's / wide bar's options button.
+        if (showNavShortcuts) {
+            NavShortcutsEditorDialog(onDismiss = { showNavShortcuts = false })
         }
 
         // The full changelog, opened by tapping a release-note row in the inbox. Same full-screen
@@ -800,9 +953,58 @@ private fun PreviewChannelBand(modifier: Modifier = Modifier) {
 // this is just another NavHost destination under the same Scaffold.
 
 /** The full grouped destination list as a navigated page (the iOS More tab's twin). */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MoreScreen(onNavigate: (String) -> Unit) {
+    ScreenScaffold(
+        title = "More",
+        subtitle = "Everything else, one tap away",
+    ) {
+        MoreGroups(selected = null, settingsFocus = null, onNavigate = onNavigate, onSettingsGroup = null)
+    }
+}
+
+/**
+ * The More list as a pane beside the screen it opened (list-detail on a wide window, see AppRoot). Same
+ * groups and rows as the More page, with the open screen highlighted; when that screen is Settings, its
+ * groups appear under it so the pane drives Settings one level down too. Scrolls on its own, so the list
+ * stays put while the screen beside it scrolls.
+ */
+@Composable
+private fun MorePane(
+    current: Destination,
+    settingsFocus: String,
+    onNavigate: (String) -> Unit,
+    onSettingsGroup: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .background(Palette.surfaceBase)
+            .verticalScroll(rememberScrollState())
+            .padding(start = 16.dp, end = 12.dp, top = 20.dp, bottom = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(Metrics.screenRowSpacing),
+    ) {
+        Text("More", style = NoopType.title1, color = Palette.textPrimary)
+        MoreGroups(
+            selected = current,
+            settingsFocus = if (current == Destination.Settings) settingsFocus else null,
+            onNavigate = onNavigate,
+            onSettingsGroup = onSettingsGroup,
+        )
+    }
+}
+
+/** The grouped destination list shared by the More page and the More pane. [selected] highlights the open
+ *  screen (pane only) and keeps its group open; [settingsFocus] non-null lists Settings' groups under the
+ *  Settings row with that one highlighted. Each group is its own child, so the More page's groups flow into
+ *  columns on a wide window. */
+@Composable
+private fun MoreGroups(
+    selected: Destination?,
+    settingsFocus: String?,
+    onNavigate: (String) -> Unit,
+    onSettingsGroup: ((String) -> Unit)?,
+) {
     // S2 parity: each group's open/closed state, seeded from `defaultExpanded` (Insights + Body open,
     // Data + App collapsed). PERSISTED (#860 item 2): the user's open/closed choice must survive leaving
     // and re-entering the More page (and relaunch), not reset to the seed every visit. Backed by
@@ -819,45 +1021,67 @@ private fun MoreScreen(onNavigate: (String) -> Unit) {
             drawerGroups.forEach { put(it.header, stored.contains(it.header)) }
         }
     }
-    ScreenScaffold(
-        title = "More",
-        subtitle = "Everything else, one tap away",
-    ) {
-        // Mirror the iOS More page: each group is a tappable UPPERCASE overline header (with a disclosure
-        // chevron) over a single grouped white NoopCard whose rows are tight (accent icon + title +
-        // chevron) and separated by inset hairlines (NOT loose NavigationDrawerItems on the bare surface).
-        drawerGroups.forEach { group ->
-            val isOpen = expanded[group.header] ?: group.defaultExpanded
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                MoreGroupHeader(
-                    title = stringResource(group.headerRes),
-                    expanded = isOpen,
-                    onToggle = {
-                        expanded[group.header] = !isOpen
-                        // Persist the new open set so the choice survives leaving + re-entering the page
-                        // and relaunch (#860 item 2), mirroring the iOS @AppStorage write.
-                        val open = drawerGroups.map { it.header }.filter { expanded[it] == true }.toSet()
-                        MoreSectionPrefs.write(NoopPrefs.of(context), open)
-                    },
-                )
-                if (isOpen) {
-                    val items = group.items.filter { showSupport || it != Destination.Support }
-                    NoopCard(padding = 0.dp) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            items.forEachIndexed { i, dest ->
-                                MoreRow(dest = dest, onClick = { onNavigate(dest.route) })
-                                if (i < items.lastIndex) {
-                                    HorizontalDivider(
-                                        color = Palette.hairline,
-                                        modifier = Modifier.padding(start = 50.dp),
+    // Mirror the iOS More page: each group is a tappable UPPERCASE overline header (with a disclosure
+    // chevron) over a single grouped white NoopCard whose rows are tight (accent icon + title +
+    // chevron) and separated by inset hairlines (NOT loose NavigationDrawerItems on the bare surface).
+    drawerGroups.forEach { group ->
+        // The group holding the open screen always shows, so its highlighted row is never hidden.
+        val isOpen = (expanded[group.header] ?: group.defaultExpanded) || (selected != null && selected in group.items)
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            MoreGroupHeader(
+                title = stringResource(group.headerRes),
+                expanded = isOpen,
+                onToggle = {
+                    expanded[group.header] = !isOpen
+                    // Persist the new open set so the choice survives leaving + re-entering the page
+                    // and relaunch (#860 item 2), mirroring the iOS @AppStorage write.
+                    val open = drawerGroups.map { it.header }.filter { expanded[it] == true }.toSet()
+                    MoreSectionPrefs.write(NoopPrefs.of(context), open)
+                },
+            )
+            if (isOpen) {
+                val items = group.items.filter { showSupport || it != Destination.Support }
+                NoopCard(padding = 0.dp) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        items.forEachIndexed { i, dest ->
+                            MoreRow(dest = dest, selected = dest == selected, onClick = { onNavigate(dest.route) })
+                            if (dest == Destination.Settings && settingsFocus != null && onSettingsGroup != null) {
+                                settingsGroups.forEach { info ->
+                                    MoreSubRow(
+                                        title = info.title,
+                                        icon = info.icon,
+                                        selected = info.key == settingsFocus,
+                                        onClick = { onSettingsGroup(info.key) },
                                     )
                                 }
+                            }
+                            if (i < items.lastIndex) {
+                                HorizontalDivider(
+                                    color = Palette.hairline,
+                                    modifier = Modifier.padding(start = 50.dp),
+                                )
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** The last screen opened through More, so More on a wide screen reopens it beside the list. */
+internal object MoreLastRoute {
+    private const val KEY = "noop.more.lastRoute"
+
+    fun read(context: android.content.Context): String {
+        val stored = NoopPrefs.of(context).getString(KEY, null)
+        // Only a route that is still in the More groups (Support can be switched off); else the first entry.
+        val valid = drawerGroups.flatMap { it.items }.map { it.route }
+        return stored?.takeIf { it in valid } ?: valid.firstOrNull() ?: Destination.InsightsHub.route
+    }
+
+    fun write(context: android.content.Context, route: String) {
+        NoopPrefs.of(context).edit().putString(KEY, route).apply()
     }
 }
 
@@ -897,22 +1121,53 @@ private fun MoreGroupHeader(title: String, expanded: Boolean, onToggle: () -> Un
 /** One tappable destination row in the More page — accent icon + title + trailing chevron in a
  *  comfortable tap target, mirroring the iOS MoreRow. */
 @Composable
-private fun MoreRow(dest: Destination, onClick: () -> Unit) {
+private fun MoreRow(dest: Destination, selected: Boolean = false, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // The open screen beside the More pane reads as selected: a soft accent wash, accent title.
+            .then(if (selected) Modifier.background(Palette.accent.copy(alpha = 0.12f)) else Modifier)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .semantics { if (selected) stateDescription = "Selected" },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(dest.icon, contentDescription = null, tint = Palette.accent, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(14.dp))
-        Text(stringResource(dest.titleRes), style = NoopType.body, color = Palette.textPrimary, modifier = Modifier.weight(1f))
+        Text(
+            stringResource(dest.titleRes),
+            style = if (selected) NoopType.body.copy(fontWeight = FontWeight.SemiBold) else NoopType.body,
+            color = if (selected) Palette.accent else Palette.textPrimary,
+            modifier = Modifier.weight(1f),
+        )
         Icon(
             Icons.Filled.ChevronRight,
             contentDescription = null,
             tint = Palette.textTertiary,
             modifier = Modifier.size(Metrics.iconSmall),
+        )
+    }
+}
+
+/** One Settings group listed under the Settings row in the More pane (list-detail one level down). */
+@Composable
+private fun MoreSubRow(title: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (selected) Modifier.background(Palette.accent.copy(alpha = 0.12f)) else Modifier)
+            .clickable(onClick = onClick)
+            .padding(start = 50.dp, end = 16.dp, top = 10.dp, bottom = 10.dp)
+            .semantics { if (selected) stateDescription = "Selected" },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = Palette.textSecondary, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(
+            title,
+            style = if (selected) NoopType.subhead.copy(fontWeight = FontWeight.SemiBold) else NoopType.subhead,
+            color = if (selected) Palette.accent else Palette.textSecondary,
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -927,7 +1182,7 @@ private fun MoreRow(dest: Destination, onClick: () -> Unit) {
 // active = gold accent, inactive = textSecondary. All routing is unchanged: the four tabs switch the
 // same destinations.
 
-/** A single bottom-bar nav slot: the destination it switches to, plus the bar-specific icon/label. */
+/** A single navigation slot (bottom bar or side rail): the destination it switches to, plus its icon/label. */
 private data class BarTab(val dest: Destination, val icon: ImageVector, @StringRes val labelRes: Int)
 
 /** The nav slots in iOS order: Today · Trends · Sleep · More.
@@ -941,12 +1196,47 @@ private val barTrailingTabs = listOf(
     BarTab(Destination.Sleep, Icons.Filled.Bedtime, R.string.nav_sleep),
 )
 
+/** The phone bar's tabs, Today · Trends · Sleep (More appended by the bar). Phones always use exactly these. */
+private val phoneNavTabs: List<BarTab> = barLeadingTabs + barTrailingTabs
+
+/** The slot for any destination: the bar's own glyph/label for Today, Trends and Sleep, else the screen's. */
+private fun navTabFor(dest: Destination): BarTab =
+    phoneNavTabs.firstOrNull { it.dest == dest } ?: BarTab(dest, dest.icon, dest.titleRes)
+
+// MARK: - Wide-screen navigation shortcuts
+//
+// A phone bar has room for four tabs; an unfolded foldable or a tablet has room for many more, down the rail or
+// along a wider bar. So on a wide window the navigation shows Today, then the user's own SHORTCUTS (up to
+// AdaptiveLayout.MAX_NAV_SHORTCUTS, default Trends · Sleep · Live · Workouts · Health), then More, which still
+// reaches everything. Shortcuts that don't fit the space (a half-open phone's lower half, a narrow tablet
+// window) simply drop off the end and stay one tap away in More. Picked in the shortcut editor, opened from the
+// navigation's own options button or Settings → Appearance.
+
+/** Screens that can be pinned: Trends, Sleep and every More entry (Today and More are always there). */
+private val navShortcutCandidates: List<Destination> =
+    (listOf(Destination.Trends, Destination.Sleep) + drawerGroups.flatMap { it.items }).distinct()
+
+/** The wide-window tabs (More appended by the bar/rail): Today, then the stored shortcuts in their order. Unknown
+ *  routes are skipped, and Support when the support surfaces are switched off. */
+private fun wideNavTabs(routes: List<String>, showSupport: Boolean): List<BarTab> =
+    listOf(navTabFor(Destination.Today)) +
+        routes.mapNotNull { r -> navShortcutCandidates.firstOrNull { it.route == r } }
+            .filter { showSupport || it != Destination.Support }
+            .map { navTabFor(it) }
+
 @Composable
 private fun GlassBottomBar(
     current: Destination,
+    tabs: List<BarTab>,
+    // True while the More list is open beside the screen: More lights up, not the screen's own shortcut.
+    inMore: Boolean = false,
     onTabSelected: (Destination) -> Unit,
+    // Wide windows only: the navigation options button beside the pill (move to the side, pick shortcuts).
+    options: (@Composable () -> Unit)? = null,
 ) {
     val barShape = RoundedCornerShape(50)
+    // A phone's four tabs keep the original 480dp cap; a wide window's longer list grows the pill to fit.
+    val barMaxWidth = maxOf(480, (tabs.size + 1) * 80 + 16).dp
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -958,6 +1248,11 @@ private fun GlassBottomBar(
             .padding(top = 4.dp, bottom = Metrics.space12),
         contentAlignment = Alignment.Center,
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
         Surface(
             shape = barShape,
             // "Glass": a translucent raised surface — a frosted island, not a hard slab. Compose has no
@@ -967,9 +1262,9 @@ private fun GlassBottomBar(
             tonalElevation = 2.dp,
             shadowElevation = 4.dp,
             modifier = Modifier
-                .fillMaxWidth()
                 // Cap the width so the pill stays a centred floating island on tablets, not a full-bleed bar.
-                .widthIn(max = 480.dp)
+                .weight(1f, fill = false)
+                .widthIn(max = barMaxWidth)
                 .border(0.5.dp, Palette.hairline.copy(alpha = 0.6f), barShape),
         ) {
             Row(
@@ -979,20 +1274,11 @@ private fun GlassBottomBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                barLeadingTabs.forEach { tab ->
+                tabs.forEach { tab ->
                     BarSlot(
                         icon = tab.icon,
                         label = stringResource(tab.labelRes),
-                        active = current == tab.dest,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onTabSelected(tab.dest) },
-                    )
-                }
-                barTrailingTabs.forEach { tab ->
-                    BarSlot(
-                        icon = tab.icon,
-                        label = stringResource(tab.labelRes),
-                        active = current == tab.dest,
+                        active = !inMore && current == tab.dest,
                         modifier = Modifier.weight(1f),
                         onClick = { onTabSelected(tab.dest) },
                     )
@@ -1001,13 +1287,287 @@ private fun GlassBottomBar(
                     icon = Icons.Filled.MoreHoriz,
                     label = stringResource(R.string.nav_more),
                     // Selected on the More page itself, and also kept lit whenever the current screen is
-                    // one reached THROUGH More (i.e. not one of the bar's own three tabs) — so drilling
+                    // one reached THROUGH More (i.e. not one of the bar's own tabs) — so drilling
                     // into any grouped destination still reads as "you're in More", never "nowhere".
-                    active = current != Destination.Today && current != Destination.Trends &&
-                        current != Destination.Sleep,
+                    active = inMore || tabs.none { it.dest == current },
                     modifier = Modifier.weight(1f),
                     onClick = { onTabSelected(Destination.More) },
                 )
+            }
+        }
+        if (options != null) {
+            Spacer(Modifier.width(8.dp))
+            options()
+        }
+        }
+    }
+}
+
+/**
+ * The side navigation rail for wide windows: the same tabs as the wide [GlassBottomBar] — Today, the user's
+ * shortcuts, More — stacked in one vertical glass island on the leading edge. Same translucent raised surface,
+ * hairline rim and soft shadow as the bar, the same [BarSlot]s and the same "More stays lit for anything reached
+ * through More" rule, so switching between the two reads as the bar turning on its side.
+ *
+ * Vertically centred, EXCEPT half-open on a table (tabletop posture): the fold then runs across the middle of the
+ * screen, right through the rail, so the island moves to the LOWER half — below the fold, where the hands are —
+ * and only as many shortcuts as fit there show (the rest stay in More). [options] sits under the tabs.
+ */
+@Composable
+private fun GlassSideRail(
+    current: Destination,
+    tabs: List<BarTab>,
+    // True while the More list is open beside the screen: More lights up, not the screen's own shortcut.
+    inMore: Boolean = false,
+    onTabSelected: (Destination) -> Unit,
+    options: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val railShape = RoundedCornerShape(32.dp)
+    val fold = LocalFoldState.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var topPx by remember { androidx.compose.runtime.mutableIntStateOf(-1) }
+    var heightPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    // Tabletop: skip everything above the fold (plus a physical hinge's gap, if it has one).
+    val skipPx = if (fold.posture == FoldPosture.TABLETOP && heightPx > 0) {
+        FoldPostures.topPaneHeightPx(fold, topPx, heightPx) +
+            (fold.hingeBottomPx - fold.hingeTopPx).coerceAtLeast(0)
+    } else {
+        0
+    }
+    // Before the first measure, show everything; after it, only what fits the rail's (remaining) height.
+    val capacity = if (heightPx > 0) {
+        AdaptiveLayout.railSlotCapacity(with(density) { (heightPx - skipPx).coerceAtLeast(0).toDp() }.value)
+    } else {
+        tabs.size + 1
+    }
+    val shown = AdaptiveLayout.fitNavTabs(tabs, capacity)
+    Column(
+        modifier = modifier
+            .onGloballyPositioned { topPx = it.positionInWindow().y.roundToInt() }
+            .onSizeChanged { heightPx = it.height },
+    ) {
+        if (skipPx > 0) Spacer(Modifier.height(with(density) { skipPx.toDp() }))
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                shape = railShape,
+                color = Palette.surfaceRaised.copy(alpha = 0.80f),
+                tonalElevation = 2.dp,
+                shadowElevation = 4.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(0.5.dp, Palette.hairline.copy(alpha = 0.6f), railShape),
+            ) {
+                Column(
+                    modifier = Modifier
+                        // Scrolls only if the space estimate is ever short, rather than clipping a tab.
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 4.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(AdaptiveLayout.RAIL_SLOT_GAP_DP.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    shown.forEach { tab ->
+                        BarSlot(
+                            icon = tab.icon,
+                            label = stringResource(tab.labelRes),
+                            active = !inMore && current == tab.dest,
+                            modifier = Modifier.fillMaxWidth().height(AdaptiveLayout.RAIL_SLOT_HEIGHT_DP.dp),
+                            onClick = { onTabSelected(tab.dest) },
+                        )
+                    }
+                    BarSlot(
+                        icon = Icons.Filled.MoreHoriz,
+                        label = stringResource(R.string.nav_more),
+                        active = inMore || shown.none { it.dest == current },
+                        modifier = Modifier.fillMaxWidth().height(AdaptiveLayout.RAIL_SLOT_HEIGHT_DP.dp),
+                        onClick = { onTabSelected(Destination.More) },
+                    )
+                    HorizontalDivider(
+                        color = Palette.hairline,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                    options()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The navigation's own options button (wide windows only): a small disc under the rail's tabs, or beside the
+ * bottom bar's pill. Its menu flips the navigation between the side rail and the bottom bar on the spot (the
+ * same switch as Settings → Appearance → Wide-screen navigation) and opens the shortcut editor.
+ */
+@Composable
+private fun NavOptionsButton(railMode: Boolean, onToggleMode: () -> Unit, onChooseShortcuts: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(Palette.surfaceRaised.copy(alpha = 0.80f))
+                .border(0.5.dp, Palette.hairline.copy(alpha = 0.6f), androidx.compose.foundation.shape.CircleShape)
+                .clickable { open = true }
+                .semantics { contentDescription = "Navigation options" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Filled.Tune, contentDescription = null, tint = Palette.textSecondary, modifier = Modifier.size(18.dp))
+        }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            androidx.compose.material3.DropdownMenuItem(
+                text = {
+                    Text(
+                        if (railMode) "Move navigation to the bottom" else "Move navigation to the side",
+                        style = NoopType.body,
+                        color = Palette.textPrimary,
+                    )
+                },
+                onClick = { open = false; onToggleMode() },
+            )
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Choose shortcuts…", style = NoopType.body, color = Palette.textPrimary) },
+                onClick = { open = false; onChooseShortcuts() },
+            )
+        }
+    }
+}
+
+/**
+ * The shortcut editor: every screen that can be pinned, with a switch to show it in the wide-screen navigation
+ * and arrows to order it, like the Today layout editor. Up to [AdaptiveLayout.MAX_NAV_SHORTCUTS]; Today and More
+ * are always there. Opened from the navigation's options button and from Settings → Appearance.
+ */
+@Composable
+internal fun NavShortcutsEditorDialog(onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val showSupport = NoopPrefs.showSupport(context)
+    val candidates = navShortcutCandidates.filter { showSupport || it != Destination.Support }
+    // Pinned ones first in their saved order, then the rest in More's order.
+    val items = remember {
+        val pinned = WideLayoutPrefs.navShortcuts.mapNotNull { r -> candidates.firstOrNull { it.route == r } }
+        androidx.compose.runtime.mutableStateListOf<Pair<Destination, Boolean>>().apply {
+            pinned.forEach { add(it to true) }
+            candidates.filter { it !in pinned }.forEach { add(it to false) }
+        }
+    }
+    val pinnedCount = items.count { it.second }
+    fun move(from: Int, to: Int) {
+        if (from in items.indices && to in items.indices) items.add(to, items.removeAt(from))
+    }
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(color = Palette.surfaceOverlay, shape = RoundedCornerShape(16.dp)) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("Navigation shortcuts", style = NoopType.title2, color = Palette.textPrimary)
+                    Text(
+                        "When the phone is open or on a tablet, these sit in the navigation between Today and More " +
+                            "(up to ${AdaptiveLayout.MAX_NAV_SHORTCUTS}). Order them with the arrows. Anything that " +
+                            "doesn't fit the space stays one tap away in More. A folded phone keeps its four tabs.",
+                        style = NoopType.subhead,
+                        color = Palette.textSecondary,
+                    )
+                }
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    items.forEachIndexed { index, (dest, pinned) ->
+                        val title = stringResource(dest.titleRes)
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            androidx.compose.material3.Switch(
+                                checked = pinned,
+                                onCheckedChange = { items[index] = dest to it },
+                                // Full: a new pin waits until one is switched off.
+                                enabled = pinned || pinnedCount < AdaptiveLayout.MAX_NAV_SHORTCUTS,
+                                colors = androidx.compose.material3.SwitchDefaults.colors(
+                                    checkedThumbColor = Palette.surfaceBase,
+                                    checkedTrackColor = Palette.accent,
+                                    uncheckedThumbColor = Palette.textSecondary,
+                                    uncheckedTrackColor = Palette.surfaceInset,
+                                    uncheckedBorderColor = Palette.hairline,
+                                ),
+                                modifier = Modifier.semantics { contentDescription = "Pin $title" },
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Icon(dest.icon, contentDescription = null, tint = Palette.accent, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                title,
+                                style = NoopType.body,
+                                color = if (pinned) Palette.textPrimary else Palette.textTertiary,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (pinned) {
+                                IconButton(
+                                    onClick = { move(index, index - 1) },
+                                    enabled = index > 0,
+                                    modifier = Modifier.size(Metrics.iconButton),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.KeyboardArrowUp,
+                                        contentDescription = "Move $title up",
+                                        tint = if (index > 0) Palette.textSecondary else Palette.textTertiary,
+                                        modifier = Modifier.size(Metrics.iconSmall),
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { move(index, index + 1) },
+                                    // Only within the pinned block: the unpinned rest has no order to keep.
+                                    enabled = index < pinnedCount - 1,
+                                    modifier = Modifier.size(Metrics.iconButton),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.KeyboardArrowDown,
+                                        contentDescription = "Move $title down",
+                                        tint = if (index < pinnedCount - 1) Palette.textSecondary else Palette.textTertiary,
+                                        modifier = Modifier.size(Metrics.iconSmall),
+                                    )
+                                }
+                            }
+                        }
+                        if (index < items.lastIndex) HorizontalDivider(color = Palette.hairline, thickness = 1.dp)
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            val defaults = AdaptiveLayout.DEFAULT_NAV_SHORTCUTS
+                                .mapNotNull { r -> candidates.firstOrNull { it.route == r } }
+                            items.clear()
+                            defaults.forEach { items.add(it to true) }
+                            candidates.filter { it !in defaults }.forEach { items.add(it to false) }
+                        },
+                        colors = androidx.compose.material3.ButtonDefaults.textButtonColors(
+                            contentColor = Palette.textSecondary,
+                        ),
+                    ) { Text("Reset", style = NoopType.body) }
+                    Spacer(Modifier.weight(1f))
+                    androidx.compose.material3.Button(
+                        onClick = {
+                            // Pinned ones keep the order they sit in, wherever a switch was flipped.
+                            WideLayoutPrefs.setNavShortcuts(context, items.filter { it.second }.map { it.first.route })
+                            onDismiss()
+                        },
+                        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                            containerColor = Palette.accent,
+                            contentColor = Palette.surfaceBase,
+                        ),
+                    ) { Text("Done", style = NoopType.captionNumber) }
+                }
             }
         }
     }
@@ -1035,7 +1595,8 @@ private fun BarSlot(
             .padding(vertical = 3.dp)
             .semantics { contentDescription = label },
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+        // Centred, so a fixed-height rail slot keeps its icon + label in the middle.
+        verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically),
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(Metrics.iconSmall))
         Text(
@@ -1045,6 +1606,9 @@ private fun BarSlot(
                 fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
             ),
             color = tint,
+            // One line: a pinned shortcut's longer name ellipsizes rather than growing the slot.
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
