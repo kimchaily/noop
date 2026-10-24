@@ -25,7 +25,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "8.3.1"
+    const val CURRENT_VERSION = "8.3.2"
 
     data class Release(
         val version: String,
@@ -36,6 +36,18 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "8.3.2",
+            title = "More of the open foldable: side rail, shortcuts, list beside screens, half-open postures",
+            date = "October 2026",
+            items = listOf(
+                "**Navigation down the side.** On an unfolded foldable or a tablet, the tabs move from the bottom bar to a glass rail on the left edge. The options button on the navigation switches between the side rail and the bottom bar on the spot, and Settings → Appearance → Wide-screen navigation does the same. A folded phone keeps its bottom bar.",
+                "**Your own shortcuts.** With the extra room, the navigation carries Today, up to eight screens you pick (Trends, Sleep, Live, Workouts and Health to start), then More for everything else. Choose and order them under \"Choose shortcuts…\" on the navigation or in Settings.",
+                "**The More list stays beside the screen.** Open anything from More and the list stays on the left while the screen fills the right, also as you tap onward inside it. Open a screen from its shortcut or from Today and it gets the full width. With Settings open, its groups appear in the list and Settings shows just the one you pick.",
+                "**Columns per screen.** A small columns button in each screen's header picks One column, Two columns or Automatic for that screen only. Settings → Appearance → Wide screens resets them all in one tap.",
+                "**Half-open on a table.** Live's heart-rate vessel and the Breathe pacer move to the upper half above the fold, the rest scrolls below, and the side rail moves to the lower half so no tab sits on the fold. Standing half-open like a book lines the More list up with the fold.",
+            ),
+        ),
         Release(
             version = "8.3.1",
             title = "Choop fills an unfolded foldable's screen",
