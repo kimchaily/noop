@@ -75,6 +75,9 @@ import kotlin.math.max
 /** Material 3 window width classes. */
 enum class WindowWidthClass { COMPACT, MEDIUM, EXPANDED }
 
+/** Where the navigation sits on a wide window: a rail down the left or right edge, or the bottom bar. */
+enum class NavPlacement(val label: String) { LEFT("Left"), RIGHT("Right"), BOTTOM("Bottom") }
+
 /** How a wide window (an unfolded foldable, a tablet, landscape) lays out a screen's cards. */
 enum class WideLayoutMode(val storageValue: String, val label: String, val shortLabel: String) {
     AUTO("auto", "Automatic", "Auto"),
@@ -120,6 +123,33 @@ object WideLayoutPrefs {
         prefs(ctx).edit().putBoolean(NAV_RAIL_KEY, value).apply()
     }
 
+    private const val RAIL_RIGHT_KEY = "theme.wideNavRailRight"
+
+    /** Wide screens: the side rail on the right edge (left-handed or one-handed use) instead of the left. */
+    var railRight by mutableStateOf(false)
+        private set
+
+    fun setRailRight(ctx: Context, value: Boolean) {
+        railRight = value
+        prefs(ctx).edit().putBoolean(RAIL_RIGHT_KEY, value).apply()
+    }
+
+    /** The wide-screen navigation's placement as one choice (Settings shows it as Left · Right · Bottom). */
+    val placement: NavPlacement
+        get() = when {
+            !navRail -> NavPlacement.BOTTOM
+            railRight -> NavPlacement.RIGHT
+            else -> NavPlacement.LEFT
+        }
+
+    fun setPlacement(ctx: Context, value: NavPlacement) {
+        when (value) {
+            NavPlacement.LEFT -> { setRailRight(ctx, false); setNavRail(ctx, true) }
+            NavPlacement.RIGHT -> { setRailRight(ctx, true); setNavRail(ctx, true) }
+            NavPlacement.BOTTOM -> setNavRail(ctx, false)
+        }
+    }
+
     private const val NAV_SHORTCUTS_KEY = "theme.navShortcuts"
 
     /** Wide screens: the screens pinned in the navigation between Today and More, in order (route ids). The
@@ -154,6 +184,7 @@ object WideLayoutPrefs {
         val p = prefs(ctx)
         mode = WideLayoutMode.fromStorage(p.getString(KEY, WideLayoutMode.AUTO.storageValue))
         navRail = p.getBoolean(NAV_RAIL_KEY, true)
+        railRight = p.getBoolean(RAIL_RIGHT_KEY, false)
         navShortcuts = p.getString(NAV_SHORTCUTS_KEY, null)?.let { AdaptiveLayout.decodeNavShortcuts(it) }
             ?: AdaptiveLayout.DEFAULT_NAV_SHORTCUTS
         compactShortcuts = p.getString(COMPACT_SHORTCUTS_KEY, null)

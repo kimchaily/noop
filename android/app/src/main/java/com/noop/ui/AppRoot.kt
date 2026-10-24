@@ -341,6 +341,8 @@ fun AppRoot(
     // off everything beside it, so the list pane and the screens count their space from what is left.
     val useRail = AdaptiveLayout.usesNavRail(windowWidthDp, WideLayoutPrefs.navRail)
     val railWidthDp = if (useRail) AdaptiveLayout.RAIL_WIDTH_DP else 0
+    // The rail sits on the left edge, or the right one if the user moved it there (left-handed / one-handed).
+    val railRight = WideLayoutPrefs.railRight
     val listDetail = AdaptiveLayout.usesListDetail(windowWidthDp - railWidthDp)
     // SHORTCUTS: a wide window's navigation (rail or bar) carries Today, the user's pinned screens, then More;
     // a phone keeps Today · Trends · Sleep · More.
@@ -356,7 +358,9 @@ fun AppRoot(
     val navOptions: @Composable () -> Unit = {
         NavOptionsButton(
             railMode = useRail,
+            railRight = railRight,
             onToggleMode = { WideLayoutPrefs.setNavRail(context, !WideLayoutPrefs.navRail) },
+            onToggleSide = { WideLayoutPrefs.setRailRight(context, !WideLayoutPrefs.railRight) },
             onChooseShortcuts = { showNavShortcuts = true },
         )
     }
@@ -390,7 +394,8 @@ fun AppRoot(
     val density = androidx.compose.ui.platform.LocalDensity.current
     val paneWidthDp = AdaptiveLayout.listPaneWidthDp(
         if (fold.posture == FoldPosture.BOOK) {
-            with(density) { fold.hingeLeftPx.toDp().value.toInt() } - railWidthDp
+            // Measured from the pane's left edge: only a LEFT rail sits between the window edge and the pane.
+            with(density) { fold.hingeLeftPx.toDp().value.toInt() } - (if (railRight) 0 else railWidthDp)
         } else {
             null
         },
@@ -446,7 +451,7 @@ fun AppRoot(
                     .padding(inner)
                     .then(if (isPreviewChannel) Modifier.padding(top = PreviewBandContentHeight) else Modifier),
             ) {
-            if (useRail) {
+            if (useRail && !railRight) {
                 GlassSideRail(
                     current = current,
                     tabs = wideTabs,
@@ -659,6 +664,20 @@ fun AppRoot(
                 }
             }
             } // CompositionLocalProvider
+            // A rail moved to the right edge comes after the screen (the More list stays on the left).
+            if (useRail && railRight) {
+                GlassSideRail(
+                    current = current,
+                    tabs = wideTabs,
+                    inMore = showMorePane,
+                    onTabSelected = onNavTab,
+                    options = navOptions,
+                    onRight = true,
+                    modifier = Modifier
+                        .width(AdaptiveLayout.RAIL_WIDTH_DP.dp)
+                        .fillMaxHeight(),
+                )
+            }
             } // Row (list pane + NavHost)
             if (isPreviewChannel) {
                 PreviewChannelBand(modifier = Modifier.align(Alignment.TopCenter))
@@ -1335,6 +1354,8 @@ private fun GlassSideRail(
     inMore: Boolean = false,
     onTabSelected: (Destination) -> Unit,
     options: @Composable () -> Unit,
+    // On the right edge the margins mirror, so the island keeps the same gap to the screen beside it.
+    onRight: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val railShape = RoundedCornerShape(32.dp)
@@ -1366,7 +1387,12 @@ private fun GlassSideRail(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(start = 12.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+                .padding(
+                    start = if (onRight) 8.dp else 12.dp,
+                    end = if (onRight) 12.dp else 8.dp,
+                    top = 12.dp,
+                    bottom = 12.dp,
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Surface(
@@ -1415,11 +1441,18 @@ private fun GlassSideRail(
 
 /**
  * The navigation's own options button (wide windows only): a small disc under the rail's tabs, or beside the
- * bottom bar's pill. Its menu flips the navigation between the side rail and the bottom bar on the spot (the
- * same switch as Settings → Appearance → Wide-screen navigation) and opens the shortcut editor.
+ * bottom bar's pill. Its menu flips the navigation between the side rail and the bottom bar on the spot, moves
+ * the rail to the other edge (the same choices as Settings → Appearance → Wide-screen navigation) and opens the
+ * shortcut editor.
  */
 @Composable
-private fun NavOptionsButton(railMode: Boolean, onToggleMode: () -> Unit, onChooseShortcuts: () -> Unit) {
+private fun NavOptionsButton(
+    railMode: Boolean,
+    railRight: Boolean,
+    onToggleMode: () -> Unit,
+    onToggleSide: () -> Unit,
+    onChooseShortcuts: () -> Unit,
+) {
     var open by remember { mutableStateOf(false) }
     Box {
         Box(
@@ -1445,6 +1478,19 @@ private fun NavOptionsButton(railMode: Boolean, onToggleMode: () -> Unit, onChoo
                 },
                 onClick = { open = false; onToggleMode() },
             )
+            // The rail can sit on either edge (left-handed / one-handed use).
+            if (railMode) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = {
+                        Text(
+                            if (railRight) "Move navigation to the left edge" else "Move navigation to the right edge",
+                            style = NoopType.body,
+                            color = Palette.textPrimary,
+                        )
+                    },
+                    onClick = { open = false; onToggleSide() },
+                )
+            }
             androidx.compose.material3.DropdownMenuItem(
                 text = { Text("Choose shortcuts…", style = NoopType.body, color = Palette.textPrimary) },
                 onClick = { open = false; onChooseShortcuts() },
