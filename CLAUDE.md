@@ -16,6 +16,7 @@ This fork ships an Android app in **two channels that install side by side**:
    - Versioning is automatic and always strictly newer: `<highest published base>.<run number>`. Never hand-pick a preview version.
 3. **User tests the preview.** They update in-app (or import a `.noopbak` if it's a fresh install). **Wait for the user's explicit OK.**
 4. **Only then: merge + stable.** Once the user confirms the preview is good, merge the branch into `main` and cut a **stable** release on `main` (`mode = release-auto`, or push a `vX.Y.Z` tag — a tag WITHOUT `-pre` is the stable channel). Only now do stable users get it.
+   - **Which bump:** a release that adds user-facing features is a **minor** bump (`bump = minor`, e.g. 8.3.2 → 8.4.0); a release that only fixes things is a **patch** (`bump = patch`). Decided by the user (2026-10).
 
 **Release notes are generated, not hand-written.** `android/tools/release-notes.py` writes them into **both** `AppChangelog.kt` (compiled into the APK → the Updates inbox row and Settings → About → What's new) **and** the GitHub release body (→ what "Check for updates" shows), so the three surfaces can't drift.
 

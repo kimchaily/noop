@@ -123,6 +123,25 @@ class AdaptiveLayoutTest {
     }
 
     @Test
+    fun foldedPhoneBarKeepsItsClassicTabsAndFitsFiveSlots() {
+        // Untouched, a folded phone's bar is still Today · Trends · Sleep · More.
+        assertEquals(listOf("trends", "sleep"), AdaptiveLayout.DEFAULT_COMPACT_NAV_SHORTCUTS)
+        // At most three shortcuts there (Material's five-slot bottom-bar ceiling).
+        assertEquals(
+            listOf("live", "sleep", "health"),
+            AdaptiveLayout.decodeNavShortcuts("live,sleep,health,workouts", max = AdaptiveLayout.MAX_COMPACT_NAV_SHORTCUTS),
+        )
+        // No options button beside a phone bar: a 411dp cover screen fits five slots, a 360dp phone four.
+        assertEquals(5, AdaptiveLayout.barSlotCapacity(411f, withOptions = false))
+        assertEquals(4, AdaptiveLayout.barSlotCapacity(360f, withOptions = false))
+    }
+
+    @Test
+    fun navPlacementOffersLeftRightAndBottom() {
+        assertEquals(listOf("Left", "Right", "Bottom"), NavPlacement.entries.map { it.label })
+    }
+
+    @Test
     fun listDetailFromUnfoldedFoldablesUp() {
         assertFalse(AdaptiveLayout.usesListDetail(411))  // phone / cover screen
         assertFalse(AdaptiveLayout.usesListDetail(700))  // Pixel Fold held upright

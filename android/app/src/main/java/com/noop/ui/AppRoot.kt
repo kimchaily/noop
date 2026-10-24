@@ -3,7 +3,16 @@ package com.noop.ui
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -341,16 +350,31 @@ fun AppRoot(
     // off everything beside it, so the list pane and the screens count their space from what is left.
     val useRail = AdaptiveLayout.usesNavRail(windowWidthDp, WideLayoutPrefs.navRail)
     val railWidthDp = if (useRail) AdaptiveLayout.RAIL_WIDTH_DP else 0
+    // The rail sits on the left edge, or the right one if the user moved it there (left-handed / one-handed).
+    val railRight = WideLayoutPrefs.railRight
+    val leftRailDp = if (useRail && !railRight) railWidthDp else 0
+    val rightRailDp = if (useRail && railRight) railWidthDp else 0
+    // Switching between rail and bar (or the rail's edge) slides the navigation in and out on the calm nav
+    // easing; with Reduce Motion it simply swaps.
+    val reduceMotion = rememberReduceMotion()
     val listDetail = AdaptiveLayout.usesListDetail(windowWidthDp - railWidthDp)
     // SHORTCUTS: a wide window's navigation (rail or bar) carries Today, the user's pinned screens, then More;
     // a phone keeps Today · Trends · Sleep · More.
     val wideNav = AdaptiveLayout.usesWideNav(windowWidthDp)
-    val wideTabs = wideNavTabs(WideLayoutPrefs.navShortcuts, NoopPrefs.showSupport(context))
+    val showSupportNav = NoopPrefs.showSupport(context)
+    val wideTabs = navTabsFor(WideLayoutPrefs.navShortcuts, showSupportNav)
+    // The phone / folded bar has its own shortcut list (default Trends · Sleep), as many as fit the width.
+    val phoneTabs = AdaptiveLayout.fitNavTabs(
+        navTabsFor(WideLayoutPrefs.compactShortcuts, showSupportNav),
+        AdaptiveLayout.barSlotCapacity(windowWidthDp.toFloat(), withOptions = false),
+    )
     var showNavShortcuts by remember { mutableStateOf(false) }
     val navOptions: @Composable () -> Unit = {
         NavOptionsButton(
             railMode = useRail,
+            railRight = railRight,
             onToggleMode = { WideLayoutPrefs.setNavRail(context, !WideLayoutPrefs.navRail) },
+            onToggleSide = { WideLayoutPrefs.setRailRight(context, !WideLayoutPrefs.railRight) },
             onChooseShortcuts = { showNavShortcuts = true },
         )
     }
@@ -366,17 +390,26 @@ fun AppRoot(
         openedFromMore = dest == Destination.More
         if (dest.route != currentRoute) nav.navigateTopLevel(dest.route)
     }
+    // Opening a screen from a link (a row in the More list, a button on a screen). Inside the More context it is
+    // PUSHED, so Back returns to the screen it came from — the previous More entry, or the More page on a phone —
+    // instead of jumping to Today. Outside it (from Today, from a shortcut) it switches top-level, as before.
+    val openLinked: (String) -> Unit = { route ->
+        if (route != currentRoute) {
+            if (openedFromMore) nav.navigate(route) { launchSingleTop = true } else nav.navigateTopLevel(route)
+        }
+    }
     // A row in the More list (the pane or the More page): always opens beside the list on a wide window.
     val onMoreRow: (String) -> Unit = { route ->
         openedFromMore = true
-        if (route != currentRoute) nav.navigateTopLevel(route)
+        openLinked(route)
     }
     // Standing half-open like a book (FoldPosture.kt), the list fills the left half up to the fold.
     val fold = LocalFoldState.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     val paneWidthDp = AdaptiveLayout.listPaneWidthDp(
         if (fold.posture == FoldPosture.BOOK) {
-            with(density) { fold.hingeLeftPx.toDp().value.toInt() } - railWidthDp
+            // Measured from the pane's left edge: only a LEFT rail sits between the window edge and the pane.
+            with(density) { fold.hingeLeftPx.toDp().value.toInt() } - (if (railRight) 0 else railWidthDp)
         } else {
             null
         },
@@ -403,14 +436,21 @@ fun AppRoot(
                 // its own page (mirroring the iOS More tab) that reaches every grouped destination, so no
                 // destination is lost without the drawer. On a wide window the same tabs live in the side
                 // rail instead (below), so the bar steps aside.
-                if (!useRail) {
+                AnimatedVisibility(
+                    visible = !useRail,
+                    enter = if (reduceMotion) EnterTransition.None
+                    else expandVertically(navSizeSpec, expandFrom = Alignment.Top) + fadeIn(navFadeSpec),
+                    exit = if (reduceMotion) ExitTransition.None
+                    else shrinkVertically(navSizeSpec, shrinkTowards = Alignment.Top) + fadeOut(navFadeSpec),
+                    label = "bottomBar",
+                ) {
                     GlassBottomBar(
                         current = current,
                         // A wide bar carries the shortcuts that fit its width; a phone keeps its four tabs.
                         tabs = if (wideNav) {
                             AdaptiveLayout.fitNavTabs(wideTabs, AdaptiveLayout.barSlotCapacity(windowWidthDp.toFloat()))
                         } else {
-                            phoneNavTabs
+                            phoneTabs
                         },
                         inMore = showMorePane,
                         onTabSelected = onNavTab,
@@ -432,18 +472,6 @@ fun AppRoot(
                     .padding(inner)
                     .then(if (isPreviewChannel) Modifier.padding(top = PreviewBandContentHeight) else Modifier),
             ) {
-            if (useRail) {
-                GlassSideRail(
-                    current = current,
-                    tabs = wideTabs,
-                    inMore = showMorePane,
-                    onTabSelected = onNavTab,
-                    options = navOptions,
-                    modifier = Modifier
-                        .width(AdaptiveLayout.RAIL_WIDTH_DP.dp)
-                        .fillMaxHeight(),
-                )
-            }
             if (showMorePane) {
                 MorePane(
                     current = current,
@@ -452,10 +480,13 @@ fun AppRoot(
                     onSettingsGroup = { key ->
                         settingsFocus = key
                         openedFromMore = true
-                        if (current != Destination.Settings) nav.navigateTopLevel(Destination.Settings.route)
+                        if (current != Destination.Settings) openLinked(Destination.Settings.route)
                     },
+                    // Under a left rail the pane's own background runs to the window edge (the rail floats over
+                    // it); its list starts clear of the rail.
+                    startInset = leftRailDp.dp,
                     modifier = Modifier
-                        .width(paneWidthDp.dp)
+                        .width((paneWidthDp + leftRailDp).dp)
                         .fillMaxHeight(),
                 )
                 Box(
@@ -476,6 +507,13 @@ fun AppRoot(
                         null
                     },
                 LocalSettingsFocus provides if (showMorePane) settingsFocus else null,
+                // The rail floats over the screen's edge, so the screen's background reaches the window edge
+                // behind it; the screen keeps its content clear by this much (the More pane already does on
+                // the left when it is open).
+                LocalNavRailInsets provides NavRailInsets(
+                    start = (if (showMorePane) 0 else leftRailDp).dp,
+                    end = rightRailDp.dp,
+                ),
             ) {
             NavHost(
                 navController = nav,
@@ -537,27 +575,27 @@ fun AppRoot(
                 composable(Destination.Live.route) {
                     LiveScreen(
                         viewModel = viewModel,
-                        onManageDevices = { nav.navigateTopLevel(Destination.Devices.route) },
+                        onManageDevices = { openLinked(Destination.Devices.route) },
                     )
                 }
                 composable(Destination.Sleep.route) {
                     SleepScreen(
                         vm = viewModel,
-                        onOpenJournal = { nav.navigateTopLevel(Destination.Insights.route) },
+                        onOpenJournal = { openLinked(Destination.Insights.route) },
                     )
                 }
                 composable(Destination.CoupledView.route) {
                     CoupledScreen(
                         vm = viewModel,
                         // Tapping Sleep in the coupled read opens the full Sleep screen (iOS parity).
-                        onOpenSleep = { nav.navigateTopLevel(Destination.Sleep.route) },
+                        onOpenSleep = { openLinked(Destination.Sleep.route) },
                     )
                 }
                 composable(Destination.Intervals.route) { IntervalsScreen(viewModel) }
                 composable(Destination.Breathe.route) {
                     BreatheScreen(
                         viewModel,
-                        onOpenWimHof = { nav.navigateTopLevel(Destination.WimHof.route) },
+                        onOpenWimHof = { openLinked(Destination.WimHof.route) },
                     )
                 }
                 composable(Destination.WimHof.route) {
@@ -568,7 +606,7 @@ fun AppRoot(
                         onOpenSettings = {
                             // On a wide screen, land on the Wim Hof group beside the list.
                             settingsFocus = "wimhof"
-                            nav.navigateTopLevel(Destination.Settings.route)
+                            openLinked(Destination.Settings.route)
                         },
                     )
                 }
@@ -584,18 +622,18 @@ fun AppRoot(
                 composable(Destination.Stress.route) {
                     StressScreen(
                         vm = viewModel,
-                        onBreathe = { nav.navigateTopLevel(Destination.Breathe.route) },
+                        onBreathe = { openLinked(Destination.Breathe.route) },
                     )
                 }
                 composable(Destination.Trends.route) { TrendsScreen(viewModel) }
-                composable(Destination.Insights.route) { InsightsScreen(viewModel, onOpenInsightsHub = { nav.navigateTopLevel(Destination.InsightsHub.route) }) }
+                composable(Destination.Insights.route) { InsightsScreen(viewModel, onOpenInsightsHub = { openLinked(Destination.InsightsHub.route) }) }
                 composable(Destination.Compare.route) { CompareScreen(viewModel) }
                 composable(Destination.Health.route) {
                     HealthScreen(
                         vm = viewModel,
                         onVitalClick = { nav.navigate("vital_detail/$it") },
-                        onOpenLabBook = { nav.navigateTopLevel(Destination.LabBook.route) },
-                        onOpenFusedRecord = { nav.navigateTopLevel(Destination.FusedRecord.route) },
+                        onOpenLabBook = { openLinked(Destination.LabBook.route) },
+                        onOpenFusedRecord = { openLinked(Destination.FusedRecord.route) },
                     )
                 }
                 composable(Destination.Hydration.route) { HydrationScreen(viewModel) }
@@ -625,7 +663,7 @@ fun AppRoot(
                 composable(Destination.Devices.route) {
                     DevicesScreen(
                         viewModel,
-                        onUseFileImport = { nav.navigateTopLevel(Destination.DataSources.route) },
+                        onUseFileImport = { openLinked(Destination.DataSources.route) },
                     )
                 }
                 composable(Destination.DataSources.route) { DataSourcesScreen(viewModel) }
@@ -635,7 +673,7 @@ fun AppRoot(
                     SettingsScreen(viewModel, onOpenTestCentre = { nav.navigate(Destination.TestCentre.route) })
                 }
                 composable(Destination.Profile.route) {
-                    ProfileScreen(viewModel, onOpenSettings = { nav.navigateTopLevel(Destination.Settings.route) })
+                    ProfileScreen(viewModel, onOpenSettings = { openLinked(Destination.Settings.route) })
                 }
                 composable(Destination.TestCentre.route) { TestCentreScreen(viewModel) }
                 // The "More" page — the iOS More tab's twin: a navigated ScreenScaffold page hosting the
@@ -646,6 +684,37 @@ fun AppRoot(
             }
             } // CompositionLocalProvider
             } // Row (list pane + NavHost)
+            // The side rail FLOATS over the screen's edge (left, or right if moved there) rather than taking a column
+            // of its own, so the screen's background — Today's sky gradient, the canvas — runs all the way to the
+            // window edge behind the translucent glass island. Screens keep their content clear of it through
+            // LocalNavRailInsets (above). It slides in from / out to its edge when the navigation moves.
+            for (onRight in listOf(false, true)) {
+                AnimatedVisibility(
+                    visible = useRail && railRight == onRight,
+                    modifier = Modifier
+                        .align(if (onRight) Alignment.CenterEnd else Alignment.CenterStart)
+                        .fillMaxHeight()
+                        .padding(inner)
+                        .then(if (isPreviewChannel) Modifier.padding(top = PreviewBandContentHeight) else Modifier),
+                    enter = if (reduceMotion) EnterTransition.None
+                    else slideInHorizontally(navOffsetSpec) { w -> if (onRight) w else -w } + fadeIn(navFadeSpec),
+                    exit = if (reduceMotion) ExitTransition.None
+                    else slideOutHorizontally(navOffsetSpec) { w -> if (onRight) w else -w } + fadeOut(navFadeSpec),
+                    label = if (onRight) "railRight" else "railLeft",
+                ) {
+                    GlassSideRail(
+                        current = current,
+                        tabs = wideTabs,
+                        inMore = showMorePane,
+                        onTabSelected = onNavTab,
+                        options = navOptions,
+                        onRight = onRight,
+                        modifier = Modifier
+                            .width(AdaptiveLayout.RAIL_WIDTH_DP.dp)
+                            .fillMaxHeight(),
+                    )
+                }
+            }
             if (isPreviewChannel) {
                 PreviewChannelBand(modifier = Modifier.align(Alignment.TopCenter))
             }
@@ -773,7 +842,7 @@ fun AppRoot(
 
         // The navigation shortcut editor, opened from the rail's / wide bar's options button.
         if (showNavShortcuts) {
-            NavShortcutsEditorDialog(onDismiss = { showNavShortcuts = false })
+            NavShortcutsEditorDialog(folded = !wideNav, onDismiss = { showNavShortcuts = false })
         }
 
         // The full changelog, opened by tapping a release-note row in the inbox. Same full-screen
@@ -975,13 +1044,15 @@ private fun MorePane(
     settingsFocus: String,
     onNavigate: (String) -> Unit,
     onSettingsGroup: (String) -> Unit,
+    // Room kept clear for a rail floating over the pane's left edge (its background still runs under it).
+    startInset: Dp = 0.dp,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier = modifier
             .background(Palette.surfaceBase)
             .verticalScroll(rememberScrollState())
-            .padding(start = 16.dp, end = 12.dp, top = 20.dp, bottom = 20.dp),
+            .padding(start = 16.dp + startInset, end = 12.dp, top = 20.dp, bottom = 20.dp),
         verticalArrangement = Arrangement.spacedBy(Metrics.screenRowSpacing),
     ) {
         Text("More", style = NoopType.title1, color = Palette.textPrimary)
@@ -1216,9 +1287,9 @@ private fun navTabFor(dest: Destination): BarTab =
 private val navShortcutCandidates: List<Destination> =
     (listOf(Destination.Trends, Destination.Sleep) + drawerGroups.flatMap { it.items }).distinct()
 
-/** The wide-window tabs (More appended by the bar/rail): Today, then the stored shortcuts in their order. Unknown
+/** A navigation's tabs (More appended by the bar/rail): Today, then the stored shortcuts in their order. Unknown
  *  routes are skipped, and Support when the support surfaces are switched off. */
-private fun wideNavTabs(routes: List<String>, showSupport: Boolean): List<BarTab> =
+private fun navTabsFor(routes: List<String>, showSupport: Boolean): List<BarTab> =
     listOf(navTabFor(Destination.Today)) +
         routes.mapNotNull { r -> navShortcutCandidates.firstOrNull { it.route == r } }
             .filter { showSupport || it != Destination.Support }
@@ -1321,6 +1392,8 @@ private fun GlassSideRail(
     inMore: Boolean = false,
     onTabSelected: (Destination) -> Unit,
     options: @Composable () -> Unit,
+    // On the right edge the margins mirror, so the island keeps the same gap to the screen beside it.
+    onRight: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val railShape = RoundedCornerShape(32.dp)
@@ -1352,7 +1425,12 @@ private fun GlassSideRail(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(start = 12.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
+                .padding(
+                    start = if (onRight) 8.dp else 12.dp,
+                    end = if (onRight) 12.dp else 8.dp,
+                    top = 12.dp,
+                    bottom = 12.dp,
+                ),
             contentAlignment = Alignment.Center,
         ) {
             Surface(
@@ -1401,11 +1479,18 @@ private fun GlassSideRail(
 
 /**
  * The navigation's own options button (wide windows only): a small disc under the rail's tabs, or beside the
- * bottom bar's pill. Its menu flips the navigation between the side rail and the bottom bar on the spot (the
- * same switch as Settings → Appearance → Wide-screen navigation) and opens the shortcut editor.
+ * bottom bar's pill. Its menu flips the navigation between the side rail and the bottom bar on the spot, moves
+ * the rail to the other edge (the same choices as Settings → Appearance → Wide-screen navigation) and opens the
+ * shortcut editor.
  */
 @Composable
-private fun NavOptionsButton(railMode: Boolean, onToggleMode: () -> Unit, onChooseShortcuts: () -> Unit) {
+private fun NavOptionsButton(
+    railMode: Boolean,
+    railRight: Boolean,
+    onToggleMode: () -> Unit,
+    onToggleSide: () -> Unit,
+    onChooseShortcuts: () -> Unit,
+) {
     var open by remember { mutableStateOf(false) }
     Box {
         Box(
@@ -1431,6 +1516,19 @@ private fun NavOptionsButton(railMode: Boolean, onToggleMode: () -> Unit, onChoo
                 },
                 onClick = { open = false; onToggleMode() },
             )
+            // The rail can sit on either edge (left-handed / one-handed use).
+            if (railMode) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = {
+                        Text(
+                            if (railRight) "Move navigation to the left edge" else "Move navigation to the right edge",
+                            style = NoopType.body,
+                            color = Palette.textPrimary,
+                        )
+                    },
+                    onClick = { open = false; onToggleSide() },
+                )
+            }
             androidx.compose.material3.DropdownMenuItem(
                 text = { Text("Choose shortcuts…", style = NoopType.body, color = Palette.textPrimary) },
                 onClick = { open = false; onChooseShortcuts() },
@@ -1440,23 +1538,29 @@ private fun NavOptionsButton(railMode: Boolean, onToggleMode: () -> Unit, onChoo
 }
 
 /**
- * The shortcut editor: every screen that can be pinned, with a switch to show it in the wide-screen navigation
- * and arrows to order it, like the Today layout editor. Up to [AdaptiveLayout.MAX_NAV_SHORTCUTS]; Today and More
- * are always there. Opened from the navigation's options button and from Settings → Appearance.
+ * The shortcut editor: every screen that can be pinned, with a switch to show it in the navigation and arrows to
+ * order it, like the Today layout editor. Two lists, picked at the top: FOLDED (the phone bottom bar, up to
+ * [AdaptiveLayout.MAX_COMPACT_NAV_SHORTCUTS]) and OPEN (an unfolded phone or a tablet, rail or wide bar, up to
+ * [AdaptiveLayout.MAX_NAV_SHORTCUTS]). Today and More are always there. [folded] picks the list it opens on.
+ * Opened from the navigation's options button and from Settings → Appearance.
  */
 @Composable
-internal fun NavShortcutsEditorDialog(onDismiss: () -> Unit) {
+internal fun NavShortcutsEditorDialog(folded: Boolean, onDismiss: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val showSupport = NoopPrefs.showSupport(context)
     val candidates = navShortcutCandidates.filter { showSupport || it != Destination.Support }
     // Pinned ones first in their saved order, then the rest in More's order.
-    val items = remember {
-        val pinned = WideLayoutPrefs.navShortcuts.mapNotNull { r -> candidates.firstOrNull { it.route == r } }
+    fun editable(routes: List<String>) =
         androidx.compose.runtime.mutableStateListOf<Pair<Destination, Boolean>>().apply {
+            val pinned = routes.mapNotNull { r -> candidates.firstOrNull { it.route == r } }
             pinned.forEach { add(it to true) }
             candidates.filter { it !in pinned }.forEach { add(it to false) }
         }
-    }
+    val foldedItems = remember { editable(WideLayoutPrefs.compactShortcuts) }
+    val openItems = remember { editable(WideLayoutPrefs.navShortcuts) }
+    var editingFolded by remember { mutableStateOf(folded) }
+    val items = if (editingFolded) foldedItems else openItems
+    val max = if (editingFolded) AdaptiveLayout.MAX_COMPACT_NAV_SHORTCUTS else AdaptiveLayout.MAX_NAV_SHORTCUTS
     val pinnedCount = items.count { it.second }
     fun move(from: Int, to: Int) {
         if (from in items.indices && to in items.indices) items.add(to, items.removeAt(from))
@@ -1470,16 +1574,27 @@ internal fun NavShortcutsEditorDialog(onDismiss: () -> Unit) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Navigation shortcuts", style = NoopType.title2, color = Palette.textPrimary)
                     Text(
-                        "When the phone is open or on a tablet, these sit in the navigation between Today and More " +
-                            "(up to ${AdaptiveLayout.MAX_NAV_SHORTCUTS}). Order them with the arrows. Anything that " +
-                            "doesn't fit the space stays one tap away in More. A folded phone keeps its four tabs.",
+                        if (editingFolded) {
+                            "The bottom bar of a folded phone (or any phone): up to $max screens between Today and " +
+                                "More. Order them with the arrows."
+                        } else {
+                            "When the phone is open or on a tablet, these sit in the navigation between Today and " +
+                                "More (up to $max). Order them with the arrows. Anything that doesn't fit the space " +
+                                "stays one tap away in More."
+                        },
                         style = NoopType.subhead,
                         color = Palette.textSecondary,
                     )
                 }
+                SegmentedPillControl(
+                    items = listOf(true, false),
+                    selection = editingFolded,
+                    label = { if (it) "Folded" else "Open" },
+                    onSelect = { editingFolded = it },
+                )
                 Column(
                     modifier = Modifier
-                        .heightIn(max = 420.dp)
+                        .heightIn(max = 400.dp)
                         .verticalScroll(rememberScrollState()),
                 ) {
                     items.forEachIndexed { index, (dest, pinned) ->
@@ -1492,7 +1607,7 @@ internal fun NavShortcutsEditorDialog(onDismiss: () -> Unit) {
                                 checked = pinned,
                                 onCheckedChange = { items[index] = dest to it },
                                 // Full: a new pin waits until one is switched off.
-                                enabled = pinned || pinnedCount < AdaptiveLayout.MAX_NAV_SHORTCUTS,
+                                enabled = pinned || pinnedCount < max,
                                 colors = androidx.compose.material3.SwitchDefaults.colors(
                                     checkedThumbColor = Palette.surfaceBase,
                                     checkedTrackColor = Palette.accent,
@@ -1545,8 +1660,11 @@ internal fun NavShortcutsEditorDialog(onDismiss: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     androidx.compose.material3.TextButton(
                         onClick = {
-                            val defaults = AdaptiveLayout.DEFAULT_NAV_SHORTCUTS
-                                .mapNotNull { r -> candidates.firstOrNull { it.route == r } }
+                            // Resets the list on screen only (Folded or Open), to its own defaults.
+                            val defaults = (
+                                if (editingFolded) AdaptiveLayout.DEFAULT_COMPACT_NAV_SHORTCUTS
+                                else AdaptiveLayout.DEFAULT_NAV_SHORTCUTS
+                                ).mapNotNull { r -> candidates.firstOrNull { it.route == r } }
                             items.clear()
                             defaults.forEach { items.add(it to true) }
                             candidates.filter { it !in defaults }.forEach { items.add(it to false) }
@@ -1558,8 +1676,12 @@ internal fun NavShortcutsEditorDialog(onDismiss: () -> Unit) {
                     Spacer(Modifier.weight(1f))
                     androidx.compose.material3.Button(
                         onClick = {
-                            // Pinned ones keep the order they sit in, wherever a switch was flipped.
-                            WideLayoutPrefs.setNavShortcuts(context, items.filter { it.second }.map { it.first.route })
+                            // Both lists are saved: pinned ones keep the order they sit in.
+                            WideLayoutPrefs.setCompactShortcuts(
+                                context,
+                                foldedItems.filter { it.second }.map { it.first.route },
+                            )
+                            WideLayoutPrefs.setNavShortcuts(context, openItems.filter { it.second }.map { it.first.route })
                             onDismiss()
                         },
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(
@@ -1636,6 +1758,12 @@ private val NavEasing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)
 
 /** ~240ms crossfade on the calm easing — the README "Tab crossfade" between roots. */
 private val navFadeSpec = tween<Float>(durationMillis = 240, easing = NavEasing)
+
+/** The same 240ms calm easing for the navigation sliding in/out when it moves between rail and bar. */
+private val navSizeSpec = tween<IntSize>(durationMillis = 240, easing = NavEasing)
+
+/** …and for the floating rail sliding in from / out to its edge. */
+private val navOffsetSpec = tween<IntOffset>(durationMillis = 240, easing = NavEasing)
 
 /**
  * BrandMark — the Choop logo glyph at a small in-app size: an OPEN recovery ring (≈80%

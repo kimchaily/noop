@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.staggeredgrid.LazyStaggeredGridScope
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridItemSpan
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -75,6 +76,9 @@ import kotlin.math.max
 /** Material 3 window width classes. */
 enum class WindowWidthClass { COMPACT, MEDIUM, EXPANDED }
 
+/** Where the navigation sits on a wide window: a rail down the left or right edge, or the bottom bar. */
+enum class NavPlacement(val label: String) { LEFT("Left"), RIGHT("Right"), BOTTOM("Bottom") }
+
 /** How a wide window (an unfolded foldable, a tablet, landscape) lays out a screen's cards. */
 enum class WideLayoutMode(val storageValue: String, val label: String, val shortLabel: String) {
     AUTO("auto", "Automatic", "Auto"),
@@ -120,6 +124,33 @@ object WideLayoutPrefs {
         prefs(ctx).edit().putBoolean(NAV_RAIL_KEY, value).apply()
     }
 
+    private const val RAIL_RIGHT_KEY = "theme.wideNavRailRight"
+
+    /** Wide screens: the side rail on the right edge (left-handed or one-handed use) instead of the left. */
+    var railRight by mutableStateOf(false)
+        private set
+
+    fun setRailRight(ctx: Context, value: Boolean) {
+        railRight = value
+        prefs(ctx).edit().putBoolean(RAIL_RIGHT_KEY, value).apply()
+    }
+
+    /** The wide-screen navigation's placement as one choice (Settings shows it as Left · Right · Bottom). */
+    val placement: NavPlacement
+        get() = when {
+            !navRail -> NavPlacement.BOTTOM
+            railRight -> NavPlacement.RIGHT
+            else -> NavPlacement.LEFT
+        }
+
+    fun setPlacement(ctx: Context, value: NavPlacement) {
+        when (value) {
+            NavPlacement.LEFT -> { setRailRight(ctx, false); setNavRail(ctx, true) }
+            NavPlacement.RIGHT -> { setRailRight(ctx, true); setNavRail(ctx, true) }
+            NavPlacement.BOTTOM -> setNavRail(ctx, false)
+        }
+    }
+
     private const val NAV_SHORTCUTS_KEY = "theme.navShortcuts"
 
     /** Wide screens: the screens pinned in the navigation between Today and More, in order (route ids). The
@@ -134,12 +165,32 @@ object WideLayoutPrefs {
         prefs(ctx).edit().putString(NAV_SHORTCUTS_KEY, AdaptiveLayout.encodeNavShortcuts(clean)).apply()
     }
 
+    private const val COMPACT_SHORTCUTS_KEY = "theme.navShortcutsCompact"
+
+    /** Folded phone / any phone: the screens in the bottom bar between Today and More (route ids). Its own list,
+     *  so the phone bar can differ from the roomy wide navigation; defaults to the classic Trends · Sleep. */
+    var compactShortcuts by mutableStateOf(AdaptiveLayout.DEFAULT_COMPACT_NAV_SHORTCUTS)
+        private set
+
+    fun setCompactShortcuts(ctx: Context, routes: List<String>) {
+        val clean = AdaptiveLayout.decodeNavShortcuts(
+            AdaptiveLayout.encodeNavShortcuts(routes),
+            max = AdaptiveLayout.MAX_COMPACT_NAV_SHORTCUTS,
+        )
+        compactShortcuts = clean
+        prefs(ctx).edit().putString(COMPACT_SHORTCUTS_KEY, AdaptiveLayout.encodeNavShortcuts(clean)).apply()
+    }
+
     fun load(ctx: Context) {
         val p = prefs(ctx)
         mode = WideLayoutMode.fromStorage(p.getString(KEY, WideLayoutMode.AUTO.storageValue))
         navRail = p.getBoolean(NAV_RAIL_KEY, true)
+        railRight = p.getBoolean(RAIL_RIGHT_KEY, false)
         navShortcuts = p.getString(NAV_SHORTCUTS_KEY, null)?.let { AdaptiveLayout.decodeNavShortcuts(it) }
             ?: AdaptiveLayout.DEFAULT_NAV_SHORTCUTS
+        compactShortcuts = p.getString(COMPACT_SHORTCUTS_KEY, null)
+            ?.let { AdaptiveLayout.decodeNavShortcuts(it, max = AdaptiveLayout.MAX_COMPACT_NAV_SHORTCUTS) }
+            ?: AdaptiveLayout.DEFAULT_COMPACT_NAV_SHORTCUTS
         screenModes.clear()
         p.all.forEach { (k, v) ->
             if (k.startsWith(SCREEN_PREFIX) && v is String) {
@@ -242,9 +293,15 @@ internal object AdaptiveLayout {
     /** Stored as one comma-joined string of route ids (none contains a comma). */
     fun encodeNavShortcuts(routes: List<String>): String = routes.joinToString(",")
 
-    /** Blank and repeated entries dropped, capped at [MAX_NAV_SHORTCUTS]; "" is a valid empty choice. */
-    fun decodeNavShortcuts(raw: String): List<String> =
-        raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(MAX_NAV_SHORTCUTS)
+    /** Blank and repeated entries dropped, capped at [max]; "" is a valid empty choice. */
+    fun decodeNavShortcuts(raw: String, max: Int = MAX_NAV_SHORTCUTS): List<String> =
+        raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(max)
+
+    /** The phone bar's shortcuts until the user picks their own: the classic Today · Trends · Sleep · More. */
+    val DEFAULT_COMPACT_NAV_SHORTCUTS: List<String> = listOf("trends", "sleep")
+
+    /** A phone bar holds at most five slots (Material's bottom-bar ceiling): Today, three shortcuts, More. */
+    const val MAX_COMPACT_NAV_SHORTCUTS = 3
 
     /** Height of one rail slot (icon over label) and the gap between slots. */
     const val RAIL_SLOT_HEIGHT_DP = 52f
@@ -264,9 +321,15 @@ internal object AdaptiveLayout {
     const val BAR_SLOT_MIN_WIDTH_DP = 64f
     const val BAR_CHROME_DP = 112f
 
-    /** How many slots (Today, shortcuts and More together) fit in a bottom bar on a window [widthDp] wide. */
-    fun barSlotCapacity(widthDp: Float): Int =
-        ((widthDp - BAR_CHROME_DP) / BAR_SLOT_MIN_WIDTH_DP).toInt().coerceAtLeast(2)
+    /** The options button and its gap beside a wide bar (part of [BAR_CHROME_DP]); a phone bar has none. */
+    const val BAR_OPTIONS_DP = 52f
+
+    /** How many slots (Today, shortcuts and More together) fit in a bottom bar on a window [widthDp] wide —
+     *  [withOptions] when the navigation options button sits beside it (wide windows only). */
+    fun barSlotCapacity(widthDp: Float, withOptions: Boolean = true): Int {
+        val chrome = if (withOptions) BAR_CHROME_DP else BAR_CHROME_DP - BAR_OPTIONS_DP
+        return ((widthDp - chrome) / BAR_SLOT_MIN_WIDTH_DP).toInt().coerceAtLeast(2)
+    }
 
     /** The tabs that fit [capacity] slots: Today and the first shortcuts in the user's order, always leaving
      *  the last slot for More (which reaches everything that didn't fit). [tabs] starts with Today. */
@@ -385,6 +448,14 @@ internal object AdaptiveLayout {
  * around the NavHost so a screen beside a pane counts its columns from the space it really has.
  */
 val LocalAvailableWidthDp = compositionLocalOf<Int?> { null }
+
+/** Room a screen keeps clear for a navigation rail floating over its [start] or [end] edge. The screen's own
+ *  background still runs underneath, edge to edge; only its content (cards, text) stays out from under the rail. */
+@Immutable
+data class NavRailInsets(val start: Dp = 0.dp, val end: Dp = 0.dp)
+
+/** Provided by AppRoot around the NavHost; zero without a rail (phones, the bottom bar, beside the More list). */
+val LocalNavRailInsets = compositionLocalOf { NavRailInsets() }
 
 /** The width (dp) available to the current screen: the window, minus any pane or rail beside it. */
 @Composable

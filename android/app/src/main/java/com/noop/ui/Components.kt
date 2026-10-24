@@ -1207,9 +1207,17 @@ fun ScreenScaffold(
         } else {
             null
         }
+    // A navigation rail floats over the screen's edge (AppRoot): the background runs under it, the content
+    // keeps clear of it.
+    val railInsets = LocalNavRailInsets.current
     val scrollModifier = columnModifier
         .verticalScroll(scrollState)
-        .padding(start = sideInset, end = sideInset, top = topPadding, bottom = 28.dp)
+        .padding(
+            start = sideInset + railInsets.start,
+            end = sideInset + railInsets.end,
+            top = topPadding,
+            bottom = 28.dp,
+        )
     val column: @Composable () -> Unit = {
         if (columns > 1) {
             // Wide window: the title spans the top; the screen's cards flow into the shortest column.
@@ -1388,7 +1396,15 @@ fun LazyScreenScaffold(
         } else {
             Modifier.fillMaxWidth()
         }
-    val padding = PaddingValues(start = sideInset, top = topPadding, end = sideInset, bottom = 28.dp)
+    // A navigation rail floats over the screen's edge (AppRoot): the list and its background run under it, the
+    // rows keep clear of it.
+    val railInsets = LocalNavRailInsets.current
+    val padding = PaddingValues(
+        start = sideInset + railInsets.start,
+        top = topPadding,
+        end = sideInset + railInsets.end,
+        bottom = 28.dp,
+    )
     val list: @Composable () -> Unit = {
         if (isGrid) {
             // Wide window: Material's "feed" layout — the header spans the top and every card drops into the
