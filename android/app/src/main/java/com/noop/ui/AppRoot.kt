@@ -372,10 +372,18 @@ fun AppRoot(
         openedFromMore = dest == Destination.More
         if (dest.route != currentRoute) nav.navigateTopLevel(dest.route)
     }
+    // Opening a screen from a link (a row in the More list, a button on a screen). Inside the More context it is
+    // PUSHED, so Back returns to the screen it came from — the previous More entry, or the More page on a phone —
+    // instead of jumping to Today. Outside it (from Today, from a shortcut) it switches top-level, as before.
+    val openLinked: (String) -> Unit = { route ->
+        if (route != currentRoute) {
+            if (openedFromMore) nav.navigate(route) { launchSingleTop = true } else nav.navigateTopLevel(route)
+        }
+    }
     // A row in the More list (the pane or the More page): always opens beside the list on a wide window.
     val onMoreRow: (String) -> Unit = { route ->
         openedFromMore = true
-        if (route != currentRoute) nav.navigateTopLevel(route)
+        openLinked(route)
     }
     // Standing half-open like a book (FoldPosture.kt), the list fills the left half up to the fold.
     val fold = LocalFoldState.current
@@ -458,7 +466,7 @@ fun AppRoot(
                     onSettingsGroup = { key ->
                         settingsFocus = key
                         openedFromMore = true
-                        if (current != Destination.Settings) nav.navigateTopLevel(Destination.Settings.route)
+                        if (current != Destination.Settings) openLinked(Destination.Settings.route)
                     },
                     modifier = Modifier
                         .width(paneWidthDp.dp)
@@ -543,27 +551,27 @@ fun AppRoot(
                 composable(Destination.Live.route) {
                     LiveScreen(
                         viewModel = viewModel,
-                        onManageDevices = { nav.navigateTopLevel(Destination.Devices.route) },
+                        onManageDevices = { openLinked(Destination.Devices.route) },
                     )
                 }
                 composable(Destination.Sleep.route) {
                     SleepScreen(
                         vm = viewModel,
-                        onOpenJournal = { nav.navigateTopLevel(Destination.Insights.route) },
+                        onOpenJournal = { openLinked(Destination.Insights.route) },
                     )
                 }
                 composable(Destination.CoupledView.route) {
                     CoupledScreen(
                         vm = viewModel,
                         // Tapping Sleep in the coupled read opens the full Sleep screen (iOS parity).
-                        onOpenSleep = { nav.navigateTopLevel(Destination.Sleep.route) },
+                        onOpenSleep = { openLinked(Destination.Sleep.route) },
                     )
                 }
                 composable(Destination.Intervals.route) { IntervalsScreen(viewModel) }
                 composable(Destination.Breathe.route) {
                     BreatheScreen(
                         viewModel,
-                        onOpenWimHof = { nav.navigateTopLevel(Destination.WimHof.route) },
+                        onOpenWimHof = { openLinked(Destination.WimHof.route) },
                     )
                 }
                 composable(Destination.WimHof.route) {
@@ -574,7 +582,7 @@ fun AppRoot(
                         onOpenSettings = {
                             // On a wide screen, land on the Wim Hof group beside the list.
                             settingsFocus = "wimhof"
-                            nav.navigateTopLevel(Destination.Settings.route)
+                            openLinked(Destination.Settings.route)
                         },
                     )
                 }
@@ -590,18 +598,18 @@ fun AppRoot(
                 composable(Destination.Stress.route) {
                     StressScreen(
                         vm = viewModel,
-                        onBreathe = { nav.navigateTopLevel(Destination.Breathe.route) },
+                        onBreathe = { openLinked(Destination.Breathe.route) },
                     )
                 }
                 composable(Destination.Trends.route) { TrendsScreen(viewModel) }
-                composable(Destination.Insights.route) { InsightsScreen(viewModel, onOpenInsightsHub = { nav.navigateTopLevel(Destination.InsightsHub.route) }) }
+                composable(Destination.Insights.route) { InsightsScreen(viewModel, onOpenInsightsHub = { openLinked(Destination.InsightsHub.route) }) }
                 composable(Destination.Compare.route) { CompareScreen(viewModel) }
                 composable(Destination.Health.route) {
                     HealthScreen(
                         vm = viewModel,
                         onVitalClick = { nav.navigate("vital_detail/$it") },
-                        onOpenLabBook = { nav.navigateTopLevel(Destination.LabBook.route) },
-                        onOpenFusedRecord = { nav.navigateTopLevel(Destination.FusedRecord.route) },
+                        onOpenLabBook = { openLinked(Destination.LabBook.route) },
+                        onOpenFusedRecord = { openLinked(Destination.FusedRecord.route) },
                     )
                 }
                 composable(Destination.Hydration.route) { HydrationScreen(viewModel) }
@@ -631,7 +639,7 @@ fun AppRoot(
                 composable(Destination.Devices.route) {
                     DevicesScreen(
                         viewModel,
-                        onUseFileImport = { nav.navigateTopLevel(Destination.DataSources.route) },
+                        onUseFileImport = { openLinked(Destination.DataSources.route) },
                     )
                 }
                 composable(Destination.DataSources.route) { DataSourcesScreen(viewModel) }
@@ -641,7 +649,7 @@ fun AppRoot(
                     SettingsScreen(viewModel, onOpenTestCentre = { nav.navigate(Destination.TestCentre.route) })
                 }
                 composable(Destination.Profile.route) {
-                    ProfileScreen(viewModel, onOpenSettings = { nav.navigateTopLevel(Destination.Settings.route) })
+                    ProfileScreen(viewModel, onOpenSettings = { openLinked(Destination.Settings.route) })
                 }
                 composable(Destination.TestCentre.route) { TestCentreScreen(viewModel) }
                 // The "More" page — the iOS More tab's twin: a navigated ScreenScaffold page hosting the
