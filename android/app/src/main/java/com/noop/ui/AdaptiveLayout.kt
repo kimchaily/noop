@@ -134,12 +134,31 @@ object WideLayoutPrefs {
         prefs(ctx).edit().putString(NAV_SHORTCUTS_KEY, AdaptiveLayout.encodeNavShortcuts(clean)).apply()
     }
 
+    private const val COMPACT_SHORTCUTS_KEY = "theme.navShortcutsCompact"
+
+    /** Folded phone / any phone: the screens in the bottom bar between Today and More (route ids). Its own list,
+     *  so the phone bar can differ from the roomy wide navigation; defaults to the classic Trends · Sleep. */
+    var compactShortcuts by mutableStateOf(AdaptiveLayout.DEFAULT_COMPACT_NAV_SHORTCUTS)
+        private set
+
+    fun setCompactShortcuts(ctx: Context, routes: List<String>) {
+        val clean = AdaptiveLayout.decodeNavShortcuts(
+            AdaptiveLayout.encodeNavShortcuts(routes),
+            max = AdaptiveLayout.MAX_COMPACT_NAV_SHORTCUTS,
+        )
+        compactShortcuts = clean
+        prefs(ctx).edit().putString(COMPACT_SHORTCUTS_KEY, AdaptiveLayout.encodeNavShortcuts(clean)).apply()
+    }
+
     fun load(ctx: Context) {
         val p = prefs(ctx)
         mode = WideLayoutMode.fromStorage(p.getString(KEY, WideLayoutMode.AUTO.storageValue))
         navRail = p.getBoolean(NAV_RAIL_KEY, true)
         navShortcuts = p.getString(NAV_SHORTCUTS_KEY, null)?.let { AdaptiveLayout.decodeNavShortcuts(it) }
             ?: AdaptiveLayout.DEFAULT_NAV_SHORTCUTS
+        compactShortcuts = p.getString(COMPACT_SHORTCUTS_KEY, null)
+            ?.let { AdaptiveLayout.decodeNavShortcuts(it, max = AdaptiveLayout.MAX_COMPACT_NAV_SHORTCUTS) }
+            ?: AdaptiveLayout.DEFAULT_COMPACT_NAV_SHORTCUTS
         screenModes.clear()
         p.all.forEach { (k, v) ->
             if (k.startsWith(SCREEN_PREFIX) && v is String) {
@@ -242,9 +261,15 @@ internal object AdaptiveLayout {
     /** Stored as one comma-joined string of route ids (none contains a comma). */
     fun encodeNavShortcuts(routes: List<String>): String = routes.joinToString(",")
 
-    /** Blank and repeated entries dropped, capped at [MAX_NAV_SHORTCUTS]; "" is a valid empty choice. */
-    fun decodeNavShortcuts(raw: String): List<String> =
-        raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(MAX_NAV_SHORTCUTS)
+    /** Blank and repeated entries dropped, capped at [max]; "" is a valid empty choice. */
+    fun decodeNavShortcuts(raw: String, max: Int = MAX_NAV_SHORTCUTS): List<String> =
+        raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(max)
+
+    /** The phone bar's shortcuts until the user picks their own: the classic Today · Trends · Sleep · More. */
+    val DEFAULT_COMPACT_NAV_SHORTCUTS: List<String> = listOf("trends", "sleep")
+
+    /** A phone bar holds at most five slots (Material's bottom-bar ceiling): Today, three shortcuts, More. */
+    const val MAX_COMPACT_NAV_SHORTCUTS = 3
 
     /** Height of one rail slot (icon over label) and the gap between slots. */
     const val RAIL_SLOT_HEIGHT_DP = 52f
@@ -264,9 +289,15 @@ internal object AdaptiveLayout {
     const val BAR_SLOT_MIN_WIDTH_DP = 64f
     const val BAR_CHROME_DP = 112f
 
-    /** How many slots (Today, shortcuts and More together) fit in a bottom bar on a window [widthDp] wide. */
-    fun barSlotCapacity(widthDp: Float): Int =
-        ((widthDp - BAR_CHROME_DP) / BAR_SLOT_MIN_WIDTH_DP).toInt().coerceAtLeast(2)
+    /** The options button and its gap beside a wide bar (part of [BAR_CHROME_DP]); a phone bar has none. */
+    const val BAR_OPTIONS_DP = 52f
+
+    /** How many slots (Today, shortcuts and More together) fit in a bottom bar on a window [widthDp] wide —
+     *  [withOptions] when the navigation options button sits beside it (wide windows only). */
+    fun barSlotCapacity(widthDp: Float, withOptions: Boolean = true): Int {
+        val chrome = if (withOptions) BAR_CHROME_DP else BAR_CHROME_DP - BAR_OPTIONS_DP
+        return ((widthDp - chrome) / BAR_SLOT_MIN_WIDTH_DP).toInt().coerceAtLeast(2)
+    }
 
     /** The tabs that fit [capacity] slots: Today and the first shortcuts in the user's order, always leaving
      *  the last slot for More (which reaches everything that didn't fit). [tabs] starts with Today. */

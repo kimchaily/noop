@@ -692,7 +692,8 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     label = { if (it) "Side rail" else "Bottom bar" },
                     onSelect = { WideLayoutPrefs.setNavRail(context, it) },
                 )
-                // More room means more than four tabs: pick the screens pinned between Today and More.
+                // Pick the screens between Today and More: one list for the folded phone's bottom bar, one for the
+                // roomier open-phone / tablet navigation. Opens on the list for the screen you're holding.
                 NoopButton(
                     text = "Choose navigation shortcuts",
                     kind = NoopButtonKind.Secondary,
@@ -700,7 +701,12 @@ fun SettingsScreen(vm: AppViewModel, onOpenTestCentre: () -> Unit = {}) {
                     onClick = { showNavShortcutsEditor = true },
                 )
                 if (showNavShortcutsEditor) {
-                    NavShortcutsEditorDialog(onDismiss = { showNavShortcutsEditor = false })
+                    NavShortcutsEditorDialog(
+                        folded = !AdaptiveLayout.usesWideNav(
+                            androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp,
+                        ),
+                        onDismiss = { showNavShortcutsEditor = false },
+                    )
                 }
             }
 

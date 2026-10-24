@@ -345,7 +345,13 @@ fun AppRoot(
     // SHORTCUTS: a wide window's navigation (rail or bar) carries Today, the user's pinned screens, then More;
     // a phone keeps Today · Trends · Sleep · More.
     val wideNav = AdaptiveLayout.usesWideNav(windowWidthDp)
-    val wideTabs = wideNavTabs(WideLayoutPrefs.navShortcuts, NoopPrefs.showSupport(context))
+    val showSupportNav = NoopPrefs.showSupport(context)
+    val wideTabs = navTabsFor(WideLayoutPrefs.navShortcuts, showSupportNav)
+    // The phone / folded bar has its own shortcut list (default Trends · Sleep), as many as fit the width.
+    val phoneTabs = AdaptiveLayout.fitNavTabs(
+        navTabsFor(WideLayoutPrefs.compactShortcuts, showSupportNav),
+        AdaptiveLayout.barSlotCapacity(windowWidthDp.toFloat(), withOptions = false),
+    )
     var showNavShortcuts by remember { mutableStateOf(false) }
     val navOptions: @Composable () -> Unit = {
         NavOptionsButton(
@@ -410,7 +416,7 @@ fun AppRoot(
                         tabs = if (wideNav) {
                             AdaptiveLayout.fitNavTabs(wideTabs, AdaptiveLayout.barSlotCapacity(windowWidthDp.toFloat()))
                         } else {
-                            phoneNavTabs
+                            phoneTabs
                         },
                         inMore = showMorePane,
                         onTabSelected = onNavTab,
@@ -773,7 +779,7 @@ fun AppRoot(
 
         // The navigation shortcut editor, opened from the rail's / wide bar's options button.
         if (showNavShortcuts) {
-            NavShortcutsEditorDialog(onDismiss = { showNavShortcuts = false })
+            NavShortcutsEditorDialog(folded = !wideNav, onDismiss = { showNavShortcuts = false })
         }
 
         // The full changelog, opened by tapping a release-note row in the inbox. Same full-screen
@@ -1216,9 +1222,9 @@ private fun navTabFor(dest: Destination): BarTab =
 private val navShortcutCandidates: List<Destination> =
     (listOf(Destination.Trends, Destination.Sleep) + drawerGroups.flatMap { it.items }).distinct()
 
-/** The wide-window tabs (More appended by the bar/rail): Today, then the stored shortcuts in their order. Unknown
+/** A navigation's tabs (More appended by the bar/rail): Today, then the stored shortcuts in their order. Unknown
  *  routes are skipped, and Support when the support surfaces are switched off. */
-private fun wideNavTabs(routes: List<String>, showSupport: Boolean): List<BarTab> =
+private fun navTabsFor(routes: List<String>, showSupport: Boolean): List<BarTab> =
     listOf(navTabFor(Destination.Today)) +
         routes.mapNotNull { r -> navShortcutCandidates.firstOrNull { it.route == r } }
             .filter { showSupport || it != Destination.Support }
@@ -1440,23 +1446,29 @@ private fun NavOptionsButton(railMode: Boolean, onToggleMode: () -> Unit, onChoo
 }
 
 /**
- * The shortcut editor: every screen that can be pinned, with a switch to show it in the wide-screen navigation
- * and arrows to order it, like the Today layout editor. Up to [AdaptiveLayout.MAX_NAV_SHORTCUTS]; Today and More
- * are always there. Opened from the navigation's options button and from Settings → Appearance.
+ * The shortcut editor: every screen that can be pinned, with a switch to show it in the navigation and arrows to
+ * order it, like the Today layout editor. Two lists, picked at the top: FOLDED (the phone bottom bar, up to
+ * [AdaptiveLayout.MAX_COMPACT_NAV_SHORTCUTS]) and OPEN (an unfolded phone or a tablet, rail or wide bar, up to
+ * [AdaptiveLayout.MAX_NAV_SHORTCUTS]). Today and More are always there. [folded] picks the list it opens on.
+ * Opened from the navigation's options button and from Settings → Appearance.
  */
 @Composable
-internal fun NavShortcutsEditorDialog(onDismiss: () -> Unit) {
+internal fun NavShortcutsEditorDialog(folded: Boolean, onDismiss: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val showSupport = NoopPrefs.showSupport(context)
     val candidates = navShortcutCandidates.filter { showSupport || it != Destination.Support }
     // Pinned ones first in their saved order, then the rest in More's order.
-    val items = remember {
-        val pinned = WideLayoutPrefs.navShortcuts.mapNotNull { r -> candidates.firstOrNull { it.route == r } }
+    fun editable(routes: List<String>) =
         androidx.compose.runtime.mutableStateListOf<Pair<Destination, Boolean>>().apply {
+            val pinned = routes.mapNotNull { r -> candidates.firstOrNull { it.route == r } }
             pinned.forEach { add(it to true) }
             candidates.filter { it !in pinned }.forEach { add(it to false) }
         }
-    }
+    val foldedItems = remember { editable(WideLayoutPrefs.compactShortcuts) }
+    val openItems = remember { editable(WideLayoutPrefs.navShortcuts) }
+    var editingFolded by remember { mutableStateOf(folded) }
+    val items = if (editingFolded) foldedItems else openItems
+    val max = if (editingFolded) AdaptiveLayout.MAX_COMPACT_NAV_SHORTCUTS else AdaptiveLayout.MAX_NAV_SHORTCUTS
     val pinnedCount = items.count { it.second }
     fun move(from: Int, to: Int) {
         if (from in items.indices && to in items.indices) items.add(to, items.removeAt(from))
@@ -1470,16 +1482,27 @@ internal fun NavShortcutsEditorDialog(onDismiss: () -> Unit) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text("Navigation shortcuts", style = NoopType.title2, color = Palette.textPrimary)
                     Text(
-                        "When the phone is open or on a tablet, these sit in the navigation between Today and More " +
-                            "(up to ${AdaptiveLayout.MAX_NAV_SHORTCUTS}). Order them with the arrows. Anything that " +
-                            "doesn't fit the space stays one tap away in More. A folded phone keeps its four tabs.",
+                        if (editingFolded) {
+                            "The bottom bar of a folded phone (or any phone): up to $max screens between Today and " +
+                                "More. Order them with the arrows."
+                        } else {
+                            "When the phone is open or on a tablet, these sit in the navigation between Today and " +
+                                "More (up to $max). Order them with the arrows. Anything that doesn't fit the space " +
+                                "stays one tap away in More."
+                        },
                         style = NoopType.subhead,
                         color = Palette.textSecondary,
                     )
                 }
+                SegmentedPillControl(
+                    items = listOf(true, false),
+                    selection = editingFolded,
+                    label = { if (it) "Folded" else "Open" },
+                    onSelect = { editingFolded = it },
+                )
                 Column(
                     modifier = Modifier
-                        .heightIn(max = 420.dp)
+                        .heightIn(max = 400.dp)
                         .verticalScroll(rememberScrollState()),
                 ) {
                     items.forEachIndexed { index, (dest, pinned) ->
@@ -1492,7 +1515,7 @@ internal fun NavShortcutsEditorDialog(onDismiss: () -> Unit) {
                                 checked = pinned,
                                 onCheckedChange = { items[index] = dest to it },
                                 // Full: a new pin waits until one is switched off.
-                                enabled = pinned || pinnedCount < AdaptiveLayout.MAX_NAV_SHORTCUTS,
+                                enabled = pinned || pinnedCount < max,
                                 colors = androidx.compose.material3.SwitchDefaults.colors(
                                     checkedThumbColor = Palette.surfaceBase,
                                     checkedTrackColor = Palette.accent,
@@ -1545,8 +1568,11 @@ internal fun NavShortcutsEditorDialog(onDismiss: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     androidx.compose.material3.TextButton(
                         onClick = {
-                            val defaults = AdaptiveLayout.DEFAULT_NAV_SHORTCUTS
-                                .mapNotNull { r -> candidates.firstOrNull { it.route == r } }
+                            // Resets the list on screen only (Folded or Open), to its own defaults.
+                            val defaults = (
+                                if (editingFolded) AdaptiveLayout.DEFAULT_COMPACT_NAV_SHORTCUTS
+                                else AdaptiveLayout.DEFAULT_NAV_SHORTCUTS
+                                ).mapNotNull { r -> candidates.firstOrNull { it.route == r } }
                             items.clear()
                             defaults.forEach { items.add(it to true) }
                             candidates.filter { it !in defaults }.forEach { items.add(it to false) }
@@ -1558,8 +1584,12 @@ internal fun NavShortcutsEditorDialog(onDismiss: () -> Unit) {
                     Spacer(Modifier.weight(1f))
                     androidx.compose.material3.Button(
                         onClick = {
-                            // Pinned ones keep the order they sit in, wherever a switch was flipped.
-                            WideLayoutPrefs.setNavShortcuts(context, items.filter { it.second }.map { it.first.route })
+                            // Both lists are saved: pinned ones keep the order they sit in.
+                            WideLayoutPrefs.setCompactShortcuts(
+                                context,
+                                foldedItems.filter { it.second }.map { it.first.route },
+                            )
+                            WideLayoutPrefs.setNavShortcuts(context, openItems.filter { it.second }.map { it.first.route })
                             onDismiss()
                         },
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(
