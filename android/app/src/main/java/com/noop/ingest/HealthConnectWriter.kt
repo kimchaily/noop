@@ -187,14 +187,18 @@ object HealthConnectWriter {
         val floor = now - WINDOW_DAYS * 86_400
         val frontier = maxOf(NoopPrefs.hcHrFrontier(context), floor)
 
-        val samples = repo.hrSamples(deviceId, from = frontier + 1, to = now, limit = 200_000)
+        // #1008: export the whole strap lineage. Pinned to one id, a re-add meant Health Connect either
+        // stopped receiving new HR (canonical id) or lost the pre-switch history (fresh id).
+        val samples = repo.hrSamplesUnion(deviceId, from = frontier + 1, to = now, limit = 200_000)
             .map { HealthExportPlan.HrPoint(it.ts, it.bpm) }
         if (samples.isEmpty()) return 0
 
         // Workout + sleep windows where the full-resolution series matters; everything else decimates.
         val windows = buildList {
-            repo.workouts(deviceId, frontier, now).forEach { add(HealthExportPlan.Window(it.startTs, it.endTs)) }
-            repo.sleepSessions(deviceId, frontier, now).forEach { add(HealthExportPlan.Window(it.startTs, it.endTs)) }
+            // Same union (#1008): these windows decide where the export keeps full resolution, so a
+            // session on the other lineage would otherwise be decimated like ordinary background HR.
+            repo.workoutsUnion(deviceId, frontier, now).forEach { add(HealthExportPlan.Window(it.startTs, it.endTs)) }
+            repo.sleepSessionsUnion(deviceId, frontier, now).forEach { add(HealthExportPlan.Window(it.startTs, it.endTs)) }
         }
 
         val plan = HealthExportPlan.heartRate(samples, windows, frontier)

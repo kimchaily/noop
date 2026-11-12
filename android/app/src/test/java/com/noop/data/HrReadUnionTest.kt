@@ -173,4 +173,50 @@ class HrReadUnionTest {
     fun latestActivityClassEmptyUnionIsNull() {
         assertEquals(null, WhoopRepository.latestActivityClass(listOf(emptyList(), emptyList())))
     }
+
+    // --- (d) #1008: the RR twin, feeding every HRV-derived readout ---
+    //
+    // RR is the beat-to-beat stream the HRV engines run on: daytime Stress, the Stress Index components,
+    // the frequency-domain rows and the Coach's stress line ALL read the same series. A read pinned to the
+    // canonical id therefore took every one of them dark together the moment a re-added strap started
+    // banking RR under its own id — each engine self-gates and returns null on a thin series, so the
+    // screens showed their honest empty states and nothing looked broken.
+
+    private fun rr(ts: Long, rrMs: Int, source: String = canonical) =
+        RrInterval(deviceId = source, ts = ts, rrMs = rrMs)
+
+    /** A single-WHOOP install resolves to ONE id, so the merge hands back that same list instance
+     *  untouched — byte-identical to the pre-union read. */
+    @Test
+    fun singleIdRrListReturnedUnchanged() {
+        val only = listOf(rr(100, 900), rr(101, 910), rr(102, 890))
+        assertSame("single-id read must be the same list reference, untouched", only,
+            WhoopRepository.mergeRrByTs(listOf(only)))
+    }
+
+    /** Two-id RR merges into ONE time-ordered stream; a shared ts resolves to the FIRST (active) list and
+     *  distinct ts from either side all survive — the same rule as [WhoopRepository.mergeHrByTs]. */
+    @Test
+    fun twoIdRrMergesTimeOrderedActiveWinsTie() {
+        val active = listOf(rr(200, 800, reAdded), rr(300, 810, reAdded))
+        val canonicalHistory = listOf(rr(100, 1000), rr(200, 999))
+
+        val merged = WhoopRepository.mergeRrByTs(listOf(active, canonicalHistory))
+
+        assertEquals(listOf(100L, 200L, 300L), merged.map { it.ts })
+        assertEquals("active strap wins a ts tie", 800, merged.first { it.ts == 200L }.rrMs)
+    }
+
+    /** The regression: after a re-add the canonical id holds NO recent RR, so a pinned read produced an
+     *  empty series and every HRV readout silently gated itself off. The union surfaces the live beats. */
+    @Test
+    fun rrUnionSurfacesReAddedStrapBeats() {
+        val live = (0 until 60).map { rr(10_000L + it, 900 + it, reAdded) }
+        val byId = mapOf(reAdded to live, canonical to emptyList<RrInterval>())
+
+        assertEquals("the pinned read is empty: this is the silent-stress bug", 0, byId.getValue(canonical).size)
+
+        val ids = WhoopRepository.importedSourceIdsFor(reAdded)
+        assertEquals(60, WhoopRepository.mergeRrByTs(ids.map { byId.getValue(it) }).size)
+    }
 }

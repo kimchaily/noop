@@ -132,7 +132,14 @@ fun TrendsScreen(vm: AppViewModel) {
     var sleepPerfByDay by remember { mutableStateOf<Map<String, Double>>(emptyMap()) }
     LaunchedEffect(days) {
         sleepPerfByDay = runCatching {
-            vm.repo.resolvedSeries("sleep_performance", "my-whoop", "0000-00-00", "9999-99-99")
+            // #1008: thread the ACTIVE strap id. sourceCandidates only unions in the canonical pair —
+            // the active lineage is added solely from this argument — so leaving it defaulted meant the
+            // Rest trend never saw a night the engine scored under the re-added strap's computed id, and
+            // the line simply stopped at the switch. Single-WHOOP ⇒ same candidates as before.
+            vm.repo.resolvedSeries(
+                "sleep_performance", "my-whoop", "0000-00-00", "9999-99-99",
+                strapDeviceId = vm.activeStrapId,
+            )
                 .values.associate { it.first to it.second }
         }.getOrDefault(emptyMap())
     }

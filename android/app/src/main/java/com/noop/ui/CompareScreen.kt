@@ -517,7 +517,9 @@ private suspend fun loadFullSeries(
     // Wide window covering all of history (the macOS days = 4000 default).
     val to = todayDay(1)
     val from = todayDay(-4000)
-    return vm.repo.resolvedSeries(metric.key, metric.source, from, to).values
+    // #1008: thread the ACTIVE strap id — the only way the active lineage enters sourceCandidates — so a
+    // compared metric doesn't flat-line at a strap re-add. An Apple-preferred metric is unaffected.
+    return vm.repo.resolvedSeries(metric.key, metric.source, from, to, strapDeviceId = vm.activeStrapId).values
 }
 
 /** "yyyy-MM-dd" for today offset by [deltaDays], fixed UTC. */

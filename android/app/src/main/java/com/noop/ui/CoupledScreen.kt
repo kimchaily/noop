@@ -94,8 +94,10 @@ fun CoupledScreen(
     LaunchedEffect(days) {
         sleeps = runCatching {
             val now = System.currentTimeMillis() / 1000L
-            val imported = vm.repo.sleepSessions("my-whoop", 0L, now)
-            val computed = vm.repo.sleepSessions(vm.repo.computedDeviceId("my-whoop"), 0L, now)
+            // #1008: the SAME union reads SleepScreen uses — a canonical-only pair left this footnote
+            // stuck on the last pre-re-add night while the Sleep tab had already moved on.
+            val imported = vm.repo.sleepSessionsUnion(vm.activeStrapId, 0L, now)
+            val computed = vm.repo.computedSleepSessionsUnion(vm.activeStrapId, 0L, now)
             val importedEnds = imported.map { it.endTs }.toHashSet()
             (imported + computed.filter { it.endTs !in importedEnds }).sortedBy { it.effectiveStartTs }
         }.getOrDefault(emptyList())

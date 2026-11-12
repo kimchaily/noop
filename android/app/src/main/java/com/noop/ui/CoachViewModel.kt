@@ -8,6 +8,7 @@ import com.noop.ai.AiCoach
 import com.noop.ai.AiKeyStore
 import com.noop.ai.AiProvider
 import com.noop.ai.ChatMsg
+import com.noop.NoopApplication
 import com.noop.data.WhoopDatabase
 import com.noop.data.WhoopRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,8 +32,12 @@ class CoachViewModel(app: Application) : AndroidViewModel(app) {
 
     // The networked coach, over the local store. No key is held here; the engine reads it from
     // the encrypted store at call time.
+    // #1008: hand the Coach the registry's ACTIVE strap id so its reads follow the same active ∪ canonical
+    // union every screen uses. Without it the Coach was pinned to the canonical id and, after a strap
+    // re-add, reasoned from pre-switch history only.
     private val aiCoach = AiCoach(
-        WhoopRepository(WhoopDatabase.get(app.applicationContext).whoopDao())
+        WhoopRepository(WhoopDatabase.get(app.applicationContext).whoopDao()),
+        activeStrapId = (app as NoopApplication).activeDeviceId,
     )
 
     // MARK: - Transcript

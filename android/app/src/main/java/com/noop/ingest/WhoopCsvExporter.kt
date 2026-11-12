@@ -340,8 +340,12 @@ object WhoopCsvExporter {
         // Dedup by (startTs, sport), imported (deviceId) first so it wins — the same session can
         // exist under both ids (e.g. a reimported export + BLE re-detection), which double-counted
         // it in the CSV and inflated totals on reimport. (PR #97 review, tigercraft4. Swift parity.)
+        // #1008: read both lineages (active ∪ canonical) per bucket, else a strap re-add silently cut the
+        // export in half — the pre-switch sessions when [deviceId] is the fresh id, the post-switch ones
+        // when it's the canonical. The existing (startTs, sport) dedup below already collapses a session
+        // banked under both, so the union adds rows without ever double-counting.
         val seenWorkouts = HashSet<String>()
-        val workouts = (repo.workouts(deviceId, 0L, hi) + repo.workouts(computedId, 0L, hi))
+        val workouts = (repo.workoutsUnion(deviceId, 0L, hi) + repo.detectedWorkoutsUnion(deviceId, 0L, hi))
             .filter { seenWorkouts.add("${it.startTs}|${it.sport}") }
         // Journal lives under the imported deviceId. Native in-app journal logging (a separate
         // feature on its own device id) isn't read here, keeping the exporter self-contained; the
