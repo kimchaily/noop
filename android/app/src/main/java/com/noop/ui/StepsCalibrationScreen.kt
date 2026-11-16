@@ -508,32 +508,34 @@ private fun StepDataCheckCard(checks: List<StepDayCheck.Day>?) {
                     Text("Reading the last 7 days.", style = NoopType.caption, color = Palette.textTertiary)
                 checks.isEmpty() ->
                     Text("Could not read the step data.", style = NoopType.caption, color = Palette.textTertiary)
-                else -> for ((index, check) in checks.withIndex()) {
-                    if (index > 0) Hairline()
-                    Column(
-                        modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                shortDay(check.day),
-                                style = NoopType.footnote,
-                                color = Palette.textSecondary,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(check.source.label, style = NoopType.caption, color = Palette.textTertiary)
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                check.shown?.let { grouped(it) } ?: "none",
-                                style = NoopType.captionNumber,
-                                color = Palette.textPrimary,
-                                textAlign = TextAlign.End,
-                                modifier = Modifier.width(64.dp),
-                            )
-                        }
-                        Text(check.streamLine, style = NoopType.caption, color = Palette.textTertiary)
-                        for (finding in check.findings) {
-                            Text(finding, style = NoopType.caption, color = Palette.statusWarning)
+                else -> {
+                    for ((index, check) in checks.withIndex()) {
+                        if (index > 0) Hairline()
+                        Column(
+                            modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    shortDay(check.day),
+                                    style = NoopType.footnote,
+                                    color = Palette.textSecondary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(check.source.label, style = NoopType.caption, color = Palette.textTertiary)
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    check.shown?.let { grouped(it) } ?: "none",
+                                    style = NoopType.captionNumber,
+                                    color = Palette.textPrimary,
+                                    textAlign = TextAlign.End,
+                                    modifier = Modifier.width(64.dp),
+                                )
+                            }
+                            Text(check.streamLine, style = NoopType.caption, color = Palette.textTertiary)
+                            for (finding in check.findings) {
+                                Text(finding, style = NoopType.caption, color = Palette.statusWarning)
+                            }
                         }
                     }
                 }
