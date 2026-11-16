@@ -11,8 +11,8 @@ import org.junit.Test
 /**
  * Twin of the Swift StepsEstimateEngineTraceTests: the Steps test mode's two pure traces. Proves the
  * trace can never diverge from the production numbers - the 5/MG raw-counter trace's scaledSteps equals
- * AnalyticsEngine.analyzeDay(...).daily.steps EXACTLY (same wrap-aware sum, same maxStepDelta gate, same
- * ticks-per-step scaling), and the WHOOP-4 calibration trace reuses StepsEstimateEngine.calibrate verbatim.
+ * AnalyticsEngine.analyzeDay(...).daily.steps EXACTLY (both call StepCounter: same kept / bridged / dropped
+ * rule, same ticks-per-step scaling), and the WHOOP-4 calibration trace reuses StepsEstimateEngine.calibrate verbatim.
  * No em-dashes. Pure-JVM, no Robolectric / Mockito.
  */
 class StepsEstimateEngineTraceTest {
@@ -61,6 +61,22 @@ class StepsEstimateEngineTraceTest {
         )
         assertTrue(lines.any { it.contains("stepsRaw deltas kept=2 dropped=1") })
         assertTrue(lines.first { it.startsWith("stepsRaw total ") }.contains("scaledSteps=$production"))
+    }
+
+    @Test fun bridgedGapIsReportedAndMatchesAnalyzeDay() {
+        // 100 -> 160 (kept, 60), then silent for an hour while the counter climbed 3,000 (bridged), then
+        // 3160 -> 3200 (kept, 40). The trace must say a gap was bridged, how much it carried, and how long
+        // the hole was, and its total must be the very number the day's steps hold.
+        val samples = listOf(step(0, 100), step(60, 160), step(3_660, 3_160), step(3_720, 3_200))
+        val production = AnalyticsEngine.analyzeDay(day = dayUtc, steps = samples, profile = profile).daily.steps
+        assertEquals(60 + 3_000 + 40, production)
+        val lines = StepsEstimateEngineTrace.rawCounterTrace(
+            daySteps = samples, dayKey = dayUtc, tzOffsetSeconds = 0L, ticksPerStep = profile.stepTicksPerStep,
+        )
+        assertTrue(lines.toString(), lines.any { it.contains("stepsRaw deltas kept=2 dropped=0 bridged=1 bridgedTicks=3000") })
+        assertTrue(lines.toString(), lines.any { it.contains("stepsRaw stream gaps=1 longestGapSec=3600 coveredSec=120") })
+        assertTrue(lines.first { it.startsWith("stepsRaw total ") }.contains("scaledSteps=$production"))
+        assertFalse(lines.any { it.contains("\u2014") })
     }
 
     @Test fun ticksPerStepScalingMatchesAnalyzeDay() {
