@@ -63,11 +63,54 @@ class StepsAnalyticsTest {
     }
 
     @Test
-    fun jumpGuardDropsGapButKeepsRealSteps() {
-        // 100 -> 300 (=200 real) ; 300 -> 1200 is a 900-tick GAP (>= 512) and is dropped ; 1200 -> 1500
-        // (=300 real). Only the two in-range increments count => 200 + 300 = 500, the gap doesn't inflate.
+    fun aGapTheCounterClimbedAcrossAtWalkingPaceIsCounted() {
+        // 100 -> 300 (=200) ; then nothing for 59 minutes, across which the counter climbed 900 ; then
+        // 1200 -> 1500 (=300). The counter is cumulative, so those 900 are the steps taken while the
+        // stream was silent: 900 ticks in 3540 s is a quarter of a step per second. They count.
+        //
+        // This case used to assert 500. Dropping every increase of 512 or more as "a sync gap" is free
+        // on an unbroken 1 Hz stream and ruinous on one with holes: the stretches it discards are the
+        // ones with the most walking in them.
         val s = listOf(step(0, 100), step(60, 300), step(3_600, 1_200), step(3_660, 1_500))
-        assertEquals(500, stepsFor(s))
+        assertEquals(200 + 900 + 300, stepsFor(s))
+    }
+
+    @Test
+    fun aDayOfScatteredReadingsStillAddsUpToTheCounter() {
+        // The failure this rule exists for: a strap whose stream reached the phone only in short bursts.
+        // Six readings across fourteen hours, each hours from the last, the counter 9,400 higher at the
+        // end. Under the old rule every one of these increases was >= 512 and the day read as nothing.
+        val s = listOf(
+            step(0, 1_000),
+            step(2 * 3_600, 2_600),      // +1600 in 2 h
+            step(5 * 3_600, 5_100),      // +2500 in 3 h
+            step(6 * 3_600, 5_700),      // +600 in 1 h
+            step(10 * 3_600, 9_800),     // +4100 in 4 h
+            step(11 * 3_600, 10_400),    // +600 in 1 h
+        )
+        assertEquals(9_400, stepsFor(s))
+    }
+
+    @Test
+    fun aCounterThatRanBackwardsAcrossAGapIsNotCounted() {
+        // 5000 -> 40 six hours later. Either the strap restarted and began again from zero, or the
+        // counter wrapped inside the gap; the two read identically. The wrap-corrected difference is
+        // 60,576, which over six hours is under three steps a second and would pass as a plausible pace,
+        // so it is exactly the number that must never be believed. Only the ordinary increases either
+        // side count.
+        val s = listOf(step(0, 4_900), step(60, 5_000), step(60 + 6 * 3_600, 40), step(120 + 6 * 3_600, 100))
+        assertEquals(100 + 60, stepsFor(s))
+    }
+
+    @Test
+    fun afterARestartTheErrorIsAnUndercountNeverInventedSteps() {
+        // The strap restarts in a gap, then the wearer walks far enough for the new count (6,000) to pass
+        // the old one (2,000). The forward difference is 4,000, bridged, and that is LESS than the 6,000
+        // steps really taken since the restart. Forward-only bridging can lose steps; it cannot make any.
+        val s = listOf(step(0, 1_900), step(60, 2_000), step(5 * 3_600, 6_000))
+        val counted = stepsFor(s)!!
+        assertEquals(100 + 4_000, counted)
+        org.junit.Assert.assertTrue(counted <= 100 + 6_000)
     }
 
     @Test

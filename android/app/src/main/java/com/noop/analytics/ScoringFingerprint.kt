@@ -79,6 +79,22 @@ object ScoringFingerprint {
     )
 
     /**
+     * A strap step-counter stream with one of everything [StepCounter] has to decide: two ordinary
+     * one-second increases, a wrap past 65535, a forty-minute hole the counter climbed across at a walking
+     * pace, a jump no wrist could produce in a minute, and a reading lower than the one before it (a
+     * restart, or a wrap inside a hole — the two cannot be told apart).
+     */
+    private val stepReadings: List<com.noop.data.StepSample> = listOf(
+        0L to 65_500, 1L to 65_502, 2L to 65_505,      // +2, +3
+        3L to 20,                                       // wraps: +51
+        2_403L to 3_020,                                // 40 min hole, +3000: bridged
+        2_404L to 3_021,                                // +1
+        2_464L to 9_000,                                // +5979 in a minute: dropped
+        6_064L to 40,                                   // backwards across an hour: dropped
+        6_065L to 44,                                   // +4
+    ).map { (ts, counter) -> com.noop.data.StepSample(deviceId = "fingerprint", ts = ts, counter = counter) }
+
+    /**
      * Push the fixture through every scorer that contributes to a stored number, and fold the results
      * into one hash. Rounded to 4 decimals first so that pure floating-point noise (a compiler reordering
      * an addition) cannot trigger a spurious history rebuild, while any change big enough to alter a
@@ -132,6 +148,18 @@ object ScoringFingerprint {
         // ── The band thresholds, which decide the ring colour even when the number is unchanged ────
         for (score in listOf(0.0, 33.9, 34.0, 67.0, 67.1, 100.0)) {
             out.append(RecoveryScorer.band(score)).append(';')
+        }
+
+        // ── Steps: how the strap's counter becomes a day's total ───────────────────────────────────
+        // A stored day's steps are as much a product of the algorithm as its Charge, and they sit in the
+        // same row, so a change to the counting has to rebuild the history exactly as a change to a
+        // weight does. The fixture walks every branch: a small increase, a wrap, a gap bridged, a jump
+        // too fast to be real, and a counter that ran backwards.
+        val stepTally = StepCounter.tally(stepReadings)
+        out.append(stepTally.rawTicks).append(',').append(stepTally.keptDeltas).append(',')
+            .append(stepTally.bridgedDeltas).append(',').append(stepTally.droppedDeltas).append(';')
+        for (ticksPerStep in listOf(1.0, 2.0, 0.1)) {
+            out.append(StepCounter.steps(stepTally.rawTicks, ticksPerStep) ?: "nil").append(';')
         }
 
         return out.toString().hashCode()

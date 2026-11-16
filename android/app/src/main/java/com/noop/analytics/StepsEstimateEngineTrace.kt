@@ -1,7 +1,6 @@
 package com.noop.analytics
 
 import com.noop.data.StepSample
-import kotlin.math.max
 
 // StepsEstimateEngineTrace.kt - Kotlin twin of StepsEstimateEngine+Trace.swift. The Steps test-mode traces.
 //
@@ -14,15 +13,16 @@ import kotlin.math.max
 //     reason), the same status the tile renders.
 //
 //  2. rawCounterTrace(...) - the WHOOP 5/MG raw path. Reports the cumulative step_motion_counter series and
-//     its WRAP-AWARE deltas (cur - prev) and 0xFFFF, the dropped deltas (>= 512, a sync-gap / reboot
-//     boundary, not real steps), and the same total AnalyticsEngine.analyzeDay sums, with the SAME
-//     maxStepDelta gate and the SAME ticks-per-step scaling, so the trace and the daily steps_est can never
+//     how StepCounter.tally added it up: the small wrap-aware increases it kept, the gaps it bridged (a
+//     forward climb across a hole in the stream, no faster than a person can move), the jumps it dropped
+//     (too fast, or backwards: a restart reads exactly like a wrap), and how many holes the stream had.
+//     It calls the SAME StepCounter the daily total calls, so the trace and the daily steps can never
 //     diverge.
 //
 // No clock, no IO, no PII (counts and ratios only). The Steps test mode gates each call behind
 // TestCentre.active(STEPS) at the call site (IntelligenceEngine); when the mode is off neither is ever
-// called, so there is zero cost. Byte-aligned with the Swift line shapes so a shared report reads
-// identically on either platform. No em-dashes.
+// called, so there is zero cost. The calibration lines are byte-aligned with the Swift line shapes; the
+// raw-counter lines carry the bridged / stream fields the Swift twin does not have yet. No em-dashes.
 
 object StepsEstimateEngineTrace {
 
@@ -86,11 +86,11 @@ object StepsEstimateEngineTrace {
     }
 
     /**
-     * The WHOOP 5/MG raw-counter trace for one day. Recomputes the SAME wrap-aware sum [AnalyticsEngine.analyzeDay]
-     * runs over the cumulative step_motion_counter series: the time-ordered records filtered to the LOCAL day,
-     * each consecutive (cur - prev) and 0xFFFF increment, the dropped deltas (>= maxStepDelta), and the
-     * ticksPerStep scaling. Reports the counter series length, kept/dropped delta counts, raw tick total and
-     * scaled steps - the SAME value the daily steps_est carries. Mirrors the Swift StepsEstimateEngine.rawCounterTrace.
+     * The WHOOP 5/MG raw-counter trace for one day. Runs the SAME [StepCounter.tally] that
+     * [AnalyticsEngine.analyzeDay] runs over the cumulative step_motion_counter series (the time-ordered
+     * records filtered to the LOCAL day) and the SAME [StepCounter.steps] scaling. Reports the counter series
+     * length, the kept / dropped / bridged counts, the holes in the stream, the raw tick total and the scaled
+     * steps - the SAME value the day's steps carry.
      */
     fun rawCounterTrace(
         daySteps: List<StepSample>,
@@ -98,9 +98,6 @@ object StepsEstimateEngineTrace {
         tzOffsetSeconds: Long,
         ticksPerStep: Double,
     ): List<String> {
-        // The SAME maxStepDelta gate AnalyticsEngine.analyzeDay uses for the daily steps total.
-        val maxStepDelta = 512
-
         // The SAME filter + sort: keep only this LOCAL day's samples, time-ordered.
         val sorted = daySteps
             .filter { AnalyticsEngine.dayString(it.ts, tzOffsetSeconds) == dayKey }
@@ -125,23 +122,8 @@ object StepsEstimateEngineTrace {
             return lines
         }
 
-        // Walk the wrap-aware deltas exactly as the production sum does.
-        var rawTotal = 0
-        var keptDeltas = 0
-        var droppedDeltas = 0
-        var minDelta = Int.MAX_VALUE
-        var maxDelta = Int.MIN_VALUE
-        for (i in 1 until sorted.size) {
-            val delta = (sorted[i].counter - sorted[i - 1].counter) and 0xFFFF // wrap-aware u16 increment
-            if (delta in 1 until maxStepDelta) {
-                rawTotal += delta
-                keptDeltas += 1
-                minDelta = minOf(minDelta, delta)
-                maxDelta = maxOf(maxDelta, delta)
-            } else if (delta >= maxStepDelta) {
-                droppedDeltas += 1 // a sync-gap / reboot boundary, not real steps (>= 512)
-            }
-        }
+        // The production adding-up, verbatim: this is the call analyzeDay makes.
+        val tally = StepCounter.tally(sorted)
 
         val firstCounter = sorted.first().counter
         val lastCounter = sorted.last().counter
@@ -150,29 +132,32 @@ object StepsEstimateEngineTrace {
                 "firstCounter=$firstCounter lastCounter=$lastCounter (cumulative u16 @57)",
         )
         lines.add(
-            "stepsRaw deltas kept=$keptDeltas dropped=$droppedDeltas " +
-                "(dropped = delta>=$maxStepDelta, a sync-gap/reboot boundary)",
+            "stepsRaw deltas kept=${tally.keptDeltas} dropped=${tally.droppedDeltas} " +
+                "bridged=${tally.bridgedDeltas} bridgedTicks=${tally.bridgedTicks} " +
+                "(kept = increase<${StepCounter.MAX_ADJACENT_DELTA}; bridged = forward climb across a gap; " +
+                "dropped = too fast or backwards)",
         )
-        if (keptDeltas > 0) {
+        if (tally.minKeptDelta != null && tally.maxKeptDelta != null) {
             lines.add(
-                "stepsRaw keptRange min=$minDelta max=$maxDelta " +
+                "stepsRaw keptRange min=${tally.minKeptDelta} max=${tally.maxKeptDelta} " +
                     "(each = (cur-prev)&0xFFFF, wrap-aware)",
             )
         }
-
-        // The scaled total, the SAME expression analyzeDay produces for steps_est (ticks / ticksPerStep,
-        // floored at 0.5 so a bad pref can at most double, never explode, the total).
-        val scaled = if (rawTotal > 0) {
-            Math.round(rawTotal.toDouble() / max(ticksPerStep, 0.5)).toInt()
-        } else {
-            0
-        }
-        // L7: production analyzeDay returns `scaled > 0 ? scaled : null`, so a tiny rawTotal that rounds to 0
-        // yields NO steps_est for the day. Render "none" (not 0) so the trace matches the null headline rather
-        // than implying a real zero-step measurement.
-        val scaledText = if (scaled > 0) scaled.toString() else "none"
+        // How whole the stream was. A day with long holes is the case the bridging exists for; a day with
+        // none is an unbroken stream, where bridged is always 0 and the total is the plain sum.
         lines.add(
-            "stepsRaw total rawTicks=$rawTotal ticksPerStep=${r2(ticksPerStep)} " +
+            "stepsRaw stream gaps=${tally.gaps} longestGapSec=${tally.longestGapSeconds} " +
+                "coveredSec=${tally.coveredSeconds} (gap = readings more than ${StepCounter.GAP_SECONDS}s apart)",
+        )
+
+        // The scaled total, the SAME call analyzeDay makes for the day's steps (ticks / ticksPerStep,
+        // floored at 0.5 so a bad pref can at most double, never explode, the total).
+        // L7: production returns null when the total rounds to 0, so a tiny rawTicks yields NO steps for
+        // the day. Render "none" (not 0) so the trace matches the missing headline rather than implying a
+        // real zero-step measurement.
+        val scaledText = StepCounter.steps(tally.rawTicks, ticksPerStep)?.toString() ?: "none"
+        lines.add(
+            "stepsRaw total rawTicks=${tally.rawTicks} ticksPerStep=${r2(ticksPerStep)} " +
                 "scaledSteps=$scaledText (steps_est for the day)",
         )
         return lines

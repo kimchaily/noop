@@ -40,7 +40,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.noop.analytics.StepDayCheck
 import com.noop.analytics.StepsEstimateEngine
+import com.noop.data.StepSample
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -93,6 +95,13 @@ fun StepsCalibrationScreen(
     var sampleMotion by remember { mutableStateOf<Double?>(null) }
     // Flips true once the load pass has run, so the "no motion synced" note (#37) doesn't flash on first frame.
     var loaded by remember { mutableStateOf(false) }
+    // The last week's Steps numbers taken apart (source, strap readings, what was counted). null while it
+    // loads. Its own effect, NOT the one below: that one returns early when nothing is calibrated, and the
+    // check has to work in exactly that state too.
+    var stepChecks by remember { mutableStateOf<List<StepDayCheck.Day>?>(null) }
+    LaunchedEffect(Unit) {
+        stepChecks = runCatching { loadStepChecks(vm, profile) }.getOrDefault(emptyList())
+    }
 
     // The slider's max anchors to whatever's in force with generous headroom, so a nudge either way is
     // reachable; a floor keeps it usable before any fit. Mirrors the macOS sliderMax.
@@ -161,6 +170,7 @@ fun StepsCalibrationScreen(
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(Metrics.sectionGap),
             ) {
+                StepDataCheckCard(stepChecks)
                 ExplainerCard()
                 if (loaded && sampleMotion == null) NoMotionNote()
                 // #589: the matched-day count (phone-counted days we could pair with strap motion — the
@@ -474,6 +484,109 @@ private fun ManualAdjustCard(
             }
         }
     }
+}
+
+/**
+ * The last week's Steps numbers, taken apart: which source each day's number came from, what the strap
+ * handed over for it, and anything that stands out. It exists so "my steps look wrong" can be answered
+ * from one screenshot instead of a database export: a day with no counter readings, a stream full of
+ * holes, a calibration divisor and a phone count shown in place of the strap each look different here.
+ * Every figure comes from [StepDayCheck], which reuses the counting the daily total itself uses.
+ */
+@Composable
+private fun StepDataCheckCard(checks: List<StepDayCheck.Day>?) {
+    NoopCard(padding = 20.dp) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Overline("Step data check")
+            Text(
+                "Where each day's number came from, and what the strap handed over for it.",
+                style = NoopType.footnote,
+                color = Palette.textTertiary,
+            )
+            when {
+                checks == null ->
+                    Text("Reading the last 7 days.", style = NoopType.caption, color = Palette.textTertiary)
+                checks.isEmpty() ->
+                    Text("Could not read the step data.", style = NoopType.caption, color = Palette.textTertiary)
+                else -> {
+                    for ((index, check) in checks.withIndex()) {
+                        if (index > 0) Hairline()
+                        Column(
+                            modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {},
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    shortDay(check.day),
+                                    style = NoopType.footnote,
+                                    color = Palette.textSecondary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Text(check.source.label, style = NoopType.caption, color = Palette.textTertiary)
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    check.shown?.let { grouped(it) } ?: "none",
+                                    style = NoopType.captionNumber,
+                                    color = Palette.textPrimary,
+                                    textAlign = TextAlign.End,
+                                    modifier = Modifier.width(64.dp),
+                                )
+                            }
+                            Text(check.streamLine, style = NoopType.caption, color = Palette.textTertiary)
+                            for (finding in check.findings) {
+                                Text(finding, style = NoopType.caption, color = Palette.statusWarning)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Read the last [days] local days for the step data check, newest first. The stored total is the one on
+ * the merged daily row the Today tile reads; the phone count and the estimate are read the way the tile
+ * reads them, so [StepDayCheck.Day.shown] is the number on the tile. The scorer counts ONE strap lineage
+ * per day (the day's owner), so a day's readings are taken from whichever lineage holds the most of them
+ * rather than merged: mixing two lineages' counters would make a stream nothing ever counted.
+ */
+private suspend fun loadStepChecks(vm: AppViewModel, profile: ProfileStore, days: Int = 7): List<StepDayCheck.Day> {
+    val zone = ZoneId.systemDefault()
+    val today = LocalDate.now(zone)
+    val storedByDay = vm.recentDays.value.associateBy { it.day }
+    val apple = vm.repo.appleDaily(WhoopRepository.APPLE_HEALTH_SOURCE, "0000-01-01", "9999-12-31")
+    val healthConnect = vm.repo.appleDaily(WhoopRepository.HEALTH_CONNECT_SOURCE, "0000-01-01", "9999-12-31")
+    val estimateByDay = runCatching {
+        vm.repo.resolvedSeries(
+            "steps_est", WhoopRepository.WHOOP_SOURCE, "0000-00-00", "9999-99-99",
+            strapDeviceId = vm.activeStrapId,
+        ).values.associate { it.first to it.second }
+    }.getOrDefault(emptyMap())
+    val strapIds = vm.repo.importedSourceIds(vm.activeStrapId)
+    val out = ArrayList<StepDayCheck.Day>()
+    for (back in 0 until days) {
+        val date = today.minusDays(back.toLong())
+        val key = date.toString()
+        val from = date.atStartOfDay(zone).toEpochSecond()
+        val to = date.plusDays(1).atStartOfDay(zone).toEpochSecond() - 1
+        var readings: List<StepSample> = emptyList()
+        for (id in strapIds) {
+            val rows = vm.repo.stepSamples(id, from, to, 200_000)
+            if (rows.size > readings.size) readings = rows
+        }
+        out.add(
+            StepDayCheck.build(
+                day = key,
+                stored = storedByDay[key]?.steps,
+                phone = stepsForDay(apple, healthConnect, key),
+                estimate = estimateByDay[key]?.let { Math.round(it).toInt() },
+                readings = readings,
+                ticksPerStep = profile.stepTicksPerStep,
+            ),
+        )
+    }
+    return out
 }
 
 /** A small "label … value" line shared by the fit + preview cards. */

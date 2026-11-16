@@ -17,7 +17,6 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
-import kotlin.math.roundToLong
 
 /*
  * AnalyticsEngine.kt — orchestrator producing DailyMetric + sleep-session results.
@@ -418,27 +417,20 @@ object AnalyticsEngine {
         // many steps) both ignored the high byte and summed a running total — exploding the count to
         // ~10M/day. Decoding the full u16 and summing wrap-aware DELTAS yields a sane ~14k. ESTIMATE
         // only — not cloud/clinical parity.
+        //
+        // The adding-up itself lives in [StepCounter], shared with the Steps trace and the in-app step
+        // data check so the three cannot drift: small wrap-aware increases count as before, and a larger
+        // forward climb across a hole in the stream counts when it is no faster than a person can move
+        // (the counter is cumulative, so the difference across a gap is still the steps taken in it).
         val stepsTotal: Int? = run {
             // Prefer the full-calendar-day stream for the additive total; fall back to the
             // night-window stream when the caller didn't supply one (pure-function callers/tests).
             val sorted = (daySteps ?: steps).filter { dayString(it.ts, tzOffsetSeconds) == day }.sortedBy { it.ts }
             if (sorted.size < 2) return@run null
-            // A delta this large is a big time-gap / disconnect boundary between sync sessions (or a
-            // firmware reboot, byte-indistinguishable from a wrap), NOT real steps — drop it so gaps
-            // don't inflate the total. Real 1 Hz motion never ticks this fast between adjacent records.
-            val maxStepDelta = 512
-            var total = 0L
-            for (i in 1 until sorted.size) {
-                val delta = (sorted[i].counter - sorted[i - 1].counter) and 0xFFFF // wrap-aware u16 increment
-                if (delta in 1 until maxStepDelta) total += delta // ignore a delta >= 512 (gap/reset)
-            }
-            if (total <= 0L) return@run null
-            // @57 counts motion ticks, not validated steps — the 5/MG counter overcounts. Divide
-            // by the user-calibrated ticks-per-step (default 1.0 = raw pass-through; floor 0.5 so
-            // a bad pref can at most double, never explode, the total). (#139)
-            val scaled = (total.toDouble() / max(profile.stepTicksPerStep, 0.5)).roundToLong()
-                .coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-            if (scaled > 0) scaled else null
+            // @57 counts motion ticks, not validated steps — the 5/MG counter overcounts. Divided by
+            // the user-calibrated ticks-per-step inside [StepCounter.steps] (default 1.0 = raw
+            // pass-through; floored at 0.5 so a bad pref can at most double the total). (#139)
+            StepCounter.steps(StepCounter.tally(sorted).rawTicks, profile.stepTicksPerStep)
         }
 
         // ── Daily calories (APPROXIMATE, HR-only whole-day estimate) ──────────
